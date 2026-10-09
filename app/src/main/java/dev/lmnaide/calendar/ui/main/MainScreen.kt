@@ -13,6 +13,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Event
@@ -154,119 +155,127 @@ fun MainScreen(
             )
         },
     ) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Open menu")
-                        }
-                    },
-                    title = {
-                        val arrowRotation by animateFloatAsState(if (pickerOpen) 180f else 0f, label = "arrow")
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { pickerOpen = !pickerOpen }
-                                .padding(start = 4.dp, end = 2.dp),
-                        ) {
-                            Text(rangeTitle(visibleRange, today), maxLines = 1)
-                            Icon(
-                                Icons.Default.ArrowDropDown,
-                                contentDescription = if (pickerOpen) "Hide month picker" else "Show month picker",
-                                modifier = Modifier.rotate(arrowRotation),
+        Box(Modifier.fillMaxSize()) {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        navigationIcon = {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(Icons.Default.Menu, contentDescription = "Open menu")
+                            }
+                        },
+                        title = {
+                            val arrowRotation by animateFloatAsState(if (pickerOpen) 180f else 0f, label = "arrow")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { pickerOpen = !pickerOpen }
+                                    .padding(start = 4.dp, end = 2.dp),
+                            ) {
+                                Text(rangeTitle(visibleRange, today), maxLines = 1)
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = if (pickerOpen) "Hide month picker" else "Show month picker",
+                                    modifier = Modifier.rotate(arrowRotation),
+                                )
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = onSearch) {
+                                Icon(Icons.Outlined.Search, contentDescription = "Search")
+                            }
+                            IconButton(onClick = { jumpTo(today) }) {
+                                TodayIcon(today)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                    )
+                },
+            ) { padding ->
+                Column(
+                    Modifier
+                        .padding(padding)
+                        .fillMaxSize(),
+                ) {
+                    AnimatedVisibility(pickerOpen) {
+                        Column {
+                            MiniMonth(
+                                selectedDate = selectedDate,
+                                today = today,
+                                weekStart = settings.weekStart,
+                                index = index,
+                                onSelect = jumpTo,
                             )
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         }
-                    },
-                    actions = {
-                        IconButton(onClick = onSearch) {
-                            Icon(Icons.Outlined.Search, contentDescription = "Search")
+                    }
+                    Box(Modifier.weight(1f)) {
+                        when (val view = settings.view) {
+                            CalendarView.SCHEDULE -> ScheduleView(
+                                selectedDate = selectedDate,
+                                jumpCount = jumpCount,
+                                index = index,
+                                use24h = settings.use24Hour,
+                                now = now,
+                                onVisibleRange = { visibleRange = it },
+                                onOpenEvent = openEvent,
+                                onOpenDay = openDay,
+                                onToggleTask = { viewModel.setTaskCompleted(it, !it.completed) },
+                            )
+                            CalendarView.MONTH -> MonthView(
+                                selectedDate = selectedDate,
+                                weekStart = settings.weekStart,
+                                index = index,
+                                now = now,
+                                onSelectDate = viewModel::selectDate,
+                                onVisibleRange = { visibleRange = it },
+                                onOpenDay = openDay,
+                            )
+                            // Paging depends on the period length and week start, so start fresh when they change.
+                            else -> key(view, settings.weekStart) {
+                                TimeGridView(
+                                    days = when (view) {
+                                        CalendarView.DAY -> 1
+                                        CalendarView.THREE_DAY -> 3
+                                        else -> 7
+                                    },
+                                    selectedDate = selectedDate,
+                                    weekStart = settings.weekStart,
+                                    index = index,
+                                    use24h = settings.use24Hour,
+                                    now = now,
+                                    onSelectDate = viewModel::selectDate,
+                                    onVisibleRange = { visibleRange = it },
+                                    onOpenEvent = openEvent,
+                                    onOpenDay = openDay,
+                                    onCreateAt = { onCreateEvent(it.toLocalDate(), it.hour * 60 + it.minute, false, false) },
+                                )
+                            }
                         }
-                        IconButton(onClick = { jumpTo(today) }) {
-                            TodayIcon(today)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
+                    }
+                }
+            }
+            // Cover the toolbar and system bar areas as well as the calendar, beneath the menu.
+            if (createMenuOpen) {
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
+                        .clickable(interactionSource = null, indication = null) { createMenuOpen = false },
                 )
-            },
-            floatingActionButton = {
+            }
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(16.dp),
+            ) {
                 CreateButton(
                     expanded = createMenuOpen,
                     onExpandedChange = { createMenuOpen = it },
                     onCreate = { task -> onCreateEvent(selectedDate, -1, task, task) },
                 )
-            },
-        ) { padding ->
-            Column(
-                Modifier
-                    .padding(padding)
-                    .fillMaxSize(),
-            ) {
-                AnimatedVisibility(pickerOpen) {
-                    Column {
-                        MiniMonth(
-                            selectedDate = selectedDate,
-                            today = today,
-                            weekStart = settings.weekStart,
-                            index = index,
-                            onSelect = jumpTo,
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    }
-                }
-                Box(Modifier.weight(1f)) {
-                    when (val view = settings.view) {
-                        CalendarView.SCHEDULE -> ScheduleView(
-                            selectedDate = selectedDate,
-                            jumpCount = jumpCount,
-                            index = index,
-                            use24h = settings.use24Hour,
-                            now = now,
-                            onVisibleRange = { visibleRange = it },
-                            onOpenEvent = openEvent,
-                            onOpenDay = openDay,
-                            onToggleTask = { viewModel.setTaskCompleted(it, !it.completed) },
-                        )
-                        CalendarView.MONTH -> MonthView(
-                            selectedDate = selectedDate,
-                            weekStart = settings.weekStart,
-                            index = index,
-                            now = now,
-                            onSelectDate = viewModel::selectDate,
-                            onVisibleRange = { visibleRange = it },
-                            onOpenDay = openDay,
-                        )
-                        // Paging depends on the period length and week start, so start fresh when they change.
-                        else -> key(view, settings.weekStart) {
-                            TimeGridView(
-                                days = when (view) {
-                                    CalendarView.DAY -> 1
-                                    CalendarView.THREE_DAY -> 3
-                                    else -> 7
-                                },
-                                selectedDate = selectedDate,
-                                weekStart = settings.weekStart,
-                                index = index,
-                                use24h = settings.use24Hour,
-                                now = now,
-                                onSelectDate = viewModel::selectDate,
-                                onVisibleRange = { visibleRange = it },
-                                onOpenEvent = openEvent,
-                                onOpenDay = openDay,
-                                onCreateAt = { onCreateEvent(it.toLocalDate(), it.hour * 60 + it.minute, false, false) },
-                            )
-                        }
-                    }
-                    if (createMenuOpen) {
-                        Box(
-                            Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
-                                .clickable(interactionSource = null, indication = null) { createMenuOpen = false },
-                        )
-                    }
-                }
             }
         }
     }
