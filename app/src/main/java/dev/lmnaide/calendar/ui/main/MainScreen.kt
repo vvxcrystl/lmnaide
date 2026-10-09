@@ -7,22 +7,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.outlined.Event
-import androidx.compose.material.icons.outlined.TaskAlt
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -45,6 +31,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -78,6 +68,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.lmnaide.calendar.data.CalendarView
 import dev.lmnaide.calendar.domain.Occurrence
 import dev.lmnaide.calendar.ui.EventLink
+import dev.lmnaide.calendar.ui.event.QuickAddSheet
+import dev.lmnaide.calendar.ui.event.QuickAddViewModel
 import dev.lmnaide.calendar.ui.common.Fmt
 import dev.lmnaide.calendar.ui.common.rememberNow
 import kotlinx.coroutines.launch
@@ -89,10 +81,12 @@ import java.time.YearMonth
 fun MainScreen(
     onOpenEvent: (EventLink) -> Unit,
     onCreateEvent: (date: LocalDate, minute: Int, allDay: Boolean, task: Boolean) -> Unit,
+    onMoreOptions: (date: LocalDate, task: Boolean, text: String, calendarId: Long?) -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit,
     onManageCalendars: () -> Unit,
     viewModel: MainViewModel = viewModel(factory = MainViewModel.Factory),
+    quickAddViewModel: QuickAddViewModel = viewModel(factory = QuickAddViewModel.Factory),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val calendars by viewModel.calendars.collectAsStateWithLifecycle()
@@ -113,8 +107,8 @@ fun MainScreen(
         pickerOpen = false
     }
 
-    var createMenuOpen by rememberSaveable { mutableStateOf(false) }
-    BackHandler(enabled = createMenuOpen) { createMenuOpen = false }
+    var quickAddOpen by rememberSaveable { mutableStateOf(false) }
+    val snackbars = remember { SnackbarHostState() }
 
     RequestNotificationPermission()
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
@@ -192,6 +186,8 @@ fun MainScreen(
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                     )
                 },
+                floatingActionButton = { CreateButton(onClick = { quickAddOpen = true }) },
+                snackbarHost = { SnackbarHost(snackbars) },
             ) { padding ->
                 Column(
                     Modifier
@@ -256,25 +252,24 @@ fun MainScreen(
                     }
                 }
             }
-            // Cover the toolbar and system bar areas as well as the calendar, beneath the menu.
-            if (createMenuOpen) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
-                        .clickable(interactionSource = null, indication = null) { createMenuOpen = false },
-                )
-            }
-            Box(
-                Modifier
-                    .align(Alignment.BottomEnd)
-                    .navigationBarsPadding()
-                    .padding(16.dp),
-            ) {
-                CreateButton(
-                    expanded = createMenuOpen,
-                    onExpandedChange = { createMenuOpen = it },
-                    onCreate = { task -> onCreateEvent(selectedDate, -1, task, task) },
+            if (quickAddOpen) {
+                // A time without a day goes on the day being viewed, unless that day is already past.
+                QuickAddSheet(
+                    defaultDate = maxOf(selectedDate, today),
+                    onDismiss = { quickAddOpen = false },
+                    onSaved = { link, message, date ->
+                        quickAddOpen = false
+                        jumpTo(date)
+                        scope.launch {
+                            val result = snackbars.showSnackbar(message, actionLabel = "View", duration = SnackbarDuration.Short)
+                            if (result == SnackbarResult.ActionPerformed) onOpenEvent(link)
+                        }
+                    },
+                    onMoreOptions = { text, task, calendarId ->
+                        quickAddOpen = false
+                        onMoreOptions(maxOf(selectedDate, today), task, text, calendarId)
+                    },
+                    viewModel = quickAddViewModel,
                 )
             }
         }
@@ -292,41 +287,16 @@ private fun rangeTitle(range: ClosedRange<LocalDate>, today: LocalDate): String 
     }
 }
 
-/**
- * The create button. Like Google Calendar's, it opens a small menu to choose between an event and
- * a task; the scrim behind it closes the menu.
- */
+/** The create button, with Google's four-color plus. It opens quick add, which can also lead to the full editor. */
 @Composable
-private fun CreateButton(expanded: Boolean, onExpandedChange: (Boolean) -> Unit, onCreate: (task: Boolean) -> Unit) {
-    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        AnimatedVisibility(expanded, enter = fadeIn() + expandVertically(expandFrom = Alignment.Bottom), exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Bottom)) {
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                CreateOption("Task", Icons.Outlined.TaskAlt) { onExpandedChange(false); onCreate(true) }
-                CreateOption("Event", Icons.Outlined.Event) { onExpandedChange(false); onCreate(false) }
-            }
-        }
-        FloatingActionButton(
-            onClick = { onExpandedChange(!expanded) },
-            shape = RoundedCornerShape(16.dp),
-            containerColor = if (expanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-        ) {
-            if (expanded) Icon(Icons.Default.Close, contentDescription = "Close menu") else GooglePlus(Modifier.size(24.dp))
-        }
-    }
-}
-
-@Composable
-private fun CreateOption(label: String, icon: ImageVector, onClick: () -> Unit) {
-    ExtendedFloatingActionButton(
+private fun CreateButton(onClick: () -> Unit) {
+    FloatingActionButton(
         onClick = onClick,
-        icon = { Icon(icon, contentDescription = null) },
-        text = { Text(label) },
-        shape = CircleShape,
-        containerColor = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        modifier = Modifier.height(48.dp),
-    )
+        shape = RoundedCornerShape(16.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        GooglePlus(Modifier.size(24.dp))
+    }
 }
 
 /** Google's four-color plus, as on the Calendar app's create button. */

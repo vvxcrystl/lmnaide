@@ -1,0 +1,422 @@
+[
+  {
+    "id": "case_01",
+    "category": "simple",
+    "text": "Work from 3 to 5pm tomorrow",
+    "expected": {
+      "title": "Work",
+      "date": "2026-10-09",
+      "start": "15:00",
+      "end_date": "2026-10-09",
+      "end": "17:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_02",
+    "category": "simple",
+    "text": "Dentist tomorrow at 10am",
+    "expected": {
+      "title": "Dentist",
+      "date": "2026-10-09",
+      "start": "10:00",
+      "end_date": "2026-10-09",
+      "end": "11:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_03",
+    "category": "simple",
+    "text": "Lunch today at noon",
+    "expected": {
+      "title": "Lunch",
+      "date": "2026-10-08",
+      "start": "12:00",
+      "end_date": "2026-10-08",
+      "end": "13:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_04",
+    "category": "simple",
+    "text": "Gym today from 6pm to 7pm",
+    "expected": {
+      "title": "Gym",
+      "date": "2026-10-08",
+      "start": "18:00",
+      "end_date": "2026-10-08",
+      "end": "19:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_05",
+    "category": "simple",
+    "text": "Meeting on October 20 at 2pm",
+    "expected": {
+      "title": "Meeting",
+      "date": "2026-10-20",
+      "start": "14:00",
+      "end_date": "2026-10-20",
+      "end": "15:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_06",
+    "category": "simple",
+    "text": "Call Alex on 2026-10-12 at 14:30",
+    "expected": {
+      "title": "Call Alex",
+      "date": "2026-10-12",
+      "start": "14:30",
+      "end_date": "2026-10-12",
+      "end": "15:30",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_07",
+    "category": "simple",
+    "text": "Coffee tomorrow at 9:30am",
+    "expected": {
+      "title": "Coffee",
+      "date": "2026-10-09",
+      "start": "09:30",
+      "end_date": "2026-10-09",
+      "end": "10:30",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_08",
+    "category": "simple",
+    "text": "Study from 9 to 11am tomorrow",
+    "expected": {
+      "title": "Study",
+      "date": "2026-10-09",
+      "start": "09:00",
+      "end_date": "2026-10-09",
+      "end": "11:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_09",
+    "category": "simple",
+    "text": "Dinner at 7pm",
+    "expected": {
+      "title": "Dinner",
+      "date": "2026-10-08",
+      "start": "19:00",
+      "end_date": "2026-10-08",
+      "end": "20:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_10",
+    "category": "simple",
+    "text": "Birthday party tomorrow",
+    "expected": {
+      "title": "Birthday party",
+      "date": "2026-10-09",
+      "start": null,
+      "end_date": "2026-10-09",
+      "end": null,
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_11",
+    "category": "relative_date",
+    "text": "Haircut next Friday at 4pm",
+    "expected": {
+      "title": "Haircut",
+      "date": "2026-10-09",
+      "start": "16:00",
+      "end_date": "2026-10-09",
+      "end": "17:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_12",
+    "category": "relative_date",
+    "text": "Soccer on Monday at 6pm",
+    "expected": {
+      "title": "Soccer",
+      "date": "2026-10-12",
+      "start": "18:00",
+      "end_date": "2026-10-12",
+      "end": "19:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_13",
+    "category": "relative_date",
+    "text": "Inspection in 3 days at 11am",
+    "expected": {
+      "title": "Inspection",
+      "date": "2026-10-11",
+      "start": "11:00",
+      "end_date": "2026-10-11",
+      "end": "12:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_14",
+    "category": "relative_date",
+    "text": "Visit mom the day after tomorrow at noon",
+    "expected": {
+      "title": "Visit mom",
+      "date": "2026-10-10",
+      "start": "12:00",
+      "end_date": "2026-10-10",
+      "end": "13:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_15",
+    "category": "relative_date",
+    "text": "Rent on November 1",
+    "expected": {
+      "title": "Rent",
+      "date": "2026-11-01",
+      "start": null,
+      "end_date": "2026-11-01",
+      "end": null,
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_16",
+    "category": "duration",
+    "text": "Walk tomorrow at 4pm for 30 minutes",
+    "expected": {
+      "title": "Walk",
+      "date": "2026-10-09",
+      "start": "16:00",
+      "end_date": "2026-10-09",
+      "end": "16:30",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_17",
+    "category": "duration",
+    "text": "Workshop tomorrow at 10am for 2 hours",
+    "expected": {
+      "title": "Workshop",
+      "date": "2026-10-09",
+      "start": "10:00",
+      "end_date": "2026-10-09",
+      "end": "12:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_18",
+    "category": "duration",
+    "text": "Night shift tomorrow from 10pm to 2am",
+    "expected": {
+      "title": "Night shift",
+      "date": "2026-10-09",
+      "start": "22:00",
+      "end_date": "2026-10-10",
+      "end": "02:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_19",
+    "category": "duration",
+    "text": "Maintenance tomorrow at midnight for 90 minutes",
+    "expected": {
+      "title": "Maintenance",
+      "date": "2026-10-09",
+      "start": "00:00",
+      "end_date": "2026-10-09",
+      "end": "01:30",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_20",
+    "category": "repeat",
+    "text": "Standup every weekday at 9am",
+    "expected": {
+      "title": "Standup",
+      "date": "2026-10-08",
+      "start": "09:00",
+      "end_date": "2026-10-08",
+      "end": "10:00",
+      "repeat": "weekdays",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_21",
+    "category": "repeat",
+    "text": "Guitar every Tuesday at 7pm",
+    "expected": {
+      "title": "Guitar",
+      "date": "2026-10-13",
+      "start": "19:00",
+      "end_date": "2026-10-13",
+      "end": "20:00",
+      "repeat": "weekly",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_22",
+    "category": "repeat",
+    "text": "Stretch every day at 6am",
+    "expected": {
+      "title": "Stretch",
+      "date": "2026-10-08",
+      "start": "06:00",
+      "end_date": "2026-10-08",
+      "end": "07:00",
+      "repeat": "daily",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_23",
+    "category": "repeat",
+    "text": "Reading every Thursday from 8pm to 9pm",
+    "expected": {
+      "title": "Reading",
+      "date": "2026-10-08",
+      "start": "20:00",
+      "end_date": "2026-10-08",
+      "end": "21:00",
+      "repeat": "weekly",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_24",
+    "category": "wording",
+    "text": "Please add a team meeting tomorrow from 2pm to 3pm",
+    "expected": {
+      "title": "team meeting",
+      "date": "2026-10-09",
+      "start": "14:00",
+      "end_date": "2026-10-09",
+      "end": "15:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_25",
+    "category": "wording",
+    "text": "tmrw work 3-5pm",
+    "expected": {
+      "title": "work",
+      "date": "2026-10-09",
+      "start": "15:00",
+      "end_date": "2026-10-09",
+      "end": "17:00",
+      "repeat": "none",
+      "clarify": false
+    }
+  },
+  {
+    "id": "case_26",
+    "category": "clarification",
+    "text": "Meet Jordan tomorrow at 3",
+    "expected": {
+      "title": null,
+      "date": null,
+      "start": null,
+      "end_date": null,
+      "end": null,
+      "repeat": null,
+      "clarify": true
+    }
+  },
+  {
+    "id": "case_27",
+    "category": "clarification",
+    "text": "Dinner sometime next week",
+    "expected": {
+      "title": null,
+      "date": null,
+      "start": null,
+      "end_date": null,
+      "end": null,
+      "repeat": null,
+      "clarify": true
+    }
+  },
+  {
+    "id": "case_28",
+    "category": "clarification",
+    "text": "Work",
+    "expected": {
+      "title": null,
+      "date": null,
+      "start": null,
+      "end_date": null,
+      "end": null,
+      "repeat": null,
+      "clarify": true
+    }
+  },
+  {
+    "id": "case_29",
+    "category": "clarification",
+    "text": "Delete my meeting tomorrow",
+    "expected": {
+      "title": null,
+      "date": null,
+      "start": null,
+      "end_date": null,
+      "end": null,
+      "repeat": null,
+      "clarify": true
+    }
+  },
+  {
+    "id": "case_30",
+    "category": "clarification",
+    "text": "Meeting tomorrow at 3pm and at 4pm",
+    "expected": {
+      "title": null,
+      "date": null,
+      "start": null,
+      "end_date": null,
+      "end": null,
+      "repeat": null,
+      "clarify": true
+    }
+  }
+]

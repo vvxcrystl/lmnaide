@@ -1,0 +1,2388 @@
+{
+  "metadata": {
+    "model": "HuggingFaceTB/SmolLM2-135M-Instruct",
+    "revision": "12fd25f77366fa6b3b4b768ec3050bf629380bac",
+    "cpu": "",
+    "platform": "Linux-7.2.9-1-cachyos-x86_64-with-glibc2.44",
+    "python": "3.12.13",
+    "torch": "2.14.1+cpu",
+    "transformers": "4.57.6",
+    "threads": 4,
+    "dtype": "float32",
+    "quantized": false,
+    "load_seconds": 12.254493505999562,
+    "parameter_count": 134515008,
+    "parameter_bytes": 538060032,
+    "generation": {
+      "do_sample": false,
+      "max_new_tokens": 180
+    },
+    "context": {
+      "today": "2026-10-08",
+      "timezone": "America/Regina",
+      "default_duration_minutes": 60
+    },
+    "peak_process_rss_bytes": 1233772544
+  },
+  "system_prompt": "Extract a calendar event. Return ONLY a JSON object with exactly these keys:\n{\"title\":string|null,\"date\":\"YYYY-MM-DD\"|null,\"start\":\"HH:MM\"|null,\"end_date\":\"YYYY-MM-DD\"|null,\"end\":\"HH:MM\"|null,\"repeat\":\"none\"|\"daily\"|\"weekdays\"|\"weekly\"|null,\"clarify\":boolean}\nToday is Thursday 2026-10-08. Local timezone is America/Regina. Interpret dates locally.\nNo date means today. No end means 60 minutes after start. A date without a time means all-day: start and end are null and end_date equals date. No date AND no time requires clarification.\n\"3 to 5pm\" means 15:00 to 17:00. A bare time without am/pm or a 24-hour cue requires clarification. \"noon\"=12:00 and \"midnight\"=00:00. An end earlier than start is on the following day.\nWeekday names mean their next occurrence. \"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\nKeep the event title, but remove date/time/repeat phrases and polite request words. Do not invent a location or other details.\nIf information is ambiguous, contradictory, or this is not a creation request, return all six other fields null and clarify true. Otherwise clarify false.",
+  "examples": [
+    [
+      "Yoga tomorrow at 8am",
+      {
+        "title": "Yoga",
+        "date": "2026-10-09",
+        "start": "08:00",
+        "end_date": "2026-10-09",
+        "end": "09:00",
+        "repeat": "none",
+        "clarify": false
+      }
+    ],
+    [
+      "Movie Saturday from 8pm to 10pm",
+      {
+        "title": "Movie",
+        "date": "2026-10-10",
+        "start": "20:00",
+        "end_date": "2026-10-10",
+        "end": "22:00",
+        "repeat": "none",
+        "clarify": false
+      }
+    ],
+    [
+      "Water plants every day at 7am",
+      {
+        "title": "Water plants",
+        "date": "2026-10-08",
+        "start": "07:00",
+        "end_date": "2026-10-08",
+        "end": "08:00",
+        "repeat": "daily",
+        "clarify": false
+      }
+    ],
+    [
+      "Lunch tomorrow at 1",
+      {
+        "title": null,
+        "date": null,
+        "start": null,
+        "end_date": null,
+        "end": null,
+        "repeat": null,
+        "clarify": true
+      }
+    ]
+  ],
+  "summary": {
+    "zero_shot": {
+      "total": 30,
+      "exact_passes": 0,
+      "valid_schema": 0,
+      "schedule_correct": 0,
+      "median_seconds": 5.580966641000487,
+      "p95_seconds": 6.321398635998776,
+      "fields": {
+        "title": 0,
+        "date": 0,
+        "start": 0,
+        "end_date": 0,
+        "end": 0,
+        "repeat": 0,
+        "clarify": 0
+      },
+      "categories": {
+        "clarification": {
+          "total": 5,
+          "passes": 0
+        },
+        "duration": {
+          "total": 4,
+          "passes": 0
+        },
+        "relative_date": {
+          "total": 5,
+          "passes": 0
+        },
+        "repeat": {
+          "total": 4,
+          "passes": 0
+        },
+        "simple": {
+          "total": 10,
+          "passes": 0
+        },
+        "wording": {
+          "total": 2,
+          "passes": 0
+        }
+      }
+    },
+    "few_shot": {
+      "total": 30,
+      "exact_passes": 0,
+      "valid_schema": 30,
+      "schedule_correct": 0,
+      "median_seconds": 2.711859957499655,
+      "p95_seconds": 3.6684621599997627,
+      "fields": {
+        "title": 23,
+        "date": 6,
+        "start": 5,
+        "end_date": 5,
+        "end": 0,
+        "repeat": 5,
+        "clarify": 25
+      },
+      "categories": {
+        "clarification": {
+          "total": 5,
+          "passes": 0
+        },
+        "duration": {
+          "total": 4,
+          "passes": 0
+        },
+        "relative_date": {
+          "total": 5,
+          "passes": 0
+        },
+        "repeat": {
+          "total": 4,
+          "passes": 0
+        },
+        "simple": {
+          "total": 10,
+          "passes": 0
+        },
+        "wording": {
+          "total": 2,
+          "passes": 0
+        }
+      }
+    }
+  },
+  "results": [
+    {
+      "id": "case_01",
+      "category": "simple",
+      "prompt": "zero_shot",
+      "text": "Work from 3 to 5pm tomorrow",
+      "expected": {
+        "title": "Work",
+        "date": "2026-10-09",
+        "start": "15:00",
+        "end_date": "2026-10-09",
+        "end": "17:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"3 to 5pm\" means 15:00 to 17:00. A bare time without am/pm or a 24-hour cue requires clarification. \"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\n\"next Friday\" means 2026-1",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.640456377999726,
+      "input_tokens": 363,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_02",
+      "category": "simple",
+      "prompt": "zero_shot",
+      "text": "Dentist tomorrow at 10am",
+      "expected": {
+        "title": "Dentist",
+        "date": "2026-10-09",
+        "start": "10:00",
+        "end_date": "2026-10-09",
+        "end": "11:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"10am\" means 10:00 AM. A date without a time means all-day: start and end are null and end_date equals date. No date and no time requires clarification.\n\"10am\"=12:00 and \"11:00\"=1:00. A date without a time means all-day: start and end are null and end_date equals date. No date and no time requires clarification.\n\"11:00\"=12:00 and \"12:00\"=1:00. A date without a time means all-day: start and end are null and end_date equals date. No date and no time requires clarification.\n\"12:00\"=1:00 and \"1:00\"=1",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.612200314000802,
+      "input_tokens": 363,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_03",
+      "category": "simple",
+      "prompt": "zero_shot",
+      "text": "Lunch today at noon",
+      "expected": {
+        "title": "Lunch",
+        "date": "2026-10-08",
+        "start": "12:00",
+        "end_date": "2026-10-08",
+        "end": "13:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"Today is Thursday 2026-10-08. Local timezone is America/Regina. Interpret dates locally.\n\"3 to 5pm\" means 15:00 to 17:00. A bare time without am/pm or a 24-hour cue requires clarification. \"noon\"=12:00 and \"midnight\"=00:00. An end earlier than start is on the following day.\n\"weekday names\" means their next occurrence. \"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\"weekday names\" means their next occurrence. \"weekdays\" means their next occurrence. \"weekly\" means their next occurrence. \"weekly\" means their next occurrence. \"",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.576485742998557,
+      "input_tokens": 359,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_04",
+      "category": "simple",
+      "prompt": "zero_shot",
+      "text": "Gym today from 6pm to 7pm",
+      "expected": {
+        "title": "Gym",
+        "date": "2026-10-08",
+        "start": "18:00",
+        "end_date": "2026-10-08",
+        "end": "19:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"Gym today from 6pm to 7pm\" means 15:00 to 17:00. A bare time without am/pm or a 24-hour cue requires clarification. \"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\nIf information is ambiguous, contradictory, or this is not a creation request, return all six other fields null and clarify true. Otherwise clarify false.",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 3.3797299040015787,
+      "input_tokens": 365,
+      "output_tokens": 108,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_05",
+      "category": "simple",
+      "prompt": "zero_shot",
+      "text": "Meeting on October 20 at 2pm",
+      "expected": {
+        "title": "Meeting",
+        "date": "2026-10-20",
+        "start": "14:00",
+        "end_date": "2026-10-20",
+        "end": "15:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"20 to 2pm\" means 12:00 to 14:00. A date without a time means all-day: start and end are null and end_date equals date. No date and no time requires clarification.\n\"20 to 2pm\" means 12:00 to 14:00. A date without a time means all-day: start and end are null and end_date equals date. No date and no time requires clarification.\n\"20 to 2pm\" means 12:00 to 14:00. A date without a time means all-day: start and end are null and end_date equals date. No date and no time requires clarification.\n\"20 to 2pm\" means 12:00 to 1",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.508250926000983,
+      "input_tokens": 365,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_06",
+      "category": "simple",
+      "prompt": "zero_shot",
+      "text": "Call Alex on 2026-10-12 at 14:30",
+      "expected": {
+        "title": "Call Alex",
+        "date": "2026-10-12",
+        "start": "14:30",
+        "end_date": "2026-10-12",
+        "end": "15:30",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "Alex on 2026-10-12 at 14:30. Alex on 2026-10-12 at 14:30. Alex on 2026-10-12 at 14:30. Alex on 2026-10-12 at 14:30. Alex on 2026-10-12 at 14:30. Alex on 2026-10-12 at 14:30. Alex on 2026-10-12 at 14:30. Alex on 2026-10-12 at 14:30. Alex on 2026-10-1",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.597351595999498,
+      "input_tokens": 375,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_07",
+      "category": "simple",
+      "prompt": "zero_shot",
+      "text": "Coffee tomorrow at 9:30am",
+      "expected": {
+        "title": "Coffee",
+        "date": "2026-10-09",
+        "start": "09:30",
+        "end_date": "2026-10-09",
+        "end": "10:30",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "Coffee tomorrow at 9:30am.\n\nCoffee is served at 9:30am.\n\nCoffee is served at 9:30am.\n\nCoffee is served at 9:30am.\n\nCoffee is served at 9:30am.\n\nCoffee is served at 9:30am.\n\nCoffee is served at 9:30am.\n\nCoffee is served at 9:30am.\n\nCoffee is served at 9:30am.\n\nCoffee is served at 9:30am.\n\nCoffee is served at 9:30am.\n\nCoffee is served at 9:30am.\n\nCoffee is served at 9:30am.\n",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.559682711998903,
+      "input_tokens": 364,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_08",
+      "category": "simple",
+      "prompt": "zero_shot",
+      "text": "Study from 9 to 11am tomorrow",
+      "expected": {
+        "title": "Study",
+        "date": "2026-10-09",
+        "start": "09:00",
+        "end_date": "2026-10-09",
+        "end": "11:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"9 to 11am\" means 11:00 to 12:00. A date without a time means all-day: start and end are null and end_date equals date. No date and no time requires clarification.\n\"11:00 to 12:00\" means 11:00 to 12:00. A date without a time means all-day: start and end are null and end_date equals date. No date and no time requires clarification.\n\"12:00 to 12:00\" means 12:00 to 12:00. A date without a time means all-day: start and end are null and end_date equals date. No date and no time requires clarification.\n\"12:00",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.4173179310000705,
+      "input_tokens": 364,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_09",
+      "category": "simple",
+      "prompt": "zero_shot",
+      "text": "Dinner at 7pm",
+      "expected": {
+        "title": "Dinner",
+        "date": "2026-10-08",
+        "start": "19:00",
+        "end_date": "2026-10-08",
+        "end": "20:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"7pm\" means 7:00 PM. \"Dinner\" means 7:00 PM. \"Dinner at\" means 7:00 PM. \"Dinner\" means 7:00 PM. \"Dinner at\" means 7:00 PM. \"Dinner at\" means 7:00 PM. \"Dinner at\" means 7:00 PM. \"Dinner at\" means 7:00 PM. \"Dinner at\" means 7:00 PM. \"Dinner at\" means 7:00 PM. \"Dinner at\" means 7:00 PM. \"Dinner at\" means 7:00 PM. \"Dinner at\" means 7:00 PM. \"Dinner at\" means 7:00 PM. \"",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.453887178999139,
+      "input_tokens": 360,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_10",
+      "category": "simple",
+      "prompt": "zero_shot",
+      "text": "Birthday party tomorrow",
+      "expected": {
+        "title": "Birthday party",
+        "date": "2026-10-09",
+        "start": null,
+        "end_date": "2026-10-09",
+        "end": null,
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"2026-10-08\" means 2026-10-08. \"Hours\" means 2026-10-08. \"Hours\" means 2026-10-08. \"Hours\" means 2026-10-08. \"Hours\" means 2026-10-08. \"Hours\" means 2026-10-08. \"Hours\" means 2026-10-08. \"Hours\" means 2026-10-08. \"Hours\" means 2026-10-08. \"Hours\" means 2026-10-08. \"H",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.537311572001272,
+      "input_tokens": 358,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_11",
+      "category": "relative_date",
+      "prompt": "zero_shot",
+      "text": "Haircut next Friday at 4pm",
+      "expected": {
+        "title": "Haircut",
+        "date": "2026-10-09",
+        "start": "16:00",
+        "end_date": "2026-10-09",
+        "end": "17:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "Haircut next Friday at 4pm.",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 0.5573200529997848,
+      "input_tokens": 363,
+      "output_tokens": 11,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_12",
+      "category": "relative_date",
+      "prompt": "zero_shot",
+      "text": "Soccer on Monday at 6pm",
+      "expected": {
+        "title": "Soccer",
+        "date": "2026-10-12",
+        "start": "18:00",
+        "end_date": "2026-10-12",
+        "end": "19:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"Monday at 6pm\" means 6:00 PM. A match is on Monday.\n\"Sunday\" means 12:00 PM. A match is on Sunday.\n\"Monday\" means 6:00 PM. A match is on Monday.\n\"Friday\" means 12:00 PM. A match is on Friday.\n\"Saturday\" means 12:00 PM. A match is on Saturday.\n\"Sunday\" means 12:00 PM. A match is on Sunday.\n\"Monday\" means 6:00 PM. A match is on Monday.\n\"Friday\" means 12:00 PM. A match is on Friday.\n\"Saturday\" means 12:00 PM. A match is on Saturday.\n\"Sunday\" means 12:",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 6.115142373000708,
+      "input_tokens": 362,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_13",
+      "category": "relative_date",
+      "prompt": "zero_shot",
+      "text": "Inspection in 3 days at 11am",
+      "expected": {
+        "title": "Inspection",
+        "date": "2026-10-11",
+        "start": "11:00",
+        "end_date": "2026-10-11",
+        "end": "12:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "The following information is missing:\n\n* The location of the inspection\n* The date and time of the inspection\n* The date and time of the inspection\n* The location of the inspection\n* The date and time of the inspection\n* The location of the inspection\n* The date and time of the inspection\n* The location of the inspection\n* The date and time of the inspection\n* The location of the inspection\n* The date and time of the inspection\n* The location of the inspection\n* The date and time of the inspection\n* The location of the inspection\n* The date and time of the inspection\n* The location of the inspection\n* The date and time of the inspection\n* The location of the inspection\n* The date and time of the inspection\n* The location of the inspection\n* The date and time of the inspection\n* The location",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.5656633189992135,
+      "input_tokens": 366,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_14",
+      "category": "relative_date",
+      "prompt": "zero_shot",
+      "text": "Visit mom the day after tomorrow at noon",
+      "expected": {
+        "title": "Visit mom",
+        "date": "2026-10-10",
+        "start": "12:00",
+        "end_date": "2026-10-10",
+        "end": "13:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "Today is Thursday 2026-10-08. Local timezone is America/Regina. Interpret dates locally.\nNo date means today. No end means 60 minutes after start. A date without a time means all-day: start and end are null and end_date equals date. No date AND no time requires clarification.\n\"3 to 5pm\" means 15:00 to 17:00. A bare time without am/pm or a 24-hour cue requires clarification. \"noon\"=12:00 and \"midnight\"=00:00. An end earlier than start is on the following day.\nWeekday names mean their next occurrence. \"next Friday\" means 2026-10-09. For repeating events use the first matching",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.6645685139992565,
+      "input_tokens": 362,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_15",
+      "category": "relative_date",
+      "prompt": "zero_shot",
+      "text": "Rent on November 1",
+      "expected": {
+        "title": "Rent",
+        "date": "2026-11-01",
+        "start": null,
+        "end_date": "2026-11-01",
+        "end": null,
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"1 to 5pm\" means 15:00 to 17:00. A bare time without am/pm or a 24-hour cue requires clarification. \"noon\"=12:00 and \"midnight\"=00:00. An end earlier than start is on the following day.\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\"next Friday\" means 2026-10",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.669808422000642,
+      "input_tokens": 360,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_16",
+      "category": "duration",
+      "prompt": "zero_shot",
+      "text": "Walk tomorrow at 4pm for 30 minutes",
+      "expected": {
+        "title": "Walk",
+        "date": "2026-10-09",
+        "start": "16:00",
+        "end_date": "2026-10-09",
+        "end": "16:30",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"3 to 5pm\" means 15:00 to 17:00. A bare time without am/pm or a 24-hour cue requires clarification. \"noon\"=12:00 and \"midnight\"=00:00. An end earlier than start is on the following day.\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\"next Friday\" means 2026-10",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.599788519999493,
+      "input_tokens": 365,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_17",
+      "category": "duration",
+      "prompt": "zero_shot",
+      "text": "Workshop tomorrow at 10am for 2 hours",
+      "expected": {
+        "title": "Workshop",
+        "date": "2026-10-09",
+        "start": "10:00",
+        "end_date": "2026-10-09",
+        "end": "12:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"2026-10-01\" means 10:01:00. A date without a time means all-day: start and end are null and end_date equals date. No date and no time requires clarification.\n\"2026-10-01\" means 10:01:00. A date without a time means all-day: start and end are null and end_date equals date. No date and no time requires clarification.\n\"2026-10-01\" means 10:01:00. A date without a time means all-day: start and end are null and end_date equals date. No date and no time requires clarification.\n\"2026-10-01\" means 10:0",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 6.182002703000762,
+      "input_tokens": 366,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_18",
+      "category": "duration",
+      "prompt": "zero_shot",
+      "text": "Night shift tomorrow from 10pm to 2am",
+      "expected": {
+        "title": "Night shift",
+        "date": "2026-10-09",
+        "start": "22:00",
+        "end_date": "2026-10-10",
+        "end": "02:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"10pm to 2am\" means 10:00 to 11:00. A bare time without am/pm or a 24-hour cue requires clarification. \"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\nIf information is ambiguous, contradictory, or this is not a creation request, return all six other fields null and clarify true. Otherwise clarify false.",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 3.2380628070004605,
+      "input_tokens": 366,
+      "output_tokens": 104,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_19",
+      "category": "duration",
+      "prompt": "zero_shot",
+      "text": "Maintenance tomorrow at midnight for 90 minutes",
+      "expected": {
+        "title": "Maintenance",
+        "date": "2026-10-09",
+        "start": "00:00",
+        "end_date": "2026-10-09",
+        "end": "01:30",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"90 minutes\" means 90 minutes of maintenance. \"10:00\" means 10:00 AM. \"12:00\" means 12:00 PM. \"1:00\" means 1:00 AM. \"1:00:00\" means 1:00 AM. \"1:00:00:00\" means 1:00 AM. \"1:00:00:00:00\" means 1:00 AM. \"1:00:00:00:00:00\" means 1:00 AM. \"1:00:00:00:00:00:00\" means 1:00 AM. \"1:00:",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.594500156999857,
+      "input_tokens": 364,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_20",
+      "category": "repeat",
+      "prompt": "zero_shot",
+      "text": "Standup every weekday at 9am",
+      "expected": {
+        "title": "Standup",
+        "date": "2026-10-08",
+        "start": "09:00",
+        "end_date": "2026-10-08",
+        "end": "10:00",
+        "repeat": "weekdays",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"Standup every weekday at 9am\" means 9am on the first day of the week.\n\"Standup\" means 9am on the first day of the week.\n\"Weekday\" means 9am on the first day of the week.\n\"Standup\" means 9am on the first day of the week.\n\"Weekday\" means 9am on the first day of the week.\n\"Standup\" means 9am on the first day of the week.\n\"Weekday\" means 9am on the first day of the week.\n\"Standup\" means 9am on the first day of the week.\n\"Weekday\" means 9am on the first day of the week.\n\"Standup\" means 9am on the first day of the week.\n\"Weekday",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 6.321398635998776,
+      "input_tokens": 363,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_21",
+      "category": "repeat",
+      "prompt": "zero_shot",
+      "text": "Guitar every Tuesday at 7pm",
+      "expected": {
+        "title": "Guitar",
+        "date": "2026-10-13",
+        "start": "19:00",
+        "end_date": "2026-10-13",
+        "end": "20:00",
+        "repeat": "weekly",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"Guitar every Tuesday at 7pm\" means that the guitarist plays the guitar every Tuesday at 7pm.\n\"Guitar every Tuesday at 7pm\" means that the guitarist plays the guitar every Tuesday at 7pm.\n\"Guitar every Tuesday at 7pm\" means that the guitarist plays the guitar every Tuesday at 7pm.\n\"Guitar every Tuesday at 7pm\" means that the guitarist plays the guitar every Tuesday at 7pm.\n\"Guitar every Tuesday at 7pm\" means that the guitarist plays the guitar every Tuesday at 7pm.\n\"Guitar every Tuesday at 7pm\" means that the guitarist plays the guitar every Tuesday at 7pm.\n\"Guitar every Tuesday at 7pm\" means that the guitarist plays the",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 6.510464300999956,
+      "input_tokens": 363,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_22",
+      "category": "repeat",
+      "prompt": "zero_shot",
+      "text": "Stretch every day at 6am",
+      "expected": {
+        "title": "Stretch",
+        "date": "2026-10-08",
+        "start": "06:00",
+        "end_date": "2026-10-08",
+        "end": "07:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"Stretch every day at 6am\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\" means 6am.\n\"Stretch\"",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.76574696300122,
+      "input_tokens": 362,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_23",
+      "category": "repeat",
+      "prompt": "zero_shot",
+      "text": "Reading every Thursday from 8pm to 9pm",
+      "expected": {
+        "title": "Reading",
+        "date": "2026-10-08",
+        "start": "20:00",
+        "end_date": "2026-10-08",
+        "end": "21:00",
+        "repeat": "weekly",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"Today is Thursday 2026-10-08. Local timezone is America/Regina. Interpret dates locally.\nNo date means today. No end means 60 minutes after start. A date without a time means all-day: start and end are null and end_date equals date. No date AND no time requires clarification.\n\"3 to 5pm\" means 15:00 to 17:00. A bare time without am/pm or a 24-hour cue requires clarification. \"noon\"=12:00 and \"midnight\"=00:00. An end earlier than start is on the following day.\nWeekday names mean their next occurrence. \"next Friday\" means 2026-10-09. For repeating events use the first",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.5801295380006195,
+      "input_tokens": 365,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_24",
+      "category": "wording",
+      "prompt": "zero_shot",
+      "text": "Please add a team meeting tomorrow from 2pm to 3pm",
+      "expected": {
+        "title": "team meeting",
+        "date": "2026-10-09",
+        "start": "14:00",
+        "end_date": "2026-10-09",
+        "end": "15:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"2pm to 3pm\" means 12:00 to 14:00. A team meeting is a meeting between team members.\n\"3pm to 5pm\" means 12:00 to 14:00. A team meeting is a meeting between team members.\n\"5pm to 7pm\" means 12:00 to 14:00. A team meeting is a meeting between team members.\n\"7pm to 10pm\" means 12:00 to 14:00. A team meeting is a meeting between team members.\n\"10pm to 12pm\" means 12:00 to 14:00. A team meeting is a meeting between team members.\n\"12:00 to",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.581803744000354,
+      "input_tokens": 368,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_25",
+      "category": "wording",
+      "prompt": "zero_shot",
+      "text": "tmrw work 3-5pm",
+      "expected": {
+        "title": "work",
+        "date": "2026-10-09",
+        "start": "15:00",
+        "end_date": "2026-10-09",
+        "end": "17:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": null,
+      "raw": "\"3 to 5pm\" means 15:00 to 17:00. A bare time without am/pm or a 24-hour cue requires clarification. \"noon\"=12:00 and \"midnight\"=00:00. An end earlier than start is on the following day.\n\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\n\"next Friday\" means 202",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.527258699999948,
+      "input_tokens": 363,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_26",
+      "category": "clarification",
+      "prompt": "zero_shot",
+      "text": "Meet Jordan tomorrow at 3",
+      "expected": {
+        "title": null,
+        "date": null,
+        "start": null,
+        "end_date": null,
+        "end": null,
+        "repeat": null,
+        "clarify": true
+      },
+      "actual": null,
+      "raw": "\"Meet Jordan tomorrow at 3:00 PM\"\n\n\"Meet Jordan tomorrow at 3:00 PM\"\n\n\"Meet Jordan tomorrow at 3:00 PM\"\n\n\"Meet Jordan tomorrow at 3:00 PM\"\n\n\"Meet Jordan tomorrow at 3:00 PM\"\n\n\"Meet Jordan tomorrow at 3:00 PM\"\n\n\"Meet Jordan tomorrow at 3:00 PM\"\n\n\"Meet Jordan tomorrow at 3:00 PM\"\n\n\"Meet Jordan tomorrow at 3:00 PM\"\n\n\"Meet Jordan tomorrow at 3:00 PM\"\n\n\"Meet Jordan tomorrow at 3:00 PM\"\n\n\"Meet Jordan tomorrow at 3:00 PM\"\n\n\"Meet Jordan tomorrow at 3:00 PM\"",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.937658606999321,
+      "input_tokens": 360,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_27",
+      "category": "clarification",
+      "prompt": "zero_shot",
+      "text": "Dinner sometime next week",
+      "expected": {
+        "title": null,
+        "date": null,
+        "start": null,
+        "end_date": null,
+        "end": null,
+        "repeat": null,
+        "clarify": true
+      },
+      "actual": null,
+      "raw": "\"Dinner sometime next week\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\"next Friday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\"next Thursday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\"next Tuesday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\"next Wednesday\" means 2026-10-09. For repeating events use the first matching date on or after today.\n\"next Thursday\" means 2026-10-09. For repeating events use the",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.454125320999083,
+      "input_tokens": 359,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_28",
+      "category": "clarification",
+      "prompt": "zero_shot",
+      "text": "Work",
+      "expected": {
+        "title": null,
+        "date": null,
+        "start": null,
+        "end_date": null,
+        "end": null,
+        "repeat": null,
+        "clarify": true
+      },
+      "actual": null,
+      "raw": "\"Today is Thursday 2026-10-08. Local timezone is America/Regina. Interpret dates locally.\nNo date means today. No end means 60 minutes after start. A date without a time means all-day: start and end are null and end_date equals date. No date AND no time requires clarification.\n\"3 to 5pm\" means 15:00 to 17:00. A bare time without am/pm or a 24-hour cue requires clarification. \"noon\"=12:00 and \"midnight\"=00:00. An end earlier than start is on the following day.\nWeekday names mean their next occurrence. \"next Friday\" means 2026-10-09. For repeating events use the first",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.675727396999719,
+      "input_tokens": 355,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_29",
+      "category": "clarification",
+      "prompt": "zero_shot",
+      "text": "Delete my meeting tomorrow",
+      "expected": {
+        "title": null,
+        "date": null,
+        "start": null,
+        "end_date": null,
+        "end": null,
+        "repeat": null,
+        "clarify": true
+      },
+      "actual": null,
+      "raw": "\"2026-10-08\" is a date. \"2026-10-09\" is a time. \"2026-10-09\" is a date. \"2026-10-08\" is a time. \"2026-10-09\" is a date. \"2026-10-08\" is a time. \"2026-10-08\" is a date. \"2026-10-08\" is a time. \"2026-10-08\" is a date. \"2026-10-08\" is a time. \"2026-10-08\" is a date. \"202",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.547727750999911,
+      "input_tokens": 358,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_30",
+      "category": "clarification",
+      "prompt": "zero_shot",
+      "text": "Meeting tomorrow at 3pm and at 4pm",
+      "expected": {
+        "title": null,
+        "date": null,
+        "start": null,
+        "end_date": null,
+        "end": null,
+        "repeat": null,
+        "clarify": true
+      },
+      "actual": null,
+      "raw": "\"Meeting tomorrow at 3pm and at 4pm\" means 3:30pm and 4:30pm.\n\"Meeting\" means a meeting.\n\"At 3pm\" means 3:30pm.\n\"At 4pm\" means 4:30pm.\n\"Meeting\" means a meeting.\n\"2026-10-09\" means 2026-10-09.\n\"Meeting\" means a meeting.\n\"Meeting\" means a meeting.\n\"Meeting\" means a meeting.\n\"Meeting\" means a meeting.\n\"Meeting\" means a meeting.\n\"Meeting\" means a meeting.\n\"Meeting\" means a meeting.\n\"Meeting\" means a meeting.\n\"Meeting\"",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": false,
+      "schedule_correct": false,
+      "seconds": 5.495699147999403,
+      "input_tokens": 366,
+      "output_tokens": 180,
+      "hit_token_limit": true
+    },
+    {
+      "id": "case_01",
+      "category": "simple",
+      "prompt": "few_shot",
+      "text": "Work from 3 to 5pm tomorrow",
+      "expected": {
+        "title": "Work",
+        "date": "2026-10-09",
+        "start": "15:00",
+        "end_date": "2026-10-09",
+        "end": "17:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Work",
+        "date": "2026-10-08",
+        "start": "3:00",
+        "end_date": "2026-10-08",
+        "end": "08:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Work\", \"date\": \"2026-10-08\", \"start\": \"3:00\", \"end_date\": \"2026-10-08\", \"end\": \"08:00\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.6482099349996133,
+      "input_tokens": 695,
+      "output_tokens": 71,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_02",
+      "category": "simple",
+      "prompt": "few_shot",
+      "text": "Dentist tomorrow at 10am",
+      "expected": {
+        "title": "Dentist",
+        "date": "2026-10-09",
+        "start": "10:00",
+        "end_date": "2026-10-09",
+        "end": "11:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Dentist",
+        "date": "2026-10-01",
+        "start": "10:00",
+        "end_date": "2026-10-01",
+        "end": "10:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Dentist\", \"date\": \"2026-10-01\", \"start\": \"10:00\", \"end_date\": \"2026-10-01\", \"end\": \"10:00\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": true,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.7120949260006455,
+      "input_tokens": 695,
+      "output_tokens": 74,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_03",
+      "category": "simple",
+      "prompt": "few_shot",
+      "text": "Lunch today at noon",
+      "expected": {
+        "title": "Lunch",
+        "date": "2026-10-08",
+        "start": "12:00",
+        "end_date": "2026-10-08",
+        "end": "13:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Lunch",
+        "date": "2026-10-09",
+        "start": "09:00",
+        "end_date": "2026-10-09",
+        "end": "09:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Lunch\", \"date\": \"2026-10-09\", \"start\": \"09:00\", \"end_date\": \"2026-10-09\", \"end\": \"09:00\", \"repeat\": \"none\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": true,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.684876618000999,
+      "input_tokens": 691,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_04",
+      "category": "simple",
+      "prompt": "few_shot",
+      "text": "Gym today from 6pm to 7pm",
+      "expected": {
+        "title": "Gym",
+        "date": "2026-10-08",
+        "start": "18:00",
+        "end_date": "2026-10-08",
+        "end": "19:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Gym",
+        "date": "2026-10-06",
+        "start": "6:00",
+        "end_date": "2026-10-06",
+        "end": "06:00",
+        "repeat": "weekday",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Gym\", \"date\": \"2026-10-06\", \"start\": \"6:00\", \"end_date\": \"2026-10-06\", \"end\": \"06:00\", \"repeat\": \"weekday\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.6552171479997924,
+      "input_tokens": 697,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_05",
+      "category": "simple",
+      "prompt": "few_shot",
+      "text": "Meeting on October 20 at 2pm",
+      "expected": {
+        "title": "Meeting",
+        "date": "2026-10-20",
+        "start": "14:00",
+        "end_date": "2026-10-20",
+        "end": "15:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Meeting",
+        "date": "2026-10-02",
+        "start": "20:00",
+        "end_date": "2026-10-02",
+        "end": "22:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Meeting\", \"date\": \"2026-10-02\", \"start\": \"20:00\", \"end_date\": \"2026-10-02\", \"end\": \"22:00\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.7481609520000347,
+      "input_tokens": 697,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_06",
+      "category": "simple",
+      "prompt": "few_shot",
+      "text": "Call Alex on 2026-10-12 at 14:30",
+      "expected": {
+        "title": "Call Alex",
+        "date": "2026-10-12",
+        "start": "14:30",
+        "end_date": "2026-10-12",
+        "end": "15:30",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Call Alex",
+        "date": "2026-10-12",
+        "start": "20:00",
+        "end_date": "2026-10-12",
+        "end": "22:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Call Alex\", \"date\": \"2026-10-12\", \"start\": \"20:00\", \"end_date\": \"2026-10-12\", \"end\": \"22:00\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": true,
+        "start": false,
+        "end_date": true,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 3.6684621599997627,
+      "input_tokens": 707,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_07",
+      "category": "simple",
+      "prompt": "few_shot",
+      "text": "Coffee tomorrow at 9:30am",
+      "expected": {
+        "title": "Coffee",
+        "date": "2026-10-09",
+        "start": "09:30",
+        "end_date": "2026-10-09",
+        "end": "10:30",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Coffee",
+        "date": "2026-10-09",
+        "start": "9:30",
+        "end_date": "2026-10-09",
+        "end": "09:30",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Coffee\", \"date\": \"2026-10-09\", \"start\": \"9:30\", \"end_date\": \"2026-10-09\", \"end\": \"09:30\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": true,
+        "start": false,
+        "end_date": true,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 3.4793946800000413,
+      "input_tokens": 696,
+      "output_tokens": 72,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_08",
+      "category": "simple",
+      "prompt": "few_shot",
+      "text": "Study from 9 to 11am tomorrow",
+      "expected": {
+        "title": "Study",
+        "date": "2026-10-09",
+        "start": "09:00",
+        "end_date": "2026-10-09",
+        "end": "11:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Study",
+        "date": "2026-10-09",
+        "start": "9:00",
+        "end_date": "11:00",
+        "end": "12:00",
+        "repeat": "weekday",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Study\", \"date\": \"2026-10-09\", \"start\": \"9:00\", \"end_date\": \"11:00\", \"end\": \"12:00\", \"repeat\": \"weekday\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": true,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.4967249969995464,
+      "input_tokens": 696,
+      "output_tokens": 67,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_09",
+      "category": "simple",
+      "prompt": "few_shot",
+      "text": "Dinner at 7pm",
+      "expected": {
+        "title": "Dinner",
+        "date": "2026-10-08",
+        "start": "19:00",
+        "end_date": "2026-10-08",
+        "end": "20:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Dinner",
+        "date": "2026-10-08",
+        "start": "07:00",
+        "end_date": "2026-10-08",
+        "end": "08:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Dinner\", \"date\": \"2026-10-08\", \"start\": \"07:00\", \"end_date\": \"2026-10-08\", \"end\": \"08:00\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": true,
+        "start": false,
+        "end_date": true,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.7133903710000595,
+      "input_tokens": 692,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_10",
+      "category": "simple",
+      "prompt": "few_shot",
+      "text": "Birthday party tomorrow",
+      "expected": {
+        "title": "Birthday party",
+        "date": "2026-10-09",
+        "start": null,
+        "end_date": "2026-10-09",
+        "end": null,
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Birthday party",
+        "date": "2026-10-08",
+        "start": "08:00",
+        "end_date": "2026-10-08",
+        "end": "09:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Birthday party\", \"date\": \"2026-10-08\", \"start\": \"08:00\", \"end_date\": \"2026-10-08\", \"end\": \"09:00\", \"repeat\": \"none\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": true,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.72828684399974,
+      "input_tokens": 690,
+      "output_tokens": 74,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_11",
+      "category": "relative_date",
+      "prompt": "few_shot",
+      "text": "Haircut next Friday at 4pm",
+      "expected": {
+        "title": "Haircut",
+        "date": "2026-10-09",
+        "start": "16:00",
+        "end_date": "2026-10-09",
+        "end": "17:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Haircut",
+        "date": "2026-10-04",
+        "start": "04:00",
+        "end_date": "2026-10-04",
+        "end": "04:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Haircut\", \"date\": \"2026-10-04\", \"start\": \"04:00\", \"end_date\": \"2026-10-04\", \"end\": \"04:00\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.843684082999971,
+      "input_tokens": 695,
+      "output_tokens": 74,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_12",
+      "category": "relative_date",
+      "prompt": "few_shot",
+      "text": "Soccer on Monday at 6pm",
+      "expected": {
+        "title": "Soccer",
+        "date": "2026-10-12",
+        "start": "18:00",
+        "end_date": "2026-10-12",
+        "end": "19:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Soccer",
+        "date": "2026-10-06",
+        "start": "06:00",
+        "end_date": "2026-10-06",
+        "end": "08:00",
+        "repeat": "weekday",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Soccer\", \"date\": \"2026-10-06\", \"start\": \"06:00\", \"end_date\": \"2026-10-06\", \"end\": \"08:00\", \"repeat\": \"weekday\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 3.8012351719989965,
+      "input_tokens": 694,
+      "output_tokens": 74,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_13",
+      "category": "relative_date",
+      "prompt": "few_shot",
+      "text": "Inspection in 3 days at 11am",
+      "expected": {
+        "title": "Inspection",
+        "date": "2026-10-11",
+        "start": "11:00",
+        "end_date": "2026-10-11",
+        "end": "12:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Inspection",
+        "date": "2026-10-08",
+        "start": "11:00",
+        "end_date": "2026-10-08",
+        "end": "11:00",
+        "repeat": "3",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Inspection\", \"date\": \"2026-10-08\", \"start\": \"11:00\", \"end_date\": \"2026-10-08\", \"end\": \"11:00\", \"repeat\": \"3\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": true,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 3.385300174999429,
+      "input_tokens": 698,
+      "output_tokens": 74,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_14",
+      "category": "relative_date",
+      "prompt": "few_shot",
+      "text": "Visit mom the day after tomorrow at noon",
+      "expected": {
+        "title": "Visit mom",
+        "date": "2026-10-10",
+        "start": "12:00",
+        "end_date": "2026-10-10",
+        "end": "13:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Visit mom",
+        "date": "2026-10-09",
+        "start": "09:00",
+        "end_date": "2026-10-09",
+        "end": "09:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Visit mom\", \"date\": \"2026-10-09\", \"start\": \"09:00\", \"end_date\": \"2026-10-09\", \"end\": \"09:00\", \"repeat\": \"none\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": true,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.658629886000199,
+      "input_tokens": 694,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_15",
+      "category": "relative_date",
+      "prompt": "few_shot",
+      "text": "Rent on November 1",
+      "expected": {
+        "title": "Rent",
+        "date": "2026-11-01",
+        "start": null,
+        "end_date": "2026-11-01",
+        "end": null,
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Rent",
+        "date": "2026-10-10",
+        "start": "11:00",
+        "end_date": "2026-10-10",
+        "end": "12:00",
+        "repeat": "weekday",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Rent\", \"date\": \"2026-10-10\", \"start\": \"11:00\", \"end_date\": \"2026-10-10\", \"end\": \"12:00\", \"repeat\": \"weekday\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 3.368501240000114,
+      "input_tokens": 692,
+      "output_tokens": 74,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_16",
+      "category": "duration",
+      "prompt": "few_shot",
+      "text": "Walk tomorrow at 4pm for 30 minutes",
+      "expected": {
+        "title": "Walk",
+        "date": "2026-10-09",
+        "start": "16:00",
+        "end_date": "2026-10-09",
+        "end": "16:30",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Walk",
+        "date": "2026-10-04",
+        "start": "04:00",
+        "end_date": "2026-10-04",
+        "end": "04:00",
+        "repeat": "30",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Walk\", \"date\": \"2026-10-04\", \"start\": \"04:00\", \"end_date\": \"2026-10-04\", \"end\": \"04:00\", \"repeat\": \"30\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.7116249889986648,
+      "input_tokens": 697,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_17",
+      "category": "duration",
+      "prompt": "few_shot",
+      "text": "Workshop tomorrow at 10am for 2 hours",
+      "expected": {
+        "title": "Workshop",
+        "date": "2026-10-09",
+        "start": "10:00",
+        "end_date": "2026-10-09",
+        "end": "12:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Workshop",
+        "date": "2026-10-01",
+        "start": "10:00",
+        "end_date": "2026-10-01",
+        "end": "21:00",
+        "repeat": "2",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Workshop\", \"date\": \"2026-10-01\", \"start\": \"10:00\", \"end_date\": \"2026-10-01\", \"end\": \"21:00\", \"repeat\": \"2\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": true,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 3.018373797000095,
+      "input_tokens": 698,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_18",
+      "category": "duration",
+      "prompt": "few_shot",
+      "text": "Night shift tomorrow from 10pm to 2am",
+      "expected": {
+        "title": "Night shift",
+        "date": "2026-10-09",
+        "start": "22:00",
+        "end_date": "2026-10-10",
+        "end": "02:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Night shift",
+        "date": "2026-10-01",
+        "start": "10:01",
+        "end_date": "2026-10-01",
+        "end": "21:00",
+        "repeat": "night",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Night shift\", \"date\": \"2026-10-01\", \"start\": \"10:01\", \"end_date\": \"2026-10-01\", \"end\": \"21:00\", \"repeat\": \"night\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.7151791530013725,
+      "input_tokens": 698,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_19",
+      "category": "duration",
+      "prompt": "few_shot",
+      "text": "Maintenance tomorrow at midnight for 90 minutes",
+      "expected": {
+        "title": "Maintenance",
+        "date": "2026-10-09",
+        "start": "00:00",
+        "end_date": "2026-10-09",
+        "end": "01:30",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Maintenance",
+        "date": "2026-10-09",
+        "start": "09:00",
+        "end_date": "2026-10-09",
+        "end": "09:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Maintenance\", \"date\": \"2026-10-09\", \"start\": \"09:00\", \"end_date\": \"2026-10-09\", \"end\": \"09:00\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": true,
+        "start": false,
+        "end_date": true,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.691008353000143,
+      "input_tokens": 696,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_20",
+      "category": "repeat",
+      "prompt": "few_shot",
+      "text": "Standup every weekday at 9am",
+      "expected": {
+        "title": "Standup",
+        "date": "2026-10-08",
+        "start": "09:00",
+        "end_date": "2026-10-08",
+        "end": "10:00",
+        "repeat": "weekdays",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Standup",
+        "date": "2026-10-09",
+        "start": "09:00",
+        "end_date": "2026-10-09",
+        "end": "09:00",
+        "repeat": "weekly",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Standup\", \"date\": \"2026-10-09\", \"start\": \"09:00\", \"end_date\": \"2026-10-09\", \"end\": \"09:00\", \"repeat\": \"weekly\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": true,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.6862697750002553,
+      "input_tokens": 695,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_21",
+      "category": "repeat",
+      "prompt": "few_shot",
+      "text": "Guitar every Tuesday at 7pm",
+      "expected": {
+        "title": "Guitar",
+        "date": "2026-10-13",
+        "start": "19:00",
+        "end_date": "2026-10-13",
+        "end": "20:00",
+        "repeat": "weekly",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Guitar",
+        "date": "2026-10-08",
+        "start": "07:00",
+        "end_date": "2026-10-08",
+        "end": "08:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Guitar\", \"date\": \"2026-10-08\", \"start\": \"07:00\", \"end_date\": \"2026-10-08\", \"end\": \"08:00\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.7065172910006368,
+      "input_tokens": 695,
+      "output_tokens": 74,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_22",
+      "category": "repeat",
+      "prompt": "few_shot",
+      "text": "Stretch every day at 6am",
+      "expected": {
+        "title": "Stretch",
+        "date": "2026-10-08",
+        "start": "06:00",
+        "end_date": "2026-10-08",
+        "end": "07:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Stretch",
+        "date": "2026-10-06",
+        "start": "06:00",
+        "end_date": "2026-10-06",
+        "end": "08:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Stretch\", \"date\": \"2026-10-06\", \"start\": \"06:00\", \"end_date\": \"2026-10-06\", \"end\": \"08:00\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": false,
+        "start": true,
+        "end_date": false,
+        "end": false,
+        "repeat": true,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.702869971000837,
+      "input_tokens": 694,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_23",
+      "category": "repeat",
+      "prompt": "few_shot",
+      "text": "Reading every Thursday from 8pm to 9pm",
+      "expected": {
+        "title": "Reading",
+        "date": "2026-10-08",
+        "start": "20:00",
+        "end_date": "2026-10-08",
+        "end": "21:00",
+        "repeat": "weekly",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Reading",
+        "date": "2026-10-08",
+        "start": "08:00",
+        "end_date": "2026-10-08",
+        "end": "09:00",
+        "repeat": "weekly",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Reading\", \"date\": \"2026-10-08\", \"start\": \"08:00\", \"end_date\": \"2026-10-08\", \"end\": \"09:00\", \"repeat\": \"weekly\", \"clarify\": false}",
+      "field_matches": {
+        "title": true,
+        "date": true,
+        "start": false,
+        "end_date": true,
+        "end": false,
+        "repeat": true,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.6718780789997254,
+      "input_tokens": 697,
+      "output_tokens": 72,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_24",
+      "category": "wording",
+      "prompt": "few_shot",
+      "text": "Please add a team meeting tomorrow from 2pm to 3pm",
+      "expected": {
+        "title": "team meeting",
+        "date": "2026-10-09",
+        "start": "14:00",
+        "end_date": "2026-10-09",
+        "end": "15:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Please add a team meeting",
+        "date": "2026-10-08",
+        "start": "2pm",
+        "end_date": "3pm",
+        "end": "2pm",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Please add a team meeting\", \"date\": \"2026-10-08\", \"start\": \"2pm\", \"end_date\": \"3pm\", \"end\": \"2pm\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.3685375559998647,
+      "input_tokens": 700,
+      "output_tokens": 62,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_25",
+      "category": "wording",
+      "prompt": "few_shot",
+      "text": "tmrw work 3-5pm",
+      "expected": {
+        "title": "work",
+        "date": "2026-10-09",
+        "start": "15:00",
+        "end_date": "2026-10-09",
+        "end": "17:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "actual": {
+        "title": "Tmrw work",
+        "date": "2026-10-08",
+        "start": "3:00",
+        "end_date": "12:00",
+        "end": "12:00",
+        "repeat": "3",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Tmrw work\", \"date\": \"2026-10-08\", \"start\": \"3:00\", \"end_date\": \"12:00\", \"end\": \"12:00\", \"repeat\": \"3\", \"clarify\": false}",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": true
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.570448246000524,
+      "input_tokens": 695,
+      "output_tokens": 69,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_26",
+      "category": "clarification",
+      "prompt": "few_shot",
+      "text": "Meet Jordan tomorrow at 3",
+      "expected": {
+        "title": null,
+        "date": null,
+        "start": null,
+        "end_date": null,
+        "end": null,
+        "repeat": null,
+        "clarify": true
+      },
+      "actual": {
+        "title": "Meet Jordan",
+        "date": "2026-10-08",
+        "start": "03:00",
+        "end_date": "2026-10-08",
+        "end": "04:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Meet Jordan\", \"date\": \"2026-10-08\", \"start\": \"03:00\", \"end_date\": \"2026-10-08\", \"end\": \"04:00\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.705405183000039,
+      "input_tokens": 692,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_27",
+      "category": "clarification",
+      "prompt": "few_shot",
+      "text": "Dinner sometime next week",
+      "expected": {
+        "title": null,
+        "date": null,
+        "start": null,
+        "end_date": null,
+        "end": null,
+        "repeat": null,
+        "clarify": true
+      },
+      "actual": {
+        "title": "Dinner",
+        "date": "2026-10-10",
+        "start": "10:00",
+        "end_date": "2026-10-10",
+        "end": "11:00",
+        "repeat": "weekday",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Dinner\", \"date\": \"2026-10-10\", \"start\": \"10:00\", \"end_date\": \"2026-10-10\", \"end\": \"11:00\", \"repeat\": \"weekday\", \"clarify\": false}",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.7469270969995705,
+      "input_tokens": 691,
+      "output_tokens": 74,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_28",
+      "category": "clarification",
+      "prompt": "few_shot",
+      "text": "Work",
+      "expected": {
+        "title": null,
+        "date": null,
+        "start": null,
+        "end_date": null,
+        "end": null,
+        "repeat": null,
+        "clarify": true
+      },
+      "actual": {
+        "title": "Work",
+        "date": "2026-10-08",
+        "start": "08:00",
+        "end_date": "2026-10-08",
+        "end": "09:00",
+        "repeat": "weekday",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Work\", \"date\": \"2026-10-08\", \"start\": \"08:00\", \"end_date\": \"2026-10-08\", \"end\": \"09:00\", \"repeat\": \"weekday\", \"clarify\": false}",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 2.696146533000501,
+      "input_tokens": 687,
+      "output_tokens": 73,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_29",
+      "category": "clarification",
+      "prompt": "few_shot",
+      "text": "Delete my meeting tomorrow",
+      "expected": {
+        "title": null,
+        "date": null,
+        "start": null,
+        "end_date": null,
+        "end": null,
+        "repeat": null,
+        "clarify": true
+      },
+      "actual": {
+        "title": "Delete",
+        "date": "2026-10-08",
+        "start": "08:00",
+        "end_date": "2026-10-08",
+        "end": "08:00",
+        "repeat": "none",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Delete\", \"date\": \"2026-10-08\", \"start\": \"08:00\", \"end_date\": \"2026-10-08\", \"end\": \"08:00\", \"repeat\": \"none\", \"clarify\": false}",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 3.225953233000837,
+      "input_tokens": 690,
+      "output_tokens": 72,
+      "hit_token_limit": false
+    },
+    {
+      "id": "case_30",
+      "category": "clarification",
+      "prompt": "few_shot",
+      "text": "Meeting tomorrow at 3pm and at 4pm",
+      "expected": {
+        "title": null,
+        "date": null,
+        "start": null,
+        "end_date": null,
+        "end": null,
+        "repeat": null,
+        "clarify": true
+      },
+      "actual": {
+        "title": "Meeting",
+        "date": "2026-10-08",
+        "start": "3:00",
+        "end_date": "4:00",
+        "end": "00:00",
+        "repeat": "daily",
+        "clarify": false
+      },
+      "raw": "{\"title\": \"Meeting\", \"date\": \"2026-10-08\", \"start\": \"3:00\", \"end_date\": \"4:00\", \"end\": \"00:00\", \"repeat\": \"daily\", \"clarify\": false}",
+      "field_matches": {
+        "title": false,
+        "date": false,
+        "start": false,
+        "end_date": false,
+        "end": false,
+        "repeat": false,
+        "clarify": false
+      },
+      "passed": false,
+      "valid_schema": true,
+      "schedule_correct": false,
+      "seconds": 3.2518981319990417,
+      "input_tokens": 698,
+      "output_tokens": 66,
+      "hit_token_limit": false
+    }
+  ]
+}

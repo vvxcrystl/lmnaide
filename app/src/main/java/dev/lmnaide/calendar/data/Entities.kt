@@ -27,7 +27,11 @@ data class CalendarEntity(
     val name: String,
     val color: Int,
     val visible: Boolean = true,
-)
+    /** Comma-separated words that send quick add items to this calendar, like "produce, shift". */
+    @ColumnInfo(defaultValue = "") val keywords: String = "",
+) {
+    val keywordList: List<String> get() = keywords.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+}
 
 /**
  * Timed events store real instants (epoch millis). All-day events store "floating" dates as

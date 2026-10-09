@@ -128,7 +128,16 @@ fun ManageCalendarsScreen(
                             ) {
                                 ColorDot(Color(calendar.color), size = 16.dp)
                                 Spacer(Modifier.width(16.dp))
-                                Text(calendar.name, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                                Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
+                                    Text(calendar.name, style = MaterialTheme.typography.bodyLarge)
+                                    if (calendar.keywordList.isNotEmpty()) {
+                                        Text(
+                                            calendar.keywordList.joinToString(", "),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                }
                                 IconButton(onClick = { deleting = calendar }, enabled = calendars.size > 1) {
                                     Icon(Icons.Outlined.Delete, contentDescription = "Delete ${calendar.name}")
                                 }
@@ -171,6 +180,7 @@ fun ManageCalendarsScreen(
 private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(initial.name) }
     var color by remember { mutableStateOf(initial.color) }
+    var keywords by remember { mutableStateOf(initial.keywords) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial.id == 0L) "New calendar" else "Edit calendar") },
@@ -180,6 +190,15 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = keywords,
+                    onValueChange = { keywords = it },
+                    label = { Text("Keywords") },
+                    placeholder = { Text("produce, shift") },
+                    supportingText = { Text("Quick add sends matching items here") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -216,7 +235,7 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(initial.copy(name = name.trim(), color = color)) },
+                onClick = { onSave(initial.copy(name = name.trim(), color = color, keywords = keywords.split(',').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(", "))) },
                 enabled = name.isNotBlank(),
             ) { Text("Save") }
         },

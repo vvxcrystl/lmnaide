@@ -34,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -137,7 +138,7 @@ fun SettingsScreen(
                 ClickRow(
                     title = "Start of the week",
                     value = settings.weekStartOverride?.fullName()
-                        ?: "Locale default (${WeekFields.of(Locale.getDefault()).firstDayOfWeek.fullName()})",
+                        ?: "Locale default (${WeekFields.of(LocalConfiguration.current.locales[0]).firstDayOfWeek.fullName()})",
                     onClick = { dialog = SettingsDialog.WeekStart },
                 )
                 RowDivider()

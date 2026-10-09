@@ -13,6 +13,9 @@ import dev.lmnaide.calendar.data.EventKind
 import dev.lmnaide.calendar.data.Importance
 import dev.lmnaide.calendar.data.Recurrence
 import dev.lmnaide.calendar.data.SettingsRepository
+import dev.lmnaide.calendar.domain.SmartEventDraft
+import dev.lmnaide.calendar.domain.SmartEventParser
+import dev.lmnaide.calendar.domain.SmartEventResult
 import dev.lmnaide.calendar.domain.EditScope
 import dev.lmnaide.calendar.domain.Occurrence
 import dev.lmnaide.calendar.ui.EventLink
@@ -76,6 +79,12 @@ class EventEditorViewModel(
     private val initialTask: Boolean = handle["task"] ?: false
     private val settings = settingsRepository.settings.value
 
+    /** Text typed into quick add before choosing More options. */
+    private val initialText: String = handle["text"] ?: ""
+    private val initialCalendar: Long = handle["calendar"] ?: Routes.NO_VALUE
+    var isSaving by mutableStateOf(false)
+        private set
+
     val isNew = eventId == 0L
     val use24Hour = settings.use24Hour
 
@@ -120,18 +129,34 @@ class EventEditorViewModel(
             else -> date.atTime(9, 0)
         }
         val end = start.plusMinutes(settings.defaultDurationMinutes.toLong())
-        return EditorState(
+        val blank = EditorState(
             allDay = initialAllDay,
             startDate = start.toLocalDate(),
             startTime = start.toLocalTime(),
             endDate = if (initialAllDay) start.toLocalDate() else end.toLocalDate(),
             endTime = end.toLocalTime(),
-            calendarId = calendars.firstOrNull { it.id == settings.defaultCalendarId }?.id ?: calendars.first().id,
+            calendarId = calendars.firstOrNull { it.id == initialCalendar }?.id
+                ?: calendars.firstOrNull { it.id == settings.defaultCalendarId }?.id
+                ?: calendars.first().id,
             // Tasks remind when they're due; events use the default notification.
             reminders = if (initialTask) listOf(0) else listOfNotNull(settings.defaultReminderMinutes),
             kind = if (initialTask) EventKind.TASK else EventKind.EVENT,
         )
+        if (initialText.isBlank()) return blank
+        // Keep whatever quick add understood; otherwise the text becomes the title.
+        val parsed = SmartEventParser.parse(initialText, now.toLocalDate(), settings.defaultDurationMinutes, initialTask, date)
+        return when (parsed) {
+            is SmartEventResult.Success -> blank.withDraft(parsed.event)
+            is SmartEventResult.NeedsDetails -> blank.copy(title = initialText)
+        }
     }
+
+    private fun EditorState.withDraft(draft: SmartEventDraft) = copy(
+        title = draft.title,
+        startDate = draft.start.toLocalDate(), startTime = draft.start.toLocalTime(),
+        endDate = if (draft.allDay) draft.end.toLocalDate().minusDays(1) else draft.end.toLocalDate(),
+        endTime = draft.end.toLocalTime(), allDay = draft.allDay, recurrence = draft.recurrence,
+    )
 
     private suspend fun existingEventState(): EditorState {
         val event = checkNotNull(repository.getEvent(eventId))
@@ -196,40 +221,43 @@ class EventEditorViewModel(
 
     fun save(scope: EditScope?, onSaved: (EventLink) -> Unit) {
         val s = state ?: return
-        if (!s.isValid) return
+        if (!s.isValid || isSaving) return
+        isSaving = true
         viewModelScope.launch {
-            val existing = series
-            val edited = EventEntity(
-                id = eventId,
-                calendarId = s.calendarId,
-                title = s.title.trim(),
-                description = s.description.trim(),
-                location = s.location.trim(),
-                start = EventEntity.toStored(s.start, s.allDay),
-                end = EventEntity.toStored(s.end, s.allDay),
-                allDay = s.allDay,
-                color = s.color,
-                recurrence = s.recurrence,
-                recurrenceUntil = s.recurrenceUntil?.toEpochDay()?.takeIf { s.recurrence != Recurrence.NONE },
-                exceptions = existing?.exceptions.orEmpty(),
-                reminders = s.reminders.distinct().sorted(),
-                kind = s.kind,
-                completions = existing?.completions.orEmpty(),
-                importance = s.importance,
-            )
-            val instance = s.start.toEpochSecond(ZoneOffset.UTC)
-            val opened = occurrenceStart
-            val id = when {
-                existing == null || opened == null -> repository.saveEvent(edited)
-                scope == EditScope.THIS -> repository.replaceOccurrence(
-                    existing,
-                    opened.toLocalDate(),
-                    edited.copy(recurrence = Recurrence.NONE, recurrenceUntil = null, exceptions = emptyList()),
+            try {
+                val existing = series
+                val edited = EventEntity(
+                    id = eventId,
+                    calendarId = s.calendarId,
+                    title = s.title.trim(),
+                    description = s.description.trim(),
+                    location = s.location.trim(),
+                    start = EventEntity.toStored(s.start, s.allDay),
+                    end = EventEntity.toStored(s.end, s.allDay),
+                    allDay = s.allDay,
+                    color = s.color,
+                    recurrence = s.recurrence,
+                    recurrenceUntil = s.recurrenceUntil?.toEpochDay()?.takeIf { s.recurrence != Recurrence.NONE },
+                    exceptions = existing?.exceptions.orEmpty(),
+                    reminders = s.reminders.distinct().sorted(),
+                    kind = s.kind,
+                    completions = existing?.completions.orEmpty(),
+                    importance = s.importance,
                 )
-                scope == EditScope.FOLLOWING -> repository.replaceFollowing(existing, opened.toLocalDate(), edited)
-                else -> repository.saveEvent(shiftSeries(existing, opened, s, edited))
-            }
-            onSaved(EventLink(id, instance))
+                val instance = s.start.toEpochSecond(ZoneOffset.UTC)
+                val opened = occurrenceStart
+                val id = when {
+                    existing == null || opened == null -> repository.saveEvent(edited)
+                    scope == EditScope.THIS -> repository.replaceOccurrence(
+                        existing,
+                        opened.toLocalDate(),
+                        edited.copy(recurrence = Recurrence.NONE, recurrenceUntil = null, exceptions = emptyList()),
+                    )
+                    scope == EditScope.FOLLOWING -> repository.replaceFollowing(existing, opened.toLocalDate(), edited)
+                    else -> repository.saveEvent(shiftSeries(existing, opened, s, edited))
+                }
+                onSaved(EventLink(id, instance))
+            } finally { isSaving = false }
         }
     }
 

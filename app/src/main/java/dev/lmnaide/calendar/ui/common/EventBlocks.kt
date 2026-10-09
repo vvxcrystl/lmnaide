@@ -24,6 +24,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -57,32 +59,13 @@ fun TaskCheck(completed: Boolean, tint: Color, size: Dp) {
     )
 }
 
-/** A colored dot marking importance, ringed so it stays visible on any chip color. */
+/** A solid colored dot marking importance. */
 @Composable
-fun ImportanceDot(importance: Importance, ring: Color, modifier: Modifier = Modifier, size: Dp = 9.dp) {
-    Box(
-        modifier
-            .size(size)
-            .clip(CircleShape)
-            .background(ring)
-            .padding(1.5.dp)
-            .clip(CircleShape)
-            .background(Color(importance.argb)),
-    )
-}
-
-/** A labeled importance pill for cards and the event page. */
-@Composable
-fun ImportancePill(importance: Importance, modifier: Modifier = Modifier) {
-    val color = Color(importance.argb)
-    Text(
-        importance.label,
-        style = MaterialTheme.typography.labelMedium,
-        color = color.contentColor(),
-        modifier = modifier
-            .clip(CircleShape)
-            .background(color)
-            .padding(horizontal = 10.dp, vertical = 3.dp),
+fun ImportanceDot(importance: Importance, modifier: Modifier = Modifier, size: Dp = 9.dp) {
+    ColorDot(
+        Color(importance.argb),
+        modifier.semantics { contentDescription = "${importance.label} importance" },
+        size,
     )
 }
 
@@ -140,7 +123,7 @@ fun GridEventBlock(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            occurrence.event.importance?.let { ImportanceDot(it, content, Modifier.padding(top = 3.dp)) }
+            occurrence.event.importance?.let { ImportanceDot(it, Modifier.padding(top = 3.dp)) }
         }
         if (showTime) {
             Text(
@@ -174,7 +157,7 @@ fun EventBar(
         contentAlignment = Alignment.CenterStart,
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-            occurrence.event.importance?.let { ImportanceDot(it, content, size = 7.dp) }
+            occurrence.event.importance?.let { ImportanceDot(it, size = 7.dp) }
             if (occurrence.isTask) TaskCheck(occurrence.completed, content, size = fontSize.dp)
             Text(
                 occurrence.titleText(),
@@ -236,7 +219,7 @@ fun EventCard(
                 )
             }
         }
-        occurrence.event.importance?.let { ImportancePill(it, Modifier.padding(start = 8.dp)) }
+        occurrence.event.importance?.let { ImportanceDot(it, Modifier.padding(start = 8.dp), size = 12.dp) }
     }
 }
 

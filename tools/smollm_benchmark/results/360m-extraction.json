@@ -1,0 +1,279 @@
+{
+  "model": "HuggingFaceTB/SmolLM2-360M-Instruct",
+  "revision": "a10cc1512eabd3dde888204e902eca88bddb4951",
+  "prompt": "Extract the event title and the date/time expressions from the user's text. Return only JSON with keys title, date_text, time_text. Copy date/time words from the input exactly; do not calculate dates. Use null for missing date or time. Remove polite request words from the title.",
+  "examples": [
+    [
+      "Yoga tomorrow at 8am",
+      {
+        "title": "Yoga",
+        "date_text": "tomorrow",
+        "time_text": "at 8am"
+      }
+    ],
+    [
+      "Movie Saturday from 8pm to 10pm",
+      {
+        "title": "Movie",
+        "date_text": "Saturday",
+        "time_text": "from 8pm to 10pm"
+      }
+    ],
+    [
+      "Birthday on November 5",
+      {
+        "title": "Birthday",
+        "date_text": "on November 5",
+        "time_text": null
+      }
+    ]
+  ],
+  "summary": {
+    "total": 15,
+    "exact_passes": 7,
+    "median_seconds": 1.9124498769997444,
+    "p95_seconds": 2.4035084520000964
+  },
+  "results": [
+    {
+      "text": "Work from 3 to 5pm tomorrow",
+      "expected": {
+        "title": "Work",
+        "date_text": "tomorrow",
+        "time_text": "from 3 to 5pm"
+      },
+      "actual": {
+        "title": "Work",
+        "date_text": "tomorrow",
+        "time_text": "from 3pm to 5pm"
+      },
+      "raw": "{\"title\": \"Work\", \"date_text\": \"tomorrow\", \"time_text\": \"from 3pm to 5pm\"}",
+      "passed": false,
+      "seconds": 2.0851390340012586
+    },
+    {
+      "text": "Dentist tomorrow at 10am",
+      "expected": {
+        "title": "Dentist",
+        "date_text": "tomorrow",
+        "time_text": "at 10am"
+      },
+      "actual": {
+        "title": "Dentist",
+        "date_text": "tomorrow",
+        "time_text": "10am"
+      },
+      "raw": "{\"title\": \"Dentist\", \"date_text\": \"tomorrow\", \"time_text\": \"10am\"}",
+      "passed": false,
+      "seconds": 1.9124498769997444
+    },
+    {
+      "text": "Lunch today at noon",
+      "expected": {
+        "title": "Lunch",
+        "date_text": "today",
+        "time_text": "at noon"
+      },
+      "actual": {
+        "title": "Lunch",
+        "date_text": "today",
+        "time_text": "at noon"
+      },
+      "raw": "{\"title\": \"Lunch\", \"date_text\": \"today\", \"time_text\": \"at noon\"}",
+      "passed": true,
+      "seconds": 1.7151674090000597
+    },
+    {
+      "text": "Gym today from 6pm to 7pm",
+      "expected": {
+        "title": "Gym",
+        "date_text": "today",
+        "time_text": "from 6pm to 7pm"
+      },
+      "actual": {
+        "title": "Gym",
+        "date_text": "today",
+        "time_text": "from 6pm to 7pm"
+      },
+      "raw": "{\"title\": \"Gym\", \"date_text\": \"today\", \"time_text\": \"from 6pm to 7pm\"}",
+      "passed": true,
+      "seconds": 2.0417519380007434
+    },
+    {
+      "text": "Meeting on October 20 at 2pm",
+      "expected": {
+        "title": "Meeting",
+        "date_text": "on October 20",
+        "time_text": "at 2pm"
+      },
+      "actual": {
+        "title": "Meeting",
+        "date_text": "October 20",
+        "time_text": "2pm"
+      },
+      "raw": "{\"title\": \"Meeting\", \"date_text\": \"October 20\", \"time_text\": \"2pm\"}",
+      "passed": false,
+      "seconds": 1.881118671000877
+    },
+    {
+      "text": "Call Alex on 2026-10-12 at 14:30",
+      "expected": {
+        "title": "Call Alex",
+        "date_text": "on 2026-10-12",
+        "time_text": "at 14:30"
+      },
+      "actual": {
+        "title": "Call Alex",
+        "date_text": "2026-10-12",
+        "time_text": "14:30"
+      },
+      "raw": "{\"title\": \"Call Alex\", \"date_text\": \"2026-10-12\", \"time_text\": \"14:30\"}",
+      "passed": false,
+      "seconds": 2.4035084520000964
+    },
+    {
+      "text": "Coffee tomorrow at 9:30am",
+      "expected": {
+        "title": "Coffee",
+        "date_text": "tomorrow",
+        "time_text": "at 9:30am"
+      },
+      "actual": {
+        "title": "Coffee",
+        "date_text": "tomorrow",
+        "time_text": "at 9:30am"
+      },
+      "raw": "{\"title\": \"Coffee\", \"date_text\": \"tomorrow\", \"time_text\": \"at 9:30am\"}",
+      "passed": true,
+      "seconds": 2.0514809059986874
+    },
+    {
+      "text": "Study from 9 to 11am tomorrow",
+      "expected": {
+        "title": "Study",
+        "date_text": "tomorrow",
+        "time_text": "from 9 to 11am"
+      },
+      "actual": {
+        "title": "Study",
+        "date_text": "tomorrow",
+        "time_text": "from 9am to 11am"
+      },
+      "raw": "{\"title\": \"Study\", \"date_text\": \"tomorrow\", \"time_text\": \"from 9am to 11am\"}",
+      "passed": false,
+      "seconds": 2.0873638430002757
+    },
+    {
+      "text": "Dinner at 7pm",
+      "expected": {
+        "title": "Dinner",
+        "date_text": null,
+        "time_text": "at 7pm"
+      },
+      "actual": {
+        "title": "Dinner",
+        "date_text": "at 7pm",
+        "time_text": null
+      },
+      "raw": "{\"title\": \"Dinner\", \"date_text\": \"at 7pm\", \"time_text\": null}",
+      "passed": false,
+      "seconds": 1.7704567430009774
+    },
+    {
+      "text": "Birthday party tomorrow",
+      "expected": {
+        "title": "Birthday party",
+        "date_text": "tomorrow",
+        "time_text": null
+      },
+      "actual": {
+        "title": "Birthday party",
+        "date_text": "tomorrow",
+        "time_text": null
+      },
+      "raw": "{\"title\": \"Birthday party\", \"date_text\": \"tomorrow\", \"time_text\": null}",
+      "passed": true,
+      "seconds": 1.7044852429989987
+    },
+    {
+      "text": "Haircut next Friday at 4pm",
+      "expected": {
+        "title": "Haircut",
+        "date_text": "next Friday",
+        "time_text": "at 4pm"
+      },
+      "actual": {
+        "title": "Haircut",
+        "date_text": "next Friday",
+        "time_text": "4pm"
+      },
+      "raw": "{\"title\": \"Haircut\", \"date_text\": \"next Friday\", \"time_text\": \"4pm\"}",
+      "passed": false,
+      "seconds": 1.8172341640001832
+    },
+    {
+      "text": "Soccer on Monday at 6pm",
+      "expected": {
+        "title": "Soccer",
+        "date_text": "on Monday",
+        "time_text": "at 6pm"
+      },
+      "actual": {
+        "title": "Soccer",
+        "date_text": "Monday",
+        "time_text": "6pm"
+      },
+      "raw": "{\"title\": \"Soccer\", \"date_text\": \"Monday\", \"time_text\": \"6pm\"}",
+      "passed": false,
+      "seconds": 1.7282500930014066
+    },
+    {
+      "text": "Inspection in 3 days at 11am",
+      "expected": {
+        "title": "Inspection",
+        "date_text": "in 3 days",
+        "time_text": "at 11am"
+      },
+      "actual": {
+        "title": "Inspection",
+        "date_text": "in 3 days",
+        "time_text": "at 11am"
+      },
+      "raw": "{\"title\": \"Inspection\", \"date_text\": \"in 3 days\", \"time_text\": \"at 11am\"}",
+      "passed": true,
+      "seconds": 2.109347583998897
+    },
+    {
+      "text": "Visit mom the day after tomorrow at noon",
+      "expected": {
+        "title": "Visit mom",
+        "date_text": "the day after tomorrow",
+        "time_text": "at noon"
+      },
+      "actual": {
+        "title": "Visit mom",
+        "date_text": "the day after tomorrow",
+        "time_text": "at noon"
+      },
+      "raw": "{\"title\": \"Visit mom\", \"date_text\": \"the day after tomorrow\", \"time_text\": \"at noon\"}",
+      "passed": true,
+      "seconds": 1.8926452430005156
+    },
+    {
+      "text": "Please add a team meeting tomorrow from 2pm to 3pm",
+      "expected": {
+        "title": "team meeting",
+        "date_text": "tomorrow",
+        "time_text": "from 2pm to 3pm"
+      },
+      "actual": {
+        "title": "Team Meeting",
+        "date_text": "tomorrow",
+        "time_text": "from 2pm to 3pm"
+      },
+      "raw": "{\"title\": \"Team Meeting\", \"date_text\": \"tomorrow\", \"time_text\": \"from 2pm to 3pm\"}",
+      "passed": true,
+      "seconds": 2.1156954590005626
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "method": "Manual review of the 15 saved extraction outputs. This is a post-run exploratory audit, not a blinded or automated independent test. Allows equivalent date/time expressions including omission of on/at and propagation of am/pm through a time range. Requires the complete title and correct assignment to date_text and time_text.",
+  "135M": {
+    "accepted_zero_based_indices": [3, 4, 10, 11, 12],
+    "total": 15,
+    "semantic_passes": 5,
+    "note": "Haircut next Friday at 4pm is additionally accepted despite omitting at. Other failures include copying November 5 from an example, dropping Alex from Call Alex, missing fields, and swapping date/time phrases."
+  },
+  "360M": {
+    "accepted_zero_based_indices": [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14],
+    "total": 15,
+    "semantic_passes": 14,
+    "note": "Dinner at 7pm fails: at 7pm was assigned to date_text with a null time_text. All other outputs retain the title and semantically equivalent date/time phrases. This subset does not test ambiguity, recurrence, duration, overnight handling, or informal abbreviations."
+  }
+}

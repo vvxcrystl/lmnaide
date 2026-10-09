@@ -110,7 +110,7 @@ fun EventEditorScreen(
                         onClick = {
                             if (viewModel.needsScope) dialog = EditorDialog.Scope else viewModel.save(null, onSaved)
                         },
-                        enabled = state?.isValid == true,
+                        enabled = state?.isValid == true && !viewModel.isSaving,
                         modifier = Modifier.padding(end = 12.dp),
                     ) { Text("Save") }
                 },
@@ -366,13 +366,15 @@ private fun ImportanceSelector(importance: Importance?, onSelect: (Importance?) 
                     label = { Text(option?.label ?: "None") },
                     leadingIcon = option?.let { { ColorDot(Color(it.argb), size = 10.dp) } },
                     shape = CircleShape,
+                    border = null,
                     colors = if (option != null) {
                         FilterChipDefaults.filterChipColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             selectedContainerColor = Color(option.argb),
                             selectedLabelColor = Color(option.argb).contentColor(),
                         )
                     } else {
-                        FilterChipDefaults.filterChipColors()
+                        FilterChipDefaults.filterChipColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
                     },
                 )
             }
