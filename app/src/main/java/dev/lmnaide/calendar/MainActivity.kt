@@ -1,0 +1,68 @@
+package dev.lmnaide.calendar
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.lmnaide.calendar.data.ThemeMode
+import dev.lmnaide.calendar.ui.CalendarNavHost
+import dev.lmnaide.calendar.ui.EventLink
+import dev.lmnaide.calendar.ui.theme.CalendarTheme
+import kotlinx.coroutines.flow.MutableStateFlow
+
+class MainActivity : ComponentActivity() {
+    private val pendingLink = MutableStateFlow<EventLink?>(null)
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) handleIntent(intent)
+
+        val settingsRepository = container.settings
+        setContent {
+            val settings by settingsRepository.settings.collectAsStateWithLifecycle()
+            val dark = when (settings.themeMode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            DisposableEffect(dark) {
+                val style = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark }
+                enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+                onDispose {}
+            }
+            CalendarTheme(darkTheme = dark, dynamicColor = settings.dynamicColor) {
+                CalendarNavHost(pendingLink = pendingLink, onLinkHandled = { pendingLink.value = null })
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent) {
+        val eventId = intent.getLongExtra(EXTRA_EVENT_ID, 0L)
+        if (eventId != 0L) pendingLink.value = EventLink(eventId, intent.getLongExtra(EXTRA_INSTANCE, 0L))
+    }
+
+    companion object {
+        private const val EXTRA_EVENT_ID = "event_id"
+        private const val EXTRA_INSTANCE = "instance"
+
+        fun eventIntent(context: Context, eventId: Long, instanceId: Long): Intent =
+            Intent(context, MainActivity::class.java)
+                .putExtra(EXTRA_EVENT_ID, eventId)
+                .putExtra(EXTRA_INSTANCE, instanceId)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+    }
+}
