@@ -25,6 +25,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -151,11 +154,11 @@ private fun TimeGridPage(
     Column(Modifier.fillMaxSize()) {
         DayHeaderRow(dates, today, onOpenDay)
         AllDayLanes(dates, laneItems, now, allDayExpanded, onToggleAllDay, onOpenEvent)
-        HorizontalDivider(color = lineColor)
         Row(
             Modifier
                 .weight(1f)
-                .verticalScroll(scroll),
+                .verticalScroll(scroll)
+                .padding(bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
         ) {
             HourGutter(use24h)
             Row(
@@ -167,7 +170,7 @@ private fun TimeGridPage(
                         for (h in 1 until 24) {
                             drawLine(lineColor, Offset(0f, h * hour), Offset(size.width, h * hour), 1.dp.toPx())
                         }
-                        for (d in 0 until dates.size) {
+                        for (d in 1 until dates.size) {
                             val x = size.width * d / dates.size
                             drawLine(lineColor, Offset(x, 0f), Offset(x, size.height), 1.dp.toPx())
                         }
@@ -201,7 +204,8 @@ private fun DayHeaderRow(dates: List<LocalDate>, today: LocalDate, onOpenDay: (L
             .fillMaxWidth()
             .padding(top = 4.dp, bottom = 6.dp),
     ) {
-        Spacer(Modifier.width(GutterWidth))
+        // A lone date centers on the screen; several dates sit over their grid columns.
+        if (dates.size > 1) Spacer(Modifier.width(GutterWidth))
         dates.forEach { date ->
             val isToday = date == today
             Column(

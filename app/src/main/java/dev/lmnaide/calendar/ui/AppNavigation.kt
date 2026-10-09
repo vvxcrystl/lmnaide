@@ -5,6 +5,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.Lifecycle
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -44,6 +47,13 @@ object Routes {
         "edit?date=${date.toEpochDay()}&minute=$minute&allDay=$allDay&task=$task&text=${Uri.encode(text)}&calendar=${calendarId ?: NO_VALUE}"
 }
 
+/**
+ * Leaves [entry]'s screen, but only while it is the resumed one. A second tap on a close button
+ * during the exit animation would otherwise pop the main screen too and leave a blank app.
+ */
+private fun NavController.popFrom(entry: NavBackStackEntry): Boolean =
+    entry.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && popBackStack()
+
 @Composable
 fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Unit, pendingEditor: StateFlow<String?>, onEditorHandled: () -> Unit) {
     val nav = rememberNavController()
@@ -79,9 +89,9 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
                 navArgument("eventId") { type = NavType.LongType },
                 navArgument("instance") { type = NavType.LongType },
             ),
-        ) {
+        ) { entry ->
             EventDetailScreen(
-                onBack = { nav.popBackStack() },
+                onBack = { nav.popFrom(entry) },
                 onEdit = { nav.navigate(Routes.editEvent(it)) },
                 onOpenEvent = { nav.navigate(Routes.event(it)) { popUpTo(Routes.MAIN) } },
             )
@@ -98,11 +108,11 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
                 navArgument("text") { type = NavType.StringType; defaultValue = "" },
                 navArgument("calendar") { type = NavType.LongType; defaultValue = Routes.NO_VALUE },
             ),
-        ) {
+        ) { entry ->
             EventEditorScreen(
-                onClose = { nav.popBackStack() },
+                onClose = { nav.popFrom(entry) },
                 onSaved = { saved ->
-                    nav.popBackStack()
+                    if (!nav.popFrom(entry)) return@EventEditorScreen
                     // After editing from the event page, show the (possibly new) saved event there.
                     if (nav.currentDestination?.route == Routes.EVENT) {
                         nav.navigate(Routes.event(saved)) { popUpTo(Routes.MAIN) }
@@ -110,14 +120,14 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
                 },
             )
         }
-        composable(Routes.SEARCH) {
-            SearchScreen(onBack = { nav.popBackStack() }, onOpenEvent = { nav.navigate(Routes.event(it)) })
+        composable(Routes.SEARCH) { entry ->
+            SearchScreen(onBack = { nav.popFrom(entry) }, onOpenEvent = { nav.navigate(Routes.event(it)) })
         }
-        composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { nav.popBackStack() }, onManageCalendars = { nav.navigate(Routes.CALENDARS) })
+        composable(Routes.SETTINGS) { entry ->
+            SettingsScreen(onBack = { nav.popFrom(entry) }, onManageCalendars = { nav.navigate(Routes.CALENDARS) })
         }
-        composable(Routes.CALENDARS) {
-            ManageCalendarsScreen(onBack = { nav.popBackStack() })
+        composable(Routes.CALENDARS) { entry ->
+            ManageCalendarsScreen(onBack = { nav.popFrom(entry) })
         }
     }
 }

@@ -1,8 +1,11 @@
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@android:id/background" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@drawable/widget_background" android:padding="12dp">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@android:id/background" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="vertical" android:background="@drawable/widget_background" android:paddingStart="12dp" android:paddingTop="12dp" android:paddingEnd="12dp">
  <LinearLayout android:layout_width="match_parent" android:layout_height="48dp" android:gravity="center_vertical">
- <TextView android:id="@+id/widget_month" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:gravity="center_vertical" android:paddingStart="8dp" android:textColor="#EEEEEE" android:textSize="20sp" android:text="October"/>
- <TextView android:id="@+id/widget_add" android:layout_width="56dp" android:layout_height="36dp" android:background="@drawable/widget_today" android:gravity="center" android:text="+" android:textSize="30sp" android:textColor="#202020" android:contentDescription="Create event"/>
+ <TextView android:id="@+id/widget_month" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:gravity="center_vertical" android:paddingStart="8dp" android:fontFamily="@font/google_sans_flex_family" android:textColor="#EEEEEE" android:textSize="20sp" android:text="October"/>
+ <ImageView android:id="@+id/widget_add" android:layout_width="56dp" android:layout_height="36dp" android:background="@drawable/widget_today" android:scaleType="center" android:src="@drawable/widget_add_icon" android:contentDescription="Create event"/>
  </LinearLayout>
- <ListView android:id="@+id/widget_list" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:divider="@android:color/transparent" android:dividerHeight="4dp" android:scrollbars="none"/>
- <TextView android:id="@+id/widget_empty" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:text="No upcoming events" android:textColor="#CCCCCC" android:textSize="16sp"/>
+ <FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1">
+ <ListView android:id="@+id/widget_list" android:layout_width="match_parent" android:layout_height="match_parent" android:divider="@android:color/transparent" android:dividerHeight="4dp" android:scrollbars="none" android:paddingBottom="16dp" android:clipToPadding="false"/>
+ <ImageView android:id="@+id/widget_fade" android:layout_width="match_parent" android:layout_height="40dp" android:layout_gravity="bottom" android:scaleType="fitXY" android:src="@drawable/widget_fade" android:importantForAccessibility="no"/>
+ </FrameLayout>
+ <TextView android:id="@+id/widget_empty" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:fontFamily="@font/google_sans_flex_family" android:text="No upcoming events" android:textColor="#CCCCCC" android:textSize="16sp"/>
 </LinearLayout>

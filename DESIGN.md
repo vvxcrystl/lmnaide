@@ -8,6 +8,8 @@ How lmnaide Calendar looks, behaves and speaks, and why. Read this before changi
 
 The project started out styled after T3 Chat (a magenta accent, plum-tinted neutrals, a sidebar with a "New event" button). That looked too bland next to the system, so it moved to Google's style. Don't bring the T3-era styling back.
 
+Settings → Appearance also offers optional named themes (Material You, Lemonade, Jet Black, Blush, Amethyst, Forest, Ocean, Ember, Iris), each with a light and dark scheme except Jet Black, which keeps all surfaces pure black in every appearance mode. They only recolor the chrome through the same Material 3 roles; layout, shapes and Google Sans typography don't change per theme. The default is Material You, using dynamic colors on Android 12 and later and the GM3 baseline on older versions. Schemes for the named themes are generated from one accent and one background in `ui/theme/AppThemes.kt`.
+
 ## Principles
 
 1. **Events are the color.** The interface is neutral white, grey and blue. Saturated color belongs only to events, calendars and importance, so color always means something.

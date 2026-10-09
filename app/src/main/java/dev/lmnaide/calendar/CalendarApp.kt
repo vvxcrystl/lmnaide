@@ -41,6 +41,7 @@ class AppContainer(private val context: Context) {
         }
         appScope.launch {
             repository.ensureDefaults()
+            repository.seedHolidays(settings)
             // Keep the next reminder alarm in sync with every change to the events.
             repository.events.collectLatest { reminders.reschedule() }
         }

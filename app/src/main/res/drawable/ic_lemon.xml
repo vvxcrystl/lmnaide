@@ -1,0 +1,6 @@
+<!-- Lemon slice glyph for the side menu; tinted by the theme. Source: assets/icon-templates/menu-icon.svg -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:fillColor="#000000" android:fillType="evenOdd" android:pathData="M2,12a10,10 0 1 0 20,0a10,10 0 1 0 -20,0zM3.1,12a8.9,8.9 0 1 0 17.8,0a8.9,8.9 0 1 0 -17.8,0z" />
+    <path android:fillColor="#000000" android:pathData="M12.78,11.22L15.55,4.94A7.9,7.9 0 0 1 19.06,8.45ZM13.1,12L19.5,9.52A7.9,7.9 0 0 1 19.5,14.48ZM12.78,12.78L19.06,15.55A7.9,7.9 0 0 1 15.55,19.06ZM12,13.1L14.48,19.5A7.9,7.9 0 0 1 9.52,19.5ZM11.22,12.78L8.45,19.06A7.9,7.9 0 0 1 4.94,15.55ZM10.9,12L4.5,14.48A7.9,7.9 0 0 1 4.5,9.52ZM11.22,11.22L4.94,8.45A7.9,7.9 0 0 1 8.45,4.94ZM12,10.9L9.52,4.5A7.9,7.9 0 0 1 14.48,4.5Z" />
+</vector>

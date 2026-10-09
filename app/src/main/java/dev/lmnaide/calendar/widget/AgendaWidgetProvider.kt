@@ -18,7 +18,8 @@ import dev.lmnaide.calendar.MainActivity
 import dev.lmnaide.calendar.R
 import dev.lmnaide.calendar.container
 import dev.lmnaide.calendar.data.Importance
-import dev.lmnaide.calendar.data.ThemeMode
+import androidx.compose.ui.graphics.toArgb
+import dev.lmnaide.calendar.ui.theme.AppTheme
 import dev.lmnaide.calendar.domain.Occurrence
 import dev.lmnaide.calendar.domain.RecurrenceExpander
 import dev.lmnaide.calendar.ui.common.Fmt
@@ -51,18 +52,15 @@ class AgendaWidgetProvider : AppWidgetProvider() {
                 ids.forEach { id ->
                     val views = RemoteViews(context.packageName, R.layout.widget_agenda)
                     val palette = widgetPalette(context)
-                    views.setInt(android.R.id.background, "setBackgroundResource", palette.background)
+                    views.setInt(android.R.id.background, "setBackgroundResource", R.drawable.widget_background)
                     views.setTextColor(R.id.widget_month, palette.foreground)
                     views.setTextColor(R.id.widget_empty, palette.secondary)
-                    views.setInt(R.id.widget_add, "setBackgroundResource", palette.addBackground)
-                    views.setTextColor(R.id.widget_add, palette.addForeground)
-                    if (followsSystem(context)) {
-                        views.setColorStateList(android.R.id.background, "setBackgroundTintList", ColorStateList.valueOf(Color.rgb(241, 243, 244)), ColorStateList.valueOf(Color.rgb(48, 48, 48)))
-                        views.setColorInt(R.id.widget_month, "setTextColor", Color.rgb(31, 31, 31), Color.rgb(238, 238, 238))
-                        views.setColorInt(R.id.widget_empty, "setTextColor", Color.rgb(68, 71, 70), Color.rgb(204, 204, 204))
-                        views.setColorStateList(R.id.widget_add, "setBackgroundTintList", ColorStateList.valueOf(Color.rgb(211, 227, 253)), ColorStateList.valueOf(Color.WHITE))
-                        views.setColorInt(R.id.widget_add, "setTextColor", Color.rgb(4, 30, 73), Color.rgb(32, 32, 32))
-                    }
+                    // Soften where the list is cut off at the bottom, in the widget's own background color.
+                    views.setInt(R.id.widget_fade, "setColorFilter", palette.background)
+                    views.setInt(R.id.widget_add, "setBackgroundResource", R.drawable.widget_today)
+                    views.setInt(R.id.widget_add, "setColorFilter", palette.addForeground)
+                    applyBackground(context, views, android.R.id.background, palette.background, "background")
+                    applyBackground(context, views, R.id.widget_add, palette.addBackground, "add")
                     views.setTextViewText(R.id.widget_month, LocalDate.now().format(DateTimeFormatter.ofPattern("MMMM")))
                     val open = Intent(context, MainActivity::class.java)
                     views.setOnClickPendingIntent(R.id.widget_month, PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
@@ -85,9 +83,7 @@ class AgendaWidgetProvider : AppWidgetProvider() {
     }
 }
 
-private fun followsSystem(context: Context) = Build.VERSION.SDK_INT >= 31 && context.container.settings.settings.value.themeMode == ThemeMode.SYSTEM
-
-/** Resolve the app preference rather than relying on the launcher's theme. */
+/** Use the same color roles as the app for every widget surface. */
 private data class WidgetPalette(
     val background: Int,
     val foreground: Int,
@@ -96,25 +92,39 @@ private data class WidgetPalette(
     val addForeground: Int,
     val todayBackground: Int,
     val todayForeground: Int,
-    val tasksBackground: Int,
     val tasksColor: Int,
 )
 
 private fun widgetPalette(context: Context): WidgetPalette {
-    val dark = when (context.container.settings.settings.value.themeMode) {
-        ThemeMode.DARK -> true
-        ThemeMode.LIGHT -> false
-        ThemeMode.SYSTEM -> context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
-    }
-    return if (dark) WidgetPalette(
-        R.drawable.widget_background, Color.rgb(238, 238, 238), Color.rgb(204, 204, 204),
-        R.drawable.widget_today, Color.rgb(32, 32, 32), R.drawable.widget_today, Color.BLACK,
-        R.drawable.widget_tasks, Color.rgb(41, 41, 41),
-    ) else WidgetPalette(
-        R.drawable.widget_background_light, Color.rgb(31, 31, 31), Color.rgb(68, 71, 70),
-        R.drawable.widget_add_light, Color.rgb(4, 30, 73), R.drawable.widget_today_light, Color.WHITE,
-        R.drawable.widget_tasks_light, Color.rgb(227, 231, 235),
+    val settings = context.container.settings.settings.value
+    val dark = settings.appTheme.isDark(settings.themeMode,
+        context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES)
+    val colors = settings.appTheme.colorScheme(dark, context)
+    return WidgetPalette(
+        colors.surfaceContainer.toArgb(), colors.onSurface.toArgb(), colors.onSurfaceVariant.toArgb(),
+        colors.primaryContainer.toArgb(), colors.onPrimaryContainer.toArgb(),
+        colors.primary.toArgb(), colors.onPrimary.toArgb(), colors.surfaceContainerHigh.toArgb(),
     )
+}
+
+private fun applyBackground(context: Context, views: RemoteViews, id: Int, color: Int, role: String) {
+    if (Build.VERSION.SDK_INT >= 31) {
+        views.setColorStateList(id, "setBackgroundTintList", ColorStateList.valueOf(color))
+    } else {
+        // Background tint actions require Android 12. Older launchers use matching rounded resources.
+        val settings = context.container.settings.settings.value
+        val theme = settings.appTheme.takeIf { it.isAvailable } ?: AppTheme.MATERIAL_YOU
+        val dark = theme.isDark(settings.themeMode,
+            context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES)
+        val index = when (role) {
+            "background" -> 0
+            "add" -> 1
+            "today" -> 2
+            else -> 3
+        }
+        val resource = widgetThemeResources.getValue(theme to dark)[index]
+        views.setInt(id, "setBackgroundResource", resource)
+    }
 }
 
 internal data class AgendaRow(val date: LocalDate, val showDate: Boolean, val occurrence: Occurrence? = null, val tasks: Int = 0, val importance: Importance? = occurrence?.event?.importance)
@@ -144,8 +154,9 @@ internal fun rowView(context: Context, row: AgendaRow): RemoteViews {
     val palette = widgetPalette(context)
     val today = row.date == LocalDate.now()
     views.setTextViewText(R.id.widget_date, if (!row.showDate) "" else row.date.format(DateTimeFormatter.ofPattern(if (today) "EEEEE\nd" else "EEE\nd")))
-    views.setInt(R.id.widget_date, "setBackgroundResource", if (today && row.showDate) palette.todayBackground else 0)
+    views.setInt(R.id.widget_date, "setBackgroundResource", if (today && row.showDate) R.drawable.widget_today else 0)
     views.setTextColor(R.id.widget_date, if (today) palette.todayForeground else palette.foreground)
+    if (today && row.showDate) applyBackground(context, views, R.id.widget_date, palette.todayBackground, "today")
     val occurrence = row.occurrence
     val color = occurrence?.color ?: palette.tasksColor
     val importance = row.importance
@@ -160,9 +171,9 @@ internal fun rowView(context: Context, row: AgendaRow): RemoteViews {
         views.setContentDescription(R.id.widget_importance, "${it.label} importance")
     }
     // Tint a rounded drawable instead of tinting the rectangular layout background.
-    views.setInt(R.id.widget_card, "setBackgroundResource", if (occurrence == null) palette.tasksBackground else R.drawable.widget_card)
+    views.setInt(R.id.widget_card, "setBackgroundResource", if (occurrence == null) R.drawable.widget_tasks else R.drawable.widget_card)
     if (Build.VERSION.SDK_INT >= 31) views.setColorStateList(R.id.widget_card, "setBackgroundTintList", android.content.res.ColorStateList.valueOf(color))
-    else views.setInt(R.id.widget_card, "setBackgroundResource", if (occurrence == null) palette.tasksBackground else when (color) {
+    else views.setInt(R.id.widget_card, "setBackgroundResource", if (occurrence == null) R.drawable.widget_tasks else when (color) {
         0xFFD50000.toInt() -> R.drawable.widget_color_tomato
         0xFFE67C73.toInt() -> R.drawable.widget_color_flamingo
         0xFFF4511E.toInt() -> R.drawable.widget_color_tangerine
@@ -181,16 +192,7 @@ internal fun rowView(context: Context, row: AgendaRow): RemoteViews {
     views.setTextViewText(R.id.widget_title, occurrence?.let { (if (it.isTask) "☑  " else "") + it.event.title } ?: "☑  ${row.tasks} pending ${if (row.tasks == 1) "task" else "tasks"}")
     views.setTextColor(R.id.widget_title, text)
     views.setTextColor(R.id.widget_time, text)
-    if (followsSystem(context)) {
-        views.setColorInt(R.id.widget_date, "setTextColor", if (today) Color.WHITE else Color.rgb(31, 31, 31), if (today) Color.BLACK else Color.rgb(238, 238, 238))
-        if (today && row.showDate) {
-            views.setColorStateList(R.id.widget_date, "setBackgroundTintList", ColorStateList.valueOf(Color.rgb(11, 87, 208)), ColorStateList.valueOf(Color.WHITE))
-        }
-        if (occurrence == null) {
-            views.setColorStateList(R.id.widget_card, "setBackgroundTintList", ColorStateList.valueOf(Color.rgb(227, 231, 235)), ColorStateList.valueOf(Color.rgb(41, 41, 41)))
-            views.setColorInt(R.id.widget_title, "setTextColor", Color.rgb(68, 71, 70), Color.rgb(204, 204, 204))
-        }
-    }
+    if (occurrence == null) applyBackground(context, views, R.id.widget_card, palette.tasksColor, "tasks")
     views.setViewVisibility(R.id.widget_time, if (occurrence == null) View.GONE else View.VISIBLE)
     occurrence?.let {
         views.setTextViewText(R.id.widget_time, if (it.isTask) { if (it.allDay) "All day" else Fmt.time(it.start.toLocalTime(), context.container.settings.settings.value.use24Hour) } else Fmt.occurrenceTime(it, context.container.settings.settings.value.use24Hour))

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 108 108">
+  <!-- Launcher icon, background layer. Fill the whole 108x108; launchers mask it to their shape.
+       A flat color is fine (it can then be set in code instead of shipping this file). -->
+  <rect width="108" height="108" fill="#E9F4D9"/>
+</svg>

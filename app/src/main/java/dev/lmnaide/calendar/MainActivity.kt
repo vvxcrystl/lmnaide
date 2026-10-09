@@ -9,10 +9,15 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import android.view.ViewGroup
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import dev.lmnaide.calendar.ui.theme.LocalThemeReveal
+import dev.lmnaide.calendar.ui.theme.ThemeReveal
+import dev.lmnaide.calendar.ui.theme.ThemeRevealOverlay
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.lmnaide.calendar.data.ThemeMode
 import dev.lmnaide.calendar.ui.CalendarNavHost
 import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.theme.CalendarTheme
@@ -22,6 +27,7 @@ import kotlinx.coroutines.launch
 class MainActivity : ComponentActivity() {
     private val pendingEditor = MutableStateFlow<String?>(null)
     private val pendingLink = MutableStateFlow<EventLink?>(null)
+    private val themeReveal = ThemeReveal()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -31,20 +37,23 @@ class MainActivity : ComponentActivity() {
         val settingsRepository = container.settings
         setContent {
             val settings by settingsRepository.settings.collectAsStateWithLifecycle()
-            val dark = when (settings.themeMode) {
-                ThemeMode.SYSTEM -> isSystemInDarkTheme()
-                ThemeMode.LIGHT -> false
-                ThemeMode.DARK -> true
-            }
+            val dark = settings.appTheme.isDark(settings.themeMode, isSystemInDarkTheme())
             DisposableEffect(dark) {
                 val style = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark }
                 enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
                 onDispose {}
             }
-            CalendarTheme(darkTheme = dark, dynamicColor = settings.dynamicColor) {
-                CalendarNavHost(pendingLink = pendingLink, onLinkHandled = { pendingLink.value = null }, pendingEditor = pendingEditor, onEditorHandled = { pendingEditor.value = null })
+            CompositionLocalProvider(LocalThemeReveal provides themeReveal) {
+                CalendarTheme(darkTheme = dark, theme = settings.appTheme) {
+                    CalendarNavHost(pendingLink = pendingLink, onLinkHandled = { pendingLink.value = null }, pendingEditor = pendingEditor, onEditorHandled = { pendingEditor.value = null })
+                }
             }
         }
+        // The reveal draws in its own view above the app, so screen captures for it never include it.
+        addContentView(
+            ComposeView(this).apply { setContent { ThemeRevealOverlay(themeReveal) } },
+            ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
     }
 
     override fun onNewIntent(intent: Intent) {

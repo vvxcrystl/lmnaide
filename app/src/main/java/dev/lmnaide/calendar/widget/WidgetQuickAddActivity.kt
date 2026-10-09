@@ -15,7 +15,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.lmnaide.calendar.MainActivity
 import dev.lmnaide.calendar.container
-import dev.lmnaide.calendar.data.ThemeMode
 import dev.lmnaide.calendar.ui.event.QuickAddSheet
 import dev.lmnaide.calendar.ui.event.QuickAddViewModel
 import dev.lmnaide.calendar.ui.theme.CalendarTheme
@@ -28,12 +27,8 @@ class WidgetQuickAddActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val settings by container.settings.settings.collectAsStateWithLifecycle()
-            val dark = when (settings.themeMode) {
-                ThemeMode.SYSTEM -> isSystemInDarkTheme()
-                ThemeMode.LIGHT -> false
-                ThemeMode.DARK -> true
-            }
-            CalendarTheme(darkTheme = dark, dynamicColor = settings.dynamicColor) {
+            val dark = settings.appTheme.isDark(settings.themeMode, isSystemInDarkTheme())
+            CalendarTheme(darkTheme = dark, theme = settings.appTheme) {
                 val quickAdd: QuickAddViewModel = viewModel(factory = QuickAddViewModel.Factory)
                 Box(Modifier.fillMaxSize()) {
                     QuickAddSheet(

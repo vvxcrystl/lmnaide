@@ -109,29 +109,12 @@ fun SettingsScreen(
                 .padding(bottom = 24.dp),
         ) {
             Section("Appearance") {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Theme", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 12.dp))
-                    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
-                        ThemeMode.entries.forEachIndexed { i, mode ->
-                            SegmentedButton(
-                                selected = settings.themeMode == mode,
-                                onClick = { viewModel.update { it.copy(themeMode = mode) } },
-                                shape = SegmentedButtonDefaults.itemShape(i, ThemeMode.entries.size),
-                            ) {
-                                Text(mode.name.lowercase().replaceFirstChar(Char::uppercase))
-                            }
-                        }
-                    }
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    RowDivider()
-                    SwitchRow(
-                        title = "Dynamic color",
-                        subtitle = "Use colors from your wallpaper",
-                        checked = settings.dynamicColor,
-                        onCheckedChange = { on -> viewModel.update { it.copy(dynamicColor = on) } },
-                    )
-                }
+                ThemePicker(
+                    themeMode = settings.themeMode,
+                    appTheme = settings.appTheme,
+                    onThemeMode = { mode -> viewModel.update { it.copy(themeMode = mode) } },
+                    onAppTheme = { theme -> viewModel.update { it.copy(appTheme = theme) } },
+                )
             }
 
             Section("Calendar") {

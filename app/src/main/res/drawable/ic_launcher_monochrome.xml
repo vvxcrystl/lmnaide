@@ -1,0 +1,6 @@
+<!-- Single-color lemon for themed icons. Source: assets/icon-templates/launcher-monochrome.svg -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#000000" android:fillType="evenOdd" android:pathData="M23,54a31,31 0 1 0 62,0a31,31 0 1 0 -62,0zM26.5,54a27.5,27.5 0 1 0 55,0a27.5,27.5 0 1 0 -55,0z" />
+    <path android:fillColor="#000000" android:pathData="M55.4,51.12L58.56,29.62A24.8,24.8 0 0 1 70.4,35.4ZM56.83,52.5L72.02,36.96A24.8,24.8 0 0 1 78.2,48.59ZM57.17,54.45L78.59,50.81A24.8,24.8 0 0 1 76.76,63.85ZM56.3,56.22L75.77,65.87A24.8,24.8 0 0 1 66.62,75.35ZM54.56,57.15L64.64,76.4A24.8,24.8 0 0 1 51.67,78.69ZM52.6,56.88L49.44,78.38A24.8,24.8 0 0 1 37.6,72.6ZM51.17,55.5L35.98,71.04A24.8,24.8 0 0 1 29.8,59.41ZM50.83,53.55L29.41,57.19A24.8,24.8 0 0 1 31.24,44.15ZM51.7,51.78L32.23,42.13A24.8,24.8 0 0 1 41.38,32.65ZM53.44,50.85L43.36,31.6A24.8,24.8 0 0 1 56.33,29.31Z" />
+</vector>

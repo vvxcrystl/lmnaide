@@ -1,12 +1,9 @@
 package dev.lmnaide.calendar.ui.theme
 
-import android.os.Build
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -24,7 +21,7 @@ import androidx.compose.ui.unit.sp
 import dev.lmnaide.calendar.R
 
 // Google Material 3 ("GM3") baseline, as used by Google Calendar when dynamic color is off.
-private val LightColors = lightColorScheme(
+internal val LightColors = lightColorScheme(
     primary = Color(0xFF0B57D0),
     onPrimary = Color(0xFFFFFFFF),
     primaryContainer = Color(0xFFD3E3FD),
@@ -62,7 +59,7 @@ private val LightColors = lightColorScheme(
     surfaceContainerHighest = Color(0xFFDDE3EA),
 )
 
-private val DarkColors = darkColorScheme(
+internal val DarkColors = darkColorScheme(
     primary = Color(0xFFA8C7FA),
     onPrimary = Color(0xFF062E6F),
     primaryContainer = Color(0xFF0842A0),
@@ -149,17 +146,11 @@ val LocalDarkTheme = staticCompositionLocalOf { false }
 @Composable
 fun CalendarTheme(
     darkTheme: Boolean,
-    dynamicColor: Boolean,
+    theme: AppTheme,
     content: @Composable () -> Unit,
 ) {
-    val colors = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColors
-        else -> LightColors
-    }
+    val context = LocalContext.current
+    val colors = theme.colorScheme(darkTheme, context)
     CompositionLocalProvider(LocalDarkTheme provides darkTheme) {
         MaterialTheme(colorScheme = colors, typography = AppTypography, shapes = AppShapes, content = content)
     }

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="432" height="432" viewBox="0 0 108 108">
+  <!-- Launcher icon, foreground layer: a lemon cut in half. Transparent background; the background layer sits behind it.
+       Delete the "guides" group before handing it over. -->
+  <g id="guides" fill="none" stroke-width="0.4" stroke-dasharray="1.5 1">
+    <rect x="0.2" y="0.2" width="107.6" height="107.6" stroke="#999999"/>  <!-- full 108 canvas: cropped by launchers -->
+    <rect x="18" y="18" width="72" height="72" stroke="#3B82F6"/>            <!-- 72x72: the most that is ever visible -->
+    <circle cx="54" cy="54" r="33" stroke="#EF4444"/>                        <!-- 66 circle: keep important art inside -->
+  </g>
+  <g id="art">
+    <path id="rind" fill="#F5C518" d="M23,54a31,31 0 1 0 62,0a31,31 0 1 0 -62,0z"/>
+    <path id="pith" fill="#FFF7D1" d="M26.5,54a27.5,27.5 0 1 0 55,0a27.5,27.5 0 1 0 -55,0z"/>
+    <path id="segments" fill="#FFE04D" d="M55.4,51.12L58.56,29.62A24.8,24.8 0 0 1 70.4,35.4ZM56.83,52.5L72.02,36.96A24.8,24.8 0 0 1 78.2,48.59ZM57.17,54.45L78.59,50.81A24.8,24.8 0 0 1 76.76,63.85ZM56.3,56.22L75.77,65.87A24.8,24.8 0 0 1 66.62,75.35ZM54.56,57.15L64.64,76.4A24.8,24.8 0 0 1 51.67,78.69ZM52.6,56.88L49.44,78.38A24.8,24.8 0 0 1 37.6,72.6ZM51.17,55.5L35.98,71.04A24.8,24.8 0 0 1 29.8,59.41ZM50.83,53.55L29.41,57.19A24.8,24.8 0 0 1 31.24,44.15ZM51.7,51.78L32.23,42.13A24.8,24.8 0 0 1 41.38,32.65ZM53.44,50.85L43.36,31.6A24.8,24.8 0 0 1 56.33,29.31Z"/>
+  </g>
+</svg>

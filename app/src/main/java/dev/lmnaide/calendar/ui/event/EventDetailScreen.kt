@@ -39,6 +39,9 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -52,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -59,12 +63,25 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.lmnaide.calendar.data.Recurrence
+import dev.lmnaide.calendar.domain.CanadianHolidays
 import dev.lmnaide.calendar.domain.EditScope
+import dev.lmnaide.calendar.ui.common.HolidayBanner
 import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.common.ConfirmDialog
 import dev.lmnaide.calendar.ui.common.Fmt
 import dev.lmnaide.calendar.ui.common.OptionsDialog
 import java.time.LocalDate
+
+private val SheetCorner = 28.dp
+
+/** Buttons sit on dark discs when over a holiday banner, otherwise they keep the bar's own content color. */
+@Composable
+private fun overBanner(hasBanner: Boolean) =
+    if (hasBanner) {
+        IconButtonDefaults.iconButtonColors(containerColor = Color.Black.copy(alpha = 0.4f), contentColor = Color.White)
+    } else {
+        IconButtonDefaults.iconButtonColors(contentColor = LocalContentColor.current)
+    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,20 +100,22 @@ fun EventDetailScreen(
     LaunchedEffect(state) { if (state is DetailState.Missing) onBack() }
 
     val loaded = state as? DetailState.Loaded
+    val art = loaded?.let { CanadianHolidays.artFor(it.occurrence.event.title) }
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {},
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = if (art != null) Color.Transparent else MaterialTheme.colorScheme.surface),
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.Close, contentDescription = "Close") }
+                    IconButton(onClick = onBack, colors = overBanner(art != null)) { Icon(Icons.Default.Close, contentDescription = "Close") }
                 },
                 actions = {
                     if (loaded != null) {
-                        IconButton(onClick = { onEdit(EventLink(loaded.occurrence.event.id, loaded.occurrence.instanceId)) }) {
+                        IconButton(onClick = { onEdit(EventLink(loaded.occurrence.event.id, loaded.occurrence.instanceId)) }, colors = overBanner(art != null)) {
                             Icon(Icons.Outlined.Edit, contentDescription = "Edit")
                         }
                         Box {
-                            IconButton(onClick = { menuOpen = true }) {
+                            IconButton(onClick = { menuOpen = true }, colors = overBanner(art != null)) {
                                 Icon(Icons.Default.MoreVert, contentDescription = "More options")
                             }
                             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
@@ -132,11 +151,25 @@ fun EventDetailScreen(
 
         Column(
             Modifier
-                .padding(padding)
+                .padding(top = if (art != null) 0.dp else padding.calculateTopPadding(), bottom = padding.calculateBottomPadding())
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(bottom = 24.dp),
         ) {
+            if (art != null) {
+                Box(Modifier.fillMaxWidth().height(padding.calculateTopPadding() + 128.dp)) { HolidayBanner(art) }
+                // Rounded top edge of the page, overlapping the banner without taking up space.
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(SheetCorner)
+                        .layout { measurable, constraints ->
+                            val placeable = measurable.measure(constraints)
+                            layout(placeable.width, 0) { placeable.place(0, -SheetCorner.roundToPx()) }
+                        }
+                        .background(MaterialTheme.colorScheme.background, RoundedCornerShape(topStart = SheetCorner, topEnd = SheetCorner)),
+                )
+            }
             Row(Modifier.padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp)) {
                 Box(
                     Modifier

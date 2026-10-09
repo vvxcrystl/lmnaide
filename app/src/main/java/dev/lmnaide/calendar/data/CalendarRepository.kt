@@ -1,8 +1,10 @@
 package dev.lmnaide.calendar.data
 
 import androidx.room.withTransaction
+import dev.lmnaide.calendar.domain.CanadianHolidays
 import dev.lmnaide.calendar.ui.common.EventColors
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -24,6 +26,46 @@ class CalendarRepository(private val db: AppDatabase) {
             calendarDao.insert(CalendarEntity(name = "Personal", color = EventColors.Peacock.argb))
             calendarDao.insert(CalendarEntity(name = "Work", color = EventColors.Grape.argb))
         }
+    }
+
+    /** Adds a calendar of Canadian holidays once; deleting or hiding it afterwards sticks. */
+    suspend fun seedHolidays(settings: SettingsRepository) {
+        if (settings.holidaysSeeded) {
+            recolorHolidays(settings)
+            return
+        }
+        db.withTransaction {
+            val calendarId = calendarDao.insert(
+                CalendarEntity(name = CanadianHolidays.CALENDAR_NAME, color = CanadianHolidays.COLOR),
+            )
+            CanadianHolidays.all.forEach { holiday ->
+                CanadianHolidays.occurrences(holiday).forEach { date ->
+                    val start = EventEntity.toStored(date.atStartOfDay(), allDay = true)
+                    eventDao.insert(
+                        EventEntity(
+                            calendarId = calendarId,
+                            title = holiday.title,
+                            description = holiday.description,
+                            start = start,
+                            end = EventEntity.toStored(date.plusDays(1).atStartOfDay(), allDay = true),
+                            allDay = true,
+                            recurrence = if (holiday.fixed) Recurrence.YEARLY else Recurrence.NONE,
+                        ),
+                    )
+                }
+            }
+        }
+        settings.holidaysSeeded = true
+        settings.holidaysRecolored = true
+    }
+
+    /** The calendar first shipped in red; moves it to the teal color unless it was changed since. */
+    private suspend fun recolorHolidays(settings: SettingsRepository) {
+        if (settings.holidaysRecolored) return
+        calendarDao.observeAll().first()
+            .filter { it.name == CanadianHolidays.CALENDAR_NAME && it.color == EventColors.Tomato.argb }
+            .forEach { calendarDao.update(it.copy(color = CanadianHolidays.COLOR)) }
+        settings.holidaysRecolored = true
     }
 
     suspend fun saveEvent(event: EventEntity): Long =

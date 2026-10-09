@@ -13,7 +13,6 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.CalendarViewMonth
 import androidx.compose.material.icons.outlined.CalendarViewWeek
 import androidx.compose.material.icons.outlined.EditCalendar
@@ -33,6 +32,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import dev.lmnaide.calendar.R
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -89,13 +90,13 @@ fun AppDrawer(
                 modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 20.dp),
             ) {
                 Icon(
-                    Icons.Outlined.CalendarMonth,
+                    painterResource(R.drawable.ic_lemon),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(28.dp),
                 )
                 Spacer(Modifier.width(12.dp))
-                Text("Calendar", style = MaterialTheme.typography.titleLarge)
+                Text("lmnaide", style = MaterialTheme.typography.titleLarge)
             }
 
             CalendarView.entries.forEach { view ->

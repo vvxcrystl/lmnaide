@@ -12,6 +12,16 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -189,9 +199,16 @@ fun MainScreen(
                 floatingActionButton = { CreateButton(onClick = { quickAddOpen = true }) },
                 snackbarHost = { SnackbarHost(snackbars) },
             ) { padding ->
+                // Content runs behind the navigation bar and fades out there instead of stopping above it.
+                val layoutDirection = LocalLayoutDirection.current
+                val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                 Column(
                     Modifier
-                        .padding(padding)
+                        .padding(
+                            start = padding.calculateStartPadding(layoutDirection),
+                            top = padding.calculateTopPadding(),
+                            end = padding.calculateEndPadding(layoutDirection),
+                        )
                         .fillMaxSize(),
                 ) {
                     AnimatedVisibility(pickerOpen) {
@@ -219,15 +236,17 @@ fun MainScreen(
                                 onOpenDay = openDay,
                                 onToggleTask = { viewModel.setTaskCompleted(it, !it.completed) },
                             )
-                            CalendarView.MONTH -> MonthView(
-                                selectedDate = selectedDate,
-                                weekStart = settings.weekStart,
-                                index = index,
-                                now = now,
-                                onSelectDate = viewModel::selectDate,
-                                onVisibleRange = { visibleRange = it },
-                                onOpenDay = openDay,
-                            )
+                            CalendarView.MONTH -> Box(Modifier.padding(bottom = navInset)) {
+                                MonthView(
+                                    selectedDate = selectedDate,
+                                    weekStart = settings.weekStart,
+                                    index = index,
+                                    now = now,
+                                    onSelectDate = viewModel::selectDate,
+                                    onVisibleRange = { visibleRange = it },
+                                    onOpenDay = openDay,
+                                )
+                            }
                             // Paging depends on the period length and week start, so start fresh when they change.
                             else -> key(view, settings.weekStart) {
                                 TimeGridView(
@@ -249,6 +268,17 @@ fun MainScreen(
                                 )
                             }
                         }
+                        Box(
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(navInset + 28.dp)
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(Color.Transparent, MaterialTheme.colorScheme.surface),
+                                    ),
+                                ),
+                        )
                     }
                 }
             }
