@@ -10,6 +10,11 @@ Created in [T3 Code](https://t3.codes).
 
 - **Five views:** Schedule, Day, 3 days, Week and Month. Swipe between periods, tap the month title for a quick date picker, and use the "today" button to jump back.
 - **Events:** title, all-day or timed, multi-day, location (opens in maps), description, per-event color, and calendar.
+- **Tasks:** create from the + menu or switch any item between Event and Task. Tasks have a due date with an optional time, can repeat, and are checked off per occurrence from the list, the task page or the notification. A drawer toggle shows or hides them.
+- **Importance:** mark any event or task Low (green), Medium (yellow) or High (red). Each level reminds differently:
+  - **Low:** silent notifications that wait in the shade.
+  - **Medium:** standard alert with sound and a Snooze button.
+  - **High:** urgent alert with strong vibration, an extra alert when it starts or is due, then repeats every 5 minutes (up to 3 times) until you tap Got it, snooze, open it or mark the task done.
 - **Repeating events:** daily, every weekday, weekly, monthly and yearly, with an optional end date. Edit or delete *this event*, *this and following*, or *all events*.
 - **Reminders:** multiple notifications per event, delivered with exact alarms. They are rescheduled after reboots and time zone changes.
 - **Calendars:** create, rename, recolor and delete calendars, and show or hide each one from the drawer.

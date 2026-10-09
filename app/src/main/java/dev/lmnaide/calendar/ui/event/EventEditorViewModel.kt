@@ -9,6 +9,8 @@ import androidx.lifecycle.viewModelScope
 import dev.lmnaide.calendar.data.CalendarEntity
 import dev.lmnaide.calendar.data.CalendarRepository
 import dev.lmnaide.calendar.data.EventEntity
+import dev.lmnaide.calendar.data.EventKind
+import dev.lmnaide.calendar.data.Importance
 import dev.lmnaide.calendar.data.Recurrence
 import dev.lmnaide.calendar.data.SettingsRepository
 import dev.lmnaide.calendar.domain.EditScope
@@ -42,13 +44,23 @@ data class EditorState(
     val calendarId: Long = 0,
     val color: Int? = null,
     val reminders: List<Int> = emptyList(),
+    val kind: EventKind = EventKind.EVENT,
+    val importance: Importance? = null,
 ) {
+    val isTask: Boolean get() = kind == EventKind.TASK
+
     val start: LocalDateTime get() = LocalDateTime.of(startDate, if (allDay) LocalTime.MIDNIGHT else startTime)
 
+    /** Tasks have no duration: they end where they start, or after their one day if all-day. */
     val end: LocalDateTime
-        get() = if (allDay) endDate.plusDays(1).atStartOfDay() else LocalDateTime.of(endDate, endTime)
+        get() = when {
+            isTask && allDay -> startDate.plusDays(1).atStartOfDay()
+            isTask -> start
+            allDay -> endDate.plusDays(1).atStartOfDay()
+            else -> LocalDateTime.of(endDate, endTime)
+        }
 
-    val isValid: Boolean get() = if (allDay) endDate >= startDate else end >= start
+    val isValid: Boolean get() = isTask || if (allDay) endDate >= startDate else end >= start
 }
 
 class EventEditorViewModel(
@@ -61,6 +73,7 @@ class EventEditorViewModel(
     private val initialDate: Long = handle["date"] ?: Routes.NO_VALUE
     private val initialMinute: Int = handle["minute"] ?: -1
     private val initialAllDay: Boolean = handle["allDay"] ?: false
+    private val initialTask: Boolean = handle["task"] ?: false
     private val settings = settingsRepository.settings.value
 
     val isNew = eventId == 0L
@@ -114,7 +127,9 @@ class EventEditorViewModel(
             endDate = if (initialAllDay) start.toLocalDate() else end.toLocalDate(),
             endTime = end.toLocalTime(),
             calendarId = calendars.firstOrNull { it.id == settings.defaultCalendarId }?.id ?: calendars.first().id,
-            reminders = listOfNotNull(settings.defaultReminderMinutes),
+            // Tasks remind when they're due; events use the default notification.
+            reminders = if (initialTask) listOf(0) else listOfNotNull(settings.defaultReminderMinutes),
+            kind = if (initialTask) EventKind.TASK else EventKind.EVENT,
         )
     }
 
@@ -144,7 +159,19 @@ class EventEditorViewModel(
             calendarId = event.calendarId,
             color = event.color,
             reminders = event.reminders.sorted(),
+            kind = event.kind,
+            importance = event.importance,
         )
+    }
+
+    /** Switching between event and task keeps the date and time, and picks sensible reminders. */
+    fun setKind(kind: EventKind) = update { s ->
+        if (s.kind == kind) return@update s
+        val reminders = when {
+            kind == EventKind.TASK && s.reminders.isEmpty() -> listOf(0)
+            else -> s.reminders
+        }
+        s.copy(kind = kind, reminders = reminders)
     }
 
     fun update(transform: (EditorState) -> EditorState) {
@@ -186,6 +213,9 @@ class EventEditorViewModel(
                 recurrenceUntil = s.recurrenceUntil?.toEpochDay()?.takeIf { s.recurrence != Recurrence.NONE },
                 exceptions = existing?.exceptions.orEmpty(),
                 reminders = s.reminders.distinct().sorted(),
+                kind = s.kind,
+                completions = existing?.completions.orEmpty(),
+                importance = s.importance,
             )
             val instance = s.start.toEpochSecond(ZoneOffset.UTC)
             val opened = occurrenceStart

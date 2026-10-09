@@ -1,6 +1,11 @@
 package dev.lmnaide.calendar.ui.event
 
 import android.content.Intent
+import androidx.compose.material.icons.automirrored.outlined.Undo
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material3.FilledTonalButton
+import dev.lmnaide.calendar.data.Importance
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -146,6 +151,13 @@ fun EventDetailScreen(
                         Text(event.title.ifBlank { "(No title)" }, style = MaterialTheme.typography.headlineSmall)
                     }
                     Spacer(Modifier.height(2.dp))
+                    if (event.isTask) {
+                        Text(
+                            if (occurrence.completed) "Task, completed" else "Task",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Text(whenLine, style = MaterialTheme.typography.bodyLarge)
                     secondLine?.let { Text(it, style = MaterialTheme.typography.bodyLarge) }
                     if (event.recurrence != Recurrence.NONE) {
@@ -159,6 +171,22 @@ fun EventDetailScreen(
                 }
             }
 
+            event.importance?.let { importance ->
+                DetailRow(icon = Icons.Outlined.Flag, tint = Color(importance.argb)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("${importance.label} importance", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            when (importance) {
+                                Importance.LOW -> "Reminders arrive silently"
+                                Importance.MEDIUM -> "Standard reminders with sound"
+                                Importance.HIGH -> "Alerts at start and repeats until you respond"
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
             if (event.location.isNotBlank()) {
                 DetailRow(
                     icon = Icons.Outlined.LocationOn,
@@ -189,6 +217,21 @@ fun EventDetailScreen(
                     }
                 }
             }
+            if (event.isTask) {
+                val done = occurrence.completed
+                FilledTonalButton(
+                    onClick = { viewModel.setCompleted(occurrence, !done) },
+                    modifier = Modifier.padding(start = 62.dp, top = 16.dp),
+                ) {
+                    Icon(
+                        if (done) Icons.AutoMirrored.Outlined.Undo else Icons.Outlined.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (done) "Mark uncompleted" else "Mark completed")
+                }
+            }
         }
 
         if (confirmDelete) {
@@ -217,6 +260,7 @@ fun EventDetailScreen(
 @Composable
 private fun DetailRow(
     icon: ImageVector,
+    tint: Color? = null,
     onClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
@@ -227,7 +271,7 @@ private fun DetailRow(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 20.dp, vertical = 14.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(icon, contentDescription = null, tint = tint ?: MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.width(18.dp))
         Box(Modifier.weight(1f).padding(top = 1.dp)) { content() }
     }

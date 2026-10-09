@@ -70,6 +70,14 @@ class CalendarRepository(private val db: AppDatabase) {
             }
         }
 
+    /** Marks one occurrence of a task as done or not done. */
+    suspend fun setCompleted(eventId: Long, occurrenceDate: LocalDate, done: Boolean) {
+        val task = eventDao.get(eventId) ?: return
+        val day = occurrenceDate.toEpochDay()
+        val completions = if (done) (task.completions + day).distinct() else task.completions - day
+        eventDao.update(task.copy(completions = completions))
+    }
+
     suspend fun duplicate(event: EventEntity, start: LocalDateTime? = null): Long {
         val copy = if (start == null) {
             event
@@ -78,6 +86,6 @@ class CalendarRepository(private val db: AppDatabase) {
             val stored = EventEntity.toStored(start, event.allDay)
             event.copy(start = stored, end = stored + length)
         }
-        return eventDao.insert(copy.copy(id = 0, exceptions = emptyList()))
+        return eventDao.insert(copy.copy(id = 0, exceptions = emptyList(), completions = emptyList()))
     }
 }

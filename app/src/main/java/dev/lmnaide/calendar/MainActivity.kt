@@ -17,6 +17,7 @@ import dev.lmnaide.calendar.ui.CalendarNavHost
 import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.theme.CalendarTheme
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val pendingLink = MutableStateFlow<EventLink?>(null)
@@ -53,16 +54,22 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent) {
         val eventId = intent.getLongExtra(EXTRA_EVENT_ID, 0L)
         if (eventId != 0L) pendingLink.value = EventLink(eventId, intent.getLongExtra(EXTRA_INSTANCE, 0L))
+        // Opening a reminder counts as seeing it, which stops high-importance repeats.
+        intent.getStringExtra(EXTRA_REMINDER_KEY)?.let { key ->
+            container.appScope.launch { container.reminders.acknowledge(key) }
+        }
     }
 
     companion object {
         private const val EXTRA_EVENT_ID = "event_id"
         private const val EXTRA_INSTANCE = "instance"
+        private const val EXTRA_REMINDER_KEY = "reminder_key"
 
-        fun eventIntent(context: Context, eventId: Long, instanceId: Long): Intent =
+        fun eventIntent(context: Context, eventId: Long, instanceId: Long, reminderKey: String? = null): Intent =
             Intent(context, MainActivity::class.java)
                 .putExtra(EXTRA_EVENT_ID, eventId)
                 .putExtra(EXTRA_INSTANCE, instanceId)
+                .putExtra(EXTRA_REMINDER_KEY, reminderKey)
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
     }
 }

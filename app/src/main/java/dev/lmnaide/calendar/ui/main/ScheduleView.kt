@@ -63,10 +63,11 @@ fun ScheduleView(
     onVisibleRange: (ClosedRange<LocalDate>) -> Unit,
     onOpenEvent: (Occurrence) -> Unit,
     onOpenDay: (LocalDate) -> Unit,
+    onToggleTask: (Occurrence) -> Unit,
 ) {
     // Jumping to another date rebuilds the list around it.
     key(selectedDate, jumpCount) {
-        ScheduleList(selectedDate, index, use24h, now, onVisibleRange, onOpenEvent, onOpenDay)
+        ScheduleList(selectedDate, index, use24h, now, onVisibleRange, onOpenEvent, onOpenDay, onToggleTask)
     }
 }
 
@@ -79,6 +80,7 @@ private fun ScheduleList(
     onVisibleRange: (ClosedRange<LocalDate>) -> Unit,
     onOpenEvent: (Occurrence) -> Unit,
     onOpenDay: (LocalDate) -> Unit,
+    onToggleTask: (Occurrence) -> Unit,
 ) {
     val today = now.toLocalDate()
     val start = remember(anchor) { YearMonth.from(anchor).minusMonths(1).atDay(1) }
@@ -119,7 +121,7 @@ private fun ScheduleList(
                     row.month,
                     Modifier.padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 8.dp),
                 )
-                is ScheduleRow.Day -> DayRow(row, today, use24h, now, onOpenEvent, onOpenDay)
+                is ScheduleRow.Day -> DayRow(row, today, use24h, now, onOpenEvent, onOpenDay, onToggleTask)
             }
         }
     }
@@ -163,6 +165,7 @@ private fun DayRow(
     now: LocalDateTime,
     onOpenEvent: (Occurrence) -> Unit,
     onOpenDay: (LocalDate) -> Unit,
+    onToggleTask: (Occurrence) -> Unit,
 ) {
     val isToday = row.date == today
     Row(
@@ -201,13 +204,22 @@ private fun DayRow(
             }
             row.occurrences.forEach { occurrence ->
                 val time = when {
+                    occurrence.isTask && occurrence.allDay -> "Task"
+                    occurrence.isTask -> "Task, due ${Fmt.time(occurrence.start.toLocalTime(), use24h)}"
                     occurrence.allDay -> "All day"
                     occurrence.startDate == occurrence.lastDate -> Fmt.occurrenceTime(occurrence, use24h)
                     row.date == occurrence.startDate -> "From ${Fmt.time(occurrence.start.toLocalTime(), use24h)}"
                     row.date == occurrence.lastDate -> "Until ${Fmt.time(occurrence.end.toLocalTime(), use24h)}"
                     else -> "All day"
                 }
-                EventCard(occurrence, time, occurrence.event.location, now, onClick = { onOpenEvent(occurrence) })
+                EventCard(
+                    occurrence,
+                    time,
+                    occurrence.event.location,
+                    now,
+                    onClick = { onOpenEvent(occurrence) },
+                    onToggleTask = { onToggleTask(occurrence) },
+                )
             }
         }
     }

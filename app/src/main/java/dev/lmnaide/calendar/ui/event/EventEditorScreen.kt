@@ -1,6 +1,16 @@
 package dev.lmnaide.calendar.ui.event
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import dev.lmnaide.calendar.data.EventKind
+import dev.lmnaide.calendar.data.Importance
+import dev.lmnaide.calendar.ui.common.contentColor
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -125,6 +135,7 @@ fun EventEditorScreen(
                 onValueChange = { title -> viewModel.update { it.copy(title = title) } },
                 autoFocus = viewModel.isNew,
             )
+            KindSelector(state.kind, viewModel::setKind)
             Divider()
 
             EditorRow(icon = Icons.Outlined.Schedule) {
@@ -139,13 +150,15 @@ fun EventEditorScreen(
                 onDate = { dialog = EditorDialog.StartDate },
                 onTime = { dialog = EditorDialog.StartTime },
             )
-            DateTimeRow(
-                date = Fmt.dayMedium(state.endDate, today),
-                time = Fmt.time(state.endTime, use24h).takeUnless { state.allDay },
-                onDate = { dialog = EditorDialog.EndDate },
-                onTime = { dialog = EditorDialog.EndTime },
-                error = !state.isValid,
-            )
+            if (!state.isTask) {
+                DateTimeRow(
+                    date = Fmt.dayMedium(state.endDate, today),
+                    time = Fmt.time(state.endTime, use24h).takeUnless { state.allDay },
+                    onDate = { dialog = EditorDialog.EndDate },
+                    onTime = { dialog = EditorDialog.EndTime },
+                    error = !state.isValid,
+                )
+            }
             if (!state.isValid) {
                 Text(
                     "The event ends before it starts",
@@ -167,14 +180,21 @@ fun EventEditorScreen(
             }
             Divider()
 
-            EditorRow(icon = Icons.Outlined.LocationOn) {
-                PlainTextField(
-                    value = state.location,
-                    onValueChange = { location -> viewModel.update { it.copy(location = location) } },
-                    placeholder = "Add location",
-                )
+            EditorRow(icon = Icons.Outlined.Flag, alignTop = true) {
+                ImportanceSelector(state.importance) { importance -> viewModel.update { it.copy(importance = importance) } }
             }
             Divider()
+
+            if (!state.isTask) {
+                EditorRow(icon = Icons.Outlined.LocationOn) {
+                    PlainTextField(
+                        value = state.location,
+                        onValueChange = { location -> viewModel.update { it.copy(location = location) } },
+                        placeholder = "Add location",
+                    )
+                }
+                Divider()
+            }
 
             EditorRow(icon = Icons.Outlined.Notifications, alignTop = true) {
                 Column {
@@ -311,6 +331,65 @@ fun EventEditorScreen(
                 onDismiss = { dialog = null },
             )
             null -> Unit
+        }
+    }
+}
+
+@Composable
+private fun KindSelector(kind: EventKind, onSelect: (EventKind) -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.padding(start = 62.dp, end = 20.dp, bottom = 12.dp),
+    ) {
+        listOf(EventKind.EVENT to "Event", EventKind.TASK to "Task").forEach { (option, label) ->
+            FilterChip(
+                selected = kind == option,
+                onClick = { onSelect(option) },
+                label = { Text(label) },
+                shape = CircleShape,
+            )
+        }
+    }
+}
+
+/** None, then Low, Medium and High, each marked with its color. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ImportanceSelector(importance: Importance?, onSelect: (Importance?) -> Unit) {
+    Column {
+        Text("Importance", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            (listOf<Importance?>(null) + Importance.entries).forEach { option ->
+                FilterChip(
+                    selected = importance == option,
+                    onClick = { onSelect(option) },
+                    label = { Text(option?.label ?: "None") },
+                    leadingIcon = option?.let { { ColorDot(Color(it.argb), size = 10.dp) } },
+                    shape = CircleShape,
+                    colors = if (option != null) {
+                        FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Color(option.argb),
+                            selectedLabelColor = Color(option.argb).contentColor(),
+                        )
+                    } else {
+                        FilterChipDefaults.filterChipColors()
+                    },
+                )
+            }
+        }
+        val hint = when (importance) {
+            Importance.LOW -> "Reminders arrive silently"
+            Importance.MEDIUM -> "Standard reminders with sound"
+            Importance.HIGH -> "Urgent alerts at start that repeat until you respond"
+            null -> null
+        }
+        hint?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp),
+            )
         }
     }
 }

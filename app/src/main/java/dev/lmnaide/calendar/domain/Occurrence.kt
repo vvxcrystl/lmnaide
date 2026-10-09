@@ -24,6 +24,10 @@ data class Occurrence(
 
     val allDay: Boolean get() = event.allDay
 
+    val isTask: Boolean get() = event.isTask
+
+    val completed: Boolean = event.isTask && startDate.toEpochDay() in event.completions
+
     /** Shown in the all-day lane instead of the hourly grid. */
     val inAllDayLane: Boolean = event.allDay || Duration.between(start, end) >= Duration.ofHours(24)
 

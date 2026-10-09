@@ -7,6 +7,7 @@ import dev.lmnaide.calendar.data.CalendarRepository
 import dev.lmnaide.calendar.data.CalendarView
 import dev.lmnaide.calendar.data.SettingsRepository
 import dev.lmnaide.calendar.domain.EventIndex
+import dev.lmnaide.calendar.domain.Occurrence
 import dev.lmnaide.calendar.ui.common.appViewModelFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,7 +29,10 @@ class MainViewModel(
     val calendars: StateFlow<List<CalendarEntity>> = repository.calendars
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val index: StateFlow<EventIndex> = combine(repository.events, repository.calendars, ::EventIndex)
+    val index: StateFlow<EventIndex> =
+        combine(repository.events, repository.calendars, settingsRepository.settings) { events, calendars, settings ->
+            EventIndex(events, calendars, settings.showTasks)
+        }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EventIndex.Empty)
 
@@ -43,6 +47,12 @@ class MainViewModel(
 
     fun toggleCalendar(calendar: CalendarEntity) {
         viewModelScope.launch { repository.saveCalendar(calendar.copy(visible = !calendar.visible)) }
+    }
+
+    fun toggleTasks() = settingsRepository.update { it.copy(showTasks = !it.showTasks) }
+
+    fun setTaskCompleted(occurrence: Occurrence, done: Boolean) {
+        viewModelScope.launch { repository.setCompleted(occurrence.event.id, occurrence.startDate, done) }
     }
 
     companion object {

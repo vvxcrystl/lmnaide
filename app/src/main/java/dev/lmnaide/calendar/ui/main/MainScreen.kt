@@ -7,8 +7,21 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.TaskAlt
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -74,7 +87,7 @@ import java.time.YearMonth
 @Composable
 fun MainScreen(
     onOpenEvent: (EventLink) -> Unit,
-    onCreateEvent: (date: LocalDate, minute: Int, allDay: Boolean) -> Unit,
+    onCreateEvent: (date: LocalDate, minute: Int, allDay: Boolean, task: Boolean) -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit,
     onManageCalendars: () -> Unit,
@@ -98,6 +111,9 @@ fun MainScreen(
         jumpCount++
         pickerOpen = false
     }
+
+    var createMenuOpen by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = createMenuOpen) { createMenuOpen = false }
 
     RequestNotificationPermission()
     BackHandler(enabled = drawerState.isOpen) { scope.launch { drawerState.close() } }
@@ -126,6 +142,8 @@ fun MainScreen(
             AppDrawer(
                 currentView = settings.view,
                 calendars = calendars,
+                showTasks = settings.showTasks,
+                onToggleTasks = viewModel::toggleTasks,
                 onSelectView = { view ->
                     returnView = null
                     closeDrawerThen { viewModel.setView(view) }
@@ -173,13 +191,11 @@ fun MainScreen(
                 )
             },
             floatingActionButton = {
-                FloatingActionButton(
-                    onClick = { onCreateEvent(selectedDate, -1, false) },
-                    shape = RoundedCornerShape(16.dp),
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                ) {
-                    GooglePlus(Modifier.size(24.dp))
-                }
+                CreateButton(
+                    expanded = createMenuOpen,
+                    onExpandedChange = { createMenuOpen = it },
+                    onCreate = { task -> onCreateEvent(selectedDate, -1, task, task) },
+                )
             },
         ) { padding ->
             Column(
@@ -210,6 +226,7 @@ fun MainScreen(
                             onVisibleRange = { visibleRange = it },
                             onOpenEvent = openEvent,
                             onOpenDay = openDay,
+                            onToggleTask = { viewModel.setTaskCompleted(it, !it.completed) },
                         )
                         CalendarView.MONTH -> MonthView(
                             selectedDate = selectedDate,
@@ -237,9 +254,17 @@ fun MainScreen(
                                 onVisibleRange = { visibleRange = it },
                                 onOpenEvent = openEvent,
                                 onOpenDay = openDay,
-                                onCreateAt = { onCreateEvent(it.toLocalDate(), it.hour * 60 + it.minute, false) },
+                                onCreateAt = { onCreateEvent(it.toLocalDate(), it.hour * 60 + it.minute, false, false) },
                             )
                         }
+                    }
+                    if (createMenuOpen) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
+                                .clickable(interactionSource = null, indication = null) { createMenuOpen = false },
+                        )
                     }
                 }
             }
@@ -256,6 +281,43 @@ private fun rangeTitle(range: ClosedRange<LocalDate>, today: LocalDate): String 
         first.year == last.year && first.year == today.year -> "${Fmt.monthShort(first)} – ${Fmt.monthShort(last)}"
         else -> "${Fmt.monthYearShort(first)} – ${Fmt.monthYearShort(last)}"
     }
+}
+
+/**
+ * The create button. Like Google Calendar's, it opens a small menu to choose between an event and
+ * a task; the scrim behind it closes the menu.
+ */
+@Composable
+private fun CreateButton(expanded: Boolean, onExpandedChange: (Boolean) -> Unit, onCreate: (task: Boolean) -> Unit) {
+    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        AnimatedVisibility(expanded, enter = fadeIn() + expandVertically(expandFrom = Alignment.Bottom), exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Bottom)) {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                CreateOption("Task", Icons.Outlined.TaskAlt) { onExpandedChange(false); onCreate(true) }
+                CreateOption("Event", Icons.Outlined.Event) { onExpandedChange(false); onCreate(false) }
+            }
+        }
+        FloatingActionButton(
+            onClick = { onExpandedChange(!expanded) },
+            shape = RoundedCornerShape(16.dp),
+            containerColor = if (expanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+        ) {
+            if (expanded) Icon(Icons.Default.Close, contentDescription = "Close menu") else GooglePlus(Modifier.size(24.dp))
+        }
+    }
+}
+
+@Composable
+private fun CreateOption(label: String, icon: ImageVector, onClick: () -> Unit) {
+    ExtendedFloatingActionButton(
+        onClick = onClick,
+        icon = { Icon(icon, contentDescription = null) },
+        text = { Text(label) },
+        shape = CircleShape,
+        containerColor = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        modifier = Modifier.height(48.dp),
+    )
 }
 
 /** Google's four-color plus, as on the Calendar app's create button. */

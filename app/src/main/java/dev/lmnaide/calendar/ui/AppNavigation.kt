@@ -27,7 +27,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val CALENDARS = "calendars"
     const val EVENT = "event/{eventId}/{instance}"
-    const val EDIT = "edit?eventId={eventId}&instance={instance}&date={date}&minute={minute}&allDay={allDay}"
+    const val EDIT = "edit?eventId={eventId}&instance={instance}&date={date}&minute={minute}&allDay={allDay}&task={task}"
 
     const val NO_VALUE = Long.MIN_VALUE
 
@@ -36,8 +36,8 @@ object Routes {
     fun editEvent(link: EventLink) = "edit?eventId=${link.eventId}&instance=${link.instanceId}"
 
     /** [minute] is minutes after midnight, or -1 for the next full hour. */
-    fun newEvent(date: LocalDate, minute: Int = -1, allDay: Boolean = false) =
-        "edit?date=${date.toEpochDay()}&minute=$minute&allDay=$allDay"
+    fun newEvent(date: LocalDate, minute: Int = -1, allDay: Boolean = false, task: Boolean = false) =
+        "edit?date=${date.toEpochDay()}&minute=$minute&allDay=$allDay&task=$task"
 }
 
 @Composable
@@ -55,7 +55,7 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
         composable(Routes.MAIN) {
             MainScreen(
                 onOpenEvent = { nav.navigate(Routes.event(it)) },
-                onCreateEvent = { date, minute, allDay -> nav.navigate(Routes.newEvent(date, minute, allDay)) },
+                onCreateEvent = { date, minute, allDay, task -> nav.navigate(Routes.newEvent(date, minute, allDay, task)) },
                 onSearch = { nav.navigate(Routes.SEARCH) },
                 onSettings = { nav.navigate(Routes.SETTINGS) },
                 onManageCalendars = { nav.navigate(Routes.CALENDARS) },
@@ -82,6 +82,7 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
                 navArgument("date") { type = NavType.LongType; defaultValue = Routes.NO_VALUE },
                 navArgument("minute") { type = NavType.IntType; defaultValue = -1 },
                 navArgument("allDay") { type = NavType.BoolType; defaultValue = false },
+                navArgument("task") { type = NavType.BoolType; defaultValue = false },
             ),
         ) {
             EventEditorScreen(

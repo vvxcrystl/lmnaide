@@ -5,11 +5,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.outlined.Circle
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,16 +25,66 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.lmnaide.calendar.data.Importance
 import dev.lmnaide.calendar.domain.Occurrence
 import java.time.LocalDate
 import java.time.LocalDateTime
 
-private fun Occurrence.isPast(now: LocalDateTime): Boolean =
-    if (allDay) lastDate < now.toLocalDate() else end <= now
+/** Done tasks and finished events are drawn faded; open tasks stay prominent even when overdue. */
+private fun Occurrence.isPast(now: LocalDateTime): Boolean = when {
+    isTask -> completed
+    allDay -> lastDate < now.toLocalDate()
+    else -> end <= now
+}
+
+private fun Occurrence.titleText() = event.title.ifBlank { "(No title)" }
+
+private fun Occurrence.titleDecoration() = if (completed) TextDecoration.LineThrough else null
+
+/** The check circle shown in front of task titles. */
+@Composable
+fun TaskCheck(completed: Boolean, tint: Color, size: Dp) {
+    Icon(
+        if (completed) Icons.Filled.CheckCircle else Icons.Outlined.Circle,
+        contentDescription = if (completed) "Completed task" else "Task",
+        tint = tint,
+        modifier = Modifier.size(size),
+    )
+}
+
+/** A colored dot marking importance, ringed so it stays visible on any chip color. */
+@Composable
+fun ImportanceDot(importance: Importance, ring: Color, modifier: Modifier = Modifier, size: Dp = 9.dp) {
+    Box(
+        modifier
+            .size(size)
+            .clip(CircleShape)
+            .background(ring)
+            .padding(1.5.dp)
+            .clip(CircleShape)
+            .background(Color(importance.argb)),
+    )
+}
+
+/** A labeled importance pill for cards and the event page. */
+@Composable
+fun ImportancePill(importance: Importance, modifier: Modifier = Modifier) {
+    val color = Color(importance.argb)
+    Text(
+        importance.label,
+        style = MaterialTheme.typography.labelMedium,
+        color = color.contentColor(),
+        modifier = modifier
+            .clip(CircleShape)
+            .background(color)
+            .padding(horizontal = 10.dp, vertical = 3.dp),
+    )
+}
 
 /** Background and text colors for an event chip. */
 @Composable
@@ -69,15 +125,23 @@ fun GridEventBlock(
     ) {
         val showTime = height >= if (compact) 56.dp else 40.dp
         val titleLines = ((height.value - 6 - if (showTime) lineHeight else 0) / lineHeight).toInt().coerceIn(1, 4)
-        Text(
-            occurrence.event.title.ifBlank { "(No title)" },
-            fontSize = titleSize.sp,
-            lineHeight = lineHeight.sp,
-            fontWeight = FontWeight.Medium,
-            color = content,
-            maxLines = titleLines,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            if (occurrence.isTask) {
+                TaskCheck(occurrence.completed, content, size = (titleSize + 1).dp)
+            }
+            Text(
+                occurrence.titleText(),
+                fontSize = titleSize.sp,
+                lineHeight = lineHeight.sp,
+                fontWeight = FontWeight.Medium,
+                color = content,
+                textDecoration = occurrence.titleDecoration(),
+                maxLines = titleLines,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            occurrence.event.importance?.let { ImportanceDot(it, content, Modifier.padding(top = 3.dp)) }
+        }
         if (showTime) {
             Text(
                 timeText,
@@ -109,15 +173,20 @@ fun EventBar(
             .padding(horizontal = 4.dp),
         contentAlignment = Alignment.CenterStart,
     ) {
-        Text(
-            occurrence.event.title.ifBlank { "(No title)" },
-            fontSize = fontSize.sp,
-            lineHeight = (fontSize + 2).sp,
-            fontWeight = FontWeight.Medium,
-            color = content,
-            maxLines = 1,
-            overflow = TextOverflow.Clip,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            occurrence.event.importance?.let { ImportanceDot(it, content, size = 7.dp) }
+            if (occurrence.isTask) TaskCheck(occurrence.completed, content, size = fontSize.dp)
+            Text(
+                occurrence.titleText(),
+                fontSize = fontSize.sp,
+                lineHeight = (fontSize + 2).sp,
+                fontWeight = FontWeight.Medium,
+                color = content,
+                textDecoration = occurrence.titleDecoration(),
+                maxLines = 1,
+                overflow = TextOverflow.Clip,
+            )
+        }
     }
 }
 
@@ -130,34 +199,44 @@ fun EventCard(
     now: LocalDateTime,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    onToggleTask: (() -> Unit)? = null,
 ) {
     val (background, content) = chipColors(occurrence, now)
-    Column(
-        modifier
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(background)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(1.dp),
+            .padding(start = if (occurrence.isTask) 4.dp else 14.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
     ) {
-        Text(
-            occurrence.event.title.ifBlank { "(No title)" },
-            style = MaterialTheme.typography.titleSmall,
-            color = content,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(time, style = MaterialTheme.typography.bodySmall, color = content.copy(alpha = 0.85f), maxLines = 1)
-        if (!detail.isNullOrBlank()) {
+        if (occurrence.isTask) {
+            IconButton(onClick = { onToggleTask?.invoke() }, enabled = onToggleTask != null, modifier = Modifier.size(40.dp)) {
+                TaskCheck(occurrence.completed, content, size = 22.dp)
+            }
+        }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(
-                detail,
-                style = MaterialTheme.typography.bodySmall,
-                color = content.copy(alpha = 0.85f),
-                maxLines = 1,
+                occurrence.titleText(),
+                style = MaterialTheme.typography.titleSmall,
+                color = content,
+                textDecoration = occurrence.titleDecoration(),
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            Text(time, style = MaterialTheme.typography.bodySmall, color = content.copy(alpha = 0.85f), maxLines = 1)
+            if (!detail.isNullOrBlank()) {
+                Text(
+                    detail,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = content.copy(alpha = 0.85f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
+        occurrence.event.importance?.let { ImportancePill(it, Modifier.padding(start = 8.dp)) }
     }
 }
 

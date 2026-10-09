@@ -8,9 +8,12 @@ import java.time.LocalDate
 class EventIndex(
     events: List<EventEntity>,
     calendars: List<CalendarEntity>,
+    showTasks: Boolean = true,
 ) {
     private val calendarsById = calendars.associateBy { it.id }
-    private val visibleEvents = events.filter { calendarsById[it.calendarId]?.visible == true }
+    private val visibleEvents = events.filter {
+        calendarsById[it.calendarId]?.visible == true && (showTasks || !it.isTask)
+    }
 
     fun occurrences(from: LocalDate, to: LocalDate): List<Occurrence> =
         visibleEvents

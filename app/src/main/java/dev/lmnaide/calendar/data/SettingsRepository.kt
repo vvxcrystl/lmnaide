@@ -25,6 +25,7 @@ data class Settings(
     val defaultReminderMinutes: Int? = 30,
     val defaultCalendarId: Long? = null,
     val view: CalendarView = CalendarView.MONTH,
+    val showTasks: Boolean = true,
 ) {
     val weekStart: DayOfWeek
         get() = weekStartOverride ?: WeekFields.of(Locale.getDefault()).firstDayOfWeek
@@ -49,6 +50,7 @@ class SettingsRepository(context: Context) {
             putInt(KEY_REMINDER, next.defaultReminderMinutes ?: NONE)
             putLong(KEY_CALENDAR, next.defaultCalendarId ?: NONE.toLong())
             putString(KEY_VIEW, next.view.name)
+            putBoolean(KEY_TASKS, next.showTasks)
         }
     }
 
@@ -61,6 +63,7 @@ class SettingsRepository(context: Context) {
         defaultReminderMinutes = prefs.getInt(KEY_REMINDER, 30).takeIf { it != NONE },
         defaultCalendarId = prefs.getLong(KEY_CALENDAR, NONE.toLong()).takeIf { it != NONE.toLong() },
         view = enumOrNull<CalendarView>(prefs.getString(KEY_VIEW, null)) ?: CalendarView.MONTH,
+        showTasks = prefs.getBoolean(KEY_TASKS, true),
     )
 
     private inline fun <reified T : Enum<T>> enumOrNull(name: String?): T? =
@@ -76,5 +79,6 @@ class SettingsRepository(context: Context) {
         const val KEY_REMINDER = "default_reminder"
         const val KEY_CALENDAR = "default_calendar"
         const val KEY_VIEW = "view"
+        const val KEY_TASKS = "show_tasks"
     }
 }

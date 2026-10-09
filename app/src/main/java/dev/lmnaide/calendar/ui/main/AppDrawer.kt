@@ -65,8 +65,10 @@ private val ItemShape = CircleShape
 fun AppDrawer(
     currentView: CalendarView,
     calendars: List<CalendarEntity>,
+    showTasks: Boolean,
     onSelectView: (CalendarView) -> Unit,
     onToggleCalendar: (CalendarEntity) -> Unit,
+    onToggleTasks: () -> Unit,
     onManageCalendars: () -> Unit,
     onSettings: () -> Unit,
 ) {
@@ -110,29 +112,9 @@ fun AppDrawer(
             SectionDivider()
             SectionLabel("Calendars")
             calendars.forEach { calendar ->
-                val color = Color(calendar.color)
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .clip(ItemShape)
-                        .toggleable(
-                            value = calendar.visible,
-                            role = Role.Checkbox,
-                            onValueChange = { onToggleCalendar(calendar) },
-                        )
-                        .padding(start = 4.dp),
-                ) {
-                    Checkbox(
-                        checked = calendar.visible,
-                        onCheckedChange = null,
-                        colors = CheckboxDefaults.colors(checkedColor = color, uncheckedColor = color),
-                        modifier = Modifier.padding(start = 8.dp, end = 16.dp),
-                    )
-                    Text(calendar.name, style = MaterialTheme.typography.labelLarge)
-                }
+                VisibilityRow(calendar.name, Color(calendar.color), calendar.visible) { onToggleCalendar(calendar) }
             }
+            VisibilityRow("Tasks", MaterialTheme.colorScheme.primary, showTasks, onToggleTasks)
             NavigationDrawerItem(
                 label = { Text("Manage calendars", style = MaterialTheme.typography.labelLarge) },
                 icon = { Icon(Icons.Outlined.EditCalendar, contentDescription = null) },
@@ -152,6 +134,27 @@ fun AppDrawer(
                 colors = itemColors,
             )
         }
+    }
+}
+
+@Composable
+private fun VisibilityRow(name: String, color: Color, visible: Boolean, onToggle: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(ItemShape)
+            .toggleable(value = visible, role = Role.Checkbox, onValueChange = { onToggle() })
+            .padding(start = 4.dp),
+    ) {
+        Checkbox(
+            checked = visible,
+            onCheckedChange = null,
+            colors = CheckboxDefaults.colors(checkedColor = color, uncheckedColor = color),
+            modifier = Modifier.padding(start = 8.dp, end = 16.dp),
+        )
+        Text(name, style = MaterialTheme.typography.labelLarge)
     }
 }
 

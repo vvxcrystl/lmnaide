@@ -70,6 +70,10 @@ class EventDetailViewModel(
         }
     }
 
+    fun setCompleted(occurrence: Occurrence, done: Boolean) {
+        viewModelScope.launch { repository.setCompleted(occurrence.event.id, occurrence.startDate, done) }
+    }
+
     fun duplicate(occurrence: Occurrence, onCreated: (EventLink) -> Unit) {
         viewModelScope.launch {
             val id = repository.duplicate(occurrence.event, occurrence.start)
