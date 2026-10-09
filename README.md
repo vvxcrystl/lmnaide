@@ -4,9 +4,11 @@
 
 A clean, offline Android calendar built with Jetpack Compose and Material 3. It follows Google Calendar's features and design: Material You dynamic color (with Google's GM3 blue baseline as the fallback), Google Sans Flex type, solid color event chips, pill-shaped navigation, and illustrated seasonal month banners in the schedule.
 
-Created in [T3 Code](https://t3.codes).
+Created in [T3 Code](https://t3.codes). See [DESIGN.md](DESIGN.md) for the design system and principles.
 
 ## Features
+
+- **Home-screen agenda widget:** resizable, scrollable agenda that follows Light, Dark, or System theme with date badges, calendar-colored event cards, pending tasks, importance indicators, and a + shortcut. Tap a card to open its details. Updates with events, calendar visibility, task completion, and settings. Add **Calendar agenda** from the launcher’s widget picker.
 
 - **Five views:** Schedule, Day, 3 days, Week and Month. Swipe between periods, tap the month title for a quick date picker, and use the "today" button to jump back.
 - **Quick add:** tap + and type one sentence, like “Lunch with Sam tomorrow at noon” or “Pay rent by Friday.” Deadlines (“by …”) become tasks automatically, or pick Event or Task yourself. A lightweight offline English parser previews the title, day, time and repeat as you type; Save or the keyboard’s Done key adds it and jumps the calendar there, and More options opens the full editor filled in. Supports relative and explicit dates, AM/PM and 24-hour times, overnight ranges, durations and common repeats; unclear wording asks for more detail. A time with no day goes on the day you’re viewing. Picks a calendar from its keywords (set them in Manage calendars, like “produce, shift” on Work), then the calendar the same title went into last time, then a calendar named in the title; otherwise your default. Tap the calendar in the preview to change it. Uses your default duration and reminders.

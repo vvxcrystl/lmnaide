@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
+    private val pendingEditor = MutableStateFlow<String?>(null)
     private val pendingLink = MutableStateFlow<EventLink?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,7 +42,7 @@ class MainActivity : ComponentActivity() {
                 onDispose {}
             }
             CalendarTheme(darkTheme = dark, dynamicColor = settings.dynamicColor) {
-                CalendarNavHost(pendingLink = pendingLink, onLinkHandled = { pendingLink.value = null })
+                CalendarNavHost(pendingLink = pendingLink, onLinkHandled = { pendingLink.value = null }, pendingEditor = pendingEditor, onEditorHandled = { pendingEditor.value = null })
             }
         }
     }
@@ -52,6 +53,14 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent) {
+        if (intent.getBooleanExtra("widget_edit", false)) {
+            pendingEditor.value = dev.lmnaide.calendar.ui.Routes.newEvent(
+                java.time.LocalDate.now(),
+                task = intent.getBooleanExtra("widget_task", false),
+                text = intent.getStringExtra("widget_text").orEmpty(),
+                calendarId = intent.getLongExtra("widget_calendar", 0L).takeIf { it != 0L },
+            )
+        }
         val eventId = intent.getLongExtra(EXTRA_EVENT_ID, 0L)
         if (eventId != 0L) pendingLink.value = EventLink(eventId, intent.getLongExtra(EXTRA_INSTANCE, 0L))
         // Opening a reminder counts as seeing it, which stops high-importance repeats.

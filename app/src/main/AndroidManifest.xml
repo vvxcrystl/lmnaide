@@ -29,6 +29,14 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".widget.WidgetQuickAddActivity"
+            android:exported="false"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.Calendar.WidgetQuickAdd"
+            android:windowSoftInputMode="adjustResize" />
+
         <receiver
             android:name=".reminders.ReminderReceiver"
             android:exported="false">
@@ -39,5 +47,10 @@
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
+        <receiver android:name=".widget.AgendaWidgetProvider" android:exported="false" android:label="@string/widget_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/><action android:name="android.intent.action.DATE_CHANGED"/><action android:name="android.intent.action.TIME_SET"/><action android:name="android.intent.action.TIMEZONE_CHANGED"/></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/agenda_widget"/>
+        </receiver>
+        <service android:name=".widget.AgendaWidgetService" android:permission="android.permission.BIND_REMOTEVIEWS" android:exported="false"/>
     </application>
 </manifest>

@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Calendar</string>
+    <string name="widget_description">Upcoming events and pending tasks</string>
+    <string name="widget_name">Calendar agenda</string>
 </resources>

@@ -45,8 +45,15 @@ object Routes {
 }
 
 @Composable
-fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Unit) {
+fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Unit, pendingEditor: StateFlow<String?>, onEditorHandled: () -> Unit) {
     val nav = rememberNavController()
+    val editor by pendingEditor.collectAsStateWithLifecycle()
+    LaunchedEffect(editor) {
+        editor?.let {
+            nav.navigate(it) { popUpTo(Routes.MAIN) }
+            onEditorHandled()
+        }
+    }
     val link by pendingLink.collectAsStateWithLifecycle()
     LaunchedEffect(link) {
         link?.let {
