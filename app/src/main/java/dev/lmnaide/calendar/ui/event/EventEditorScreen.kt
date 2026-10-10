@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Palette
@@ -64,6 +65,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import dev.lmnaide.calendar.contacts.PeopleEditor
 import dev.lmnaide.calendar.data.Recurrence
 import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.common.ColorDot
@@ -185,6 +187,13 @@ fun EventEditorScreen(
             }
             Divider()
 
+            EditorRow(icon = Icons.Outlined.Group, alignTop = true) {
+                PeopleEditor(state.title, state.people, autoMatch = viewModel.autoMatchPeople) { people ->
+                    viewModel.update { it.copy(people = people) }
+                }
+            }
+            Divider()
+
             if (!state.isTask) {
                 EditorRow(icon = Icons.Outlined.LocationOn) {
                     PlainTextField(
@@ -303,7 +312,7 @@ fun EventEditorScreen(
                 selected = calendar,
                 label = { it.name },
                 leading = { ColorDot(Color(it.color)) },
-                onSelect = { picked -> viewModel.update { it.copy(calendarId = picked.id) } },
+                onSelect = viewModel::setCalendar,
                 onDismiss = { dialog = null },
             )
             EditorDialog.Color -> OptionsDialog(
@@ -355,9 +364,9 @@ private fun KindSelector(kind: EventKind, onSelect: (EventKind) -> Unit) {
 /** None, then Low, Medium and High, each marked with its color. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ImportanceSelector(importance: Importance?, onSelect: (Importance?) -> Unit) {
+internal fun ImportanceSelector(importance: Importance?, label: String = "Importance", onSelect: (Importance?) -> Unit) {
     Column {
-        Text("Importance", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
+        Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             (listOf<Importance?>(null) + Importance.entries).forEach { option ->
                 FilterChip(
@@ -402,8 +411,10 @@ private fun TitleField(value: String, onValueChange: (String) -> Unit, autoFocus
     LaunchedEffect(Unit) { if (autoFocus) focus.requestFocus() }
     PlainTextField(
         value = value,
-        onValueChange = onValueChange,
+        // Wraps long titles instead of scrolling them out of view, but stays one logical line.
+        onValueChange = { onValueChange(it.replace('\n', ' ')) },
         placeholder = "Add title",
+        singleLine = false,
         textStyle = MaterialTheme.typography.headlineSmall,
         modifier = Modifier
             .padding(start = 62.dp, end = 20.dp, top = 8.dp, bottom = 20.dp)

@@ -24,8 +24,20 @@ sealed interface SmartEventResult {
 }
 
 object SmartEventParser {
+    fun cleanTitle(title: String): String = title
+        .replace(Regex("\\band\\s+i\\b", RegexOption.IGNORE_CASE), "")
+        .replace(Regex("\\s+"), " ")
+        .trim(' ', ',', '.', '-', '–')
+
     private val weekdays = DayOfWeek.entries.associateBy { it.name.lowercase(Locale.US) }
-    private val months = Month.entries.associateBy { it.name.lowercase(Locale.US) }
+    private val months = buildMap {
+        Month.entries.forEach { month ->
+            val name = month.name.lowercase(Locale.US)
+            put(name, month)
+            put(name.take(3), month)
+        }
+        put("sept", Month.SEPTEMBER)
+    }
     private val dayNames = weekdays.keys.joinToString("|")
     private val monthNames = months.keys.joinToString("|")
     private const val CLOCK = "(?:noon|midnight|\\d{1,2}(?::\\d{2})?\\s*(?:am|pm)?)"
@@ -76,8 +88,19 @@ object SmartEventParser {
             }
             remove(repeat)
         }
-        val datePrefix = if (task) "(?:on|by)" else "on"
-        val datePattern = regex("\\b(?:$datePrefix\\s+)?(the day after tomorrow|day after tomorrow|tomorrow|today|in\\s+\\d+\\s+(?:days?|weeks?)|\\d{4}-\\d{2}-\\d{2}|(?:next\\s+)?(?:$dayNames)|(?:$monthNames)\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?)\\b")
+        val datePrefix = if (task) "(?:on|at|by)" else "(?:on|at)"
+        val datePattern = regex("\\b(?:$datePrefix\\s+)?(?:the\\s+)?(the day after tomorrow|day after tomorrow|tomorrow|today|in\\s+\\d+\\s+(?:days?|weeks?)|\\d{4}-\\d{2}-\\d{2}|(?:next\\s+)?(?:$dayNames)|(?:$monthNames)\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?|\\d{1,2}(?:st|nd|rd|th))\\b")
+        // A concrete date refines casual relative wording, e.g. "tomorrow on the 23rd".
+        val dateMatches = datePattern.findAll(text).toList()
+        val explicitDates = dateMatches.filter {
+            val raw = it.groupValues[1]
+            regex("^(?:\\d|$monthNames)").containsMatchIn(raw)
+        }
+        if (explicitDates.size == 1) {
+            dateMatches.filter { it != explicitDates.single() &&
+                it.groupValues[1].lowercase(Locale.US) in listOf("today", "tomorrow", "day after tomorrow", "the day after tomorrow")
+            }.sortedByDescending { it.range.first }.forEach(::remove)
+        }
         val dateMatch = datePattern.find(text)
         if (dateMatch != null) {
             val raw = dateMatch.groupValues[1].lowercase(Locale.US)
@@ -92,6 +115,13 @@ object SmartEventParser {
                         if (raw.contains("week")) today.plusWeeks(amount) else today.plusDays(amount)
                     }
                     regex("\\d{4}-\\d{2}-\\d{2}").matches(raw) -> LocalDate.parse(raw)
+                    regex("\\d{1,2}(?:st|nd|rd|th)").matches(raw) -> {
+                        val day = raw.takeWhile { it.isDigit() }.toInt()
+                        if (day !in 1..31) return problem("Check the day. Use a number from 1 to 31.")
+                        var month = java.time.YearMonth.from(today)
+                        while (day > month.lengthOfMonth() || month.atDay(day).isBefore(today)) month = month.plusMonths(1)
+                        month.atDay(day)
+                    }
                     weekdays.containsKey(raw.removePrefix("next ")) -> today.with(TemporalAdjusters.next(weekdays.getValue(raw.removePrefix("next "))))
                     else -> {
                         val parts = raw.replace(",", "").replace(regex("(\\d)(st|nd|rd|th)\\b"), "$1").split(" ")
@@ -165,7 +195,7 @@ object SmartEventParser {
                 else "I couldn't read all the date or time details. Try “Work tomorrow from 3 to 5pm”.")
         }
         if (allDayMatch != null && startTime != null) return problem("Use either all-day or a start time.")
-        val title = text.replace(Regex("\\s+"), " ").trim(' ', ',', '.', '-', '–')
+        val title = cleanTitle(text)
         if (title.isBlank()) return problem("Add an event title, for example “Work tomorrow at 3pm”.")
         if (date == null && startTime == null) return problem("Add a date or time, for example “tomorrow” or “at 3pm”.")
         if (durationMatch != null && startTime == null) return problem("Add a start time for the duration.")

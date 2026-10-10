@@ -44,6 +44,7 @@ data class EditorState(
     val recurrenceUntil: LocalDate? = null,
     val location: String = "",
     val description: String = "",
+    val people: List<dev.lmnaide.calendar.contacts.EventPerson> = emptyList(),
     val calendarId: Long = 0,
     val color: Int? = null,
     val reminders: List<Int> = emptyList(),
@@ -80,12 +81,14 @@ class EventEditorViewModel(
     private val settings = settingsRepository.settings.value
 
     /** Text typed into quick add before choosing More options. */
+    private val initialPeople = dev.lmnaide.calendar.data.Converters().stringToPeople(handle["people"] ?: "[]")
     private val initialText: String = handle["text"] ?: ""
     private val initialCalendar: Long = handle["calendar"] ?: Routes.NO_VALUE
     var isSaving by mutableStateOf(false)
         private set
 
     val isNew = eventId == 0L
+    val autoMatchPeople get() = isNew && initialText.isBlank()
     val use24Hour = settings.use24Hour
 
     val calendars: StateFlow<List<CalendarEntity>> = repository.calendars
@@ -129,15 +132,18 @@ class EventEditorViewModel(
             else -> date.atTime(9, 0)
         }
         val end = start.plusMinutes(settings.defaultDurationMinutes.toLong())
+        val calendar = calendars.firstOrNull { it.id == initialCalendar }
+            ?: calendars.firstOrNull { it.id == settings.defaultCalendarId }
+            ?: calendars.first()
         val blank = EditorState(
+            people = initialPeople,
             allDay = initialAllDay,
             startDate = start.toLocalDate(),
             startTime = start.toLocalTime(),
             endDate = if (initialAllDay) start.toLocalDate() else end.toLocalDate(),
             endTime = end.toLocalTime(),
-            calendarId = calendars.firstOrNull { it.id == initialCalendar }?.id
-                ?: calendars.firstOrNull { it.id == settings.defaultCalendarId }?.id
-                ?: calendars.first().id,
+            calendarId = calendar.id,
+            importance = calendar.defaultImportance,
             // Tasks remind when they're due; events use the default notification.
             reminders = if (initialTask) listOf(0) else listOfNotNull(settings.defaultReminderMinutes),
             kind = if (initialTask) EventKind.TASK else EventKind.EVENT,
@@ -181,12 +187,20 @@ class EventEditorViewModel(
             recurrenceUntil = event.recurrenceUntil?.let(LocalDate::ofEpochDay),
             location = event.location,
             description = event.description,
+            people = event.people,
             calendarId = event.calendarId,
             color = event.color,
             reminders = event.reminders.sorted(),
             kind = event.kind,
             importance = event.importance,
         )
+    }
+
+    /** A new item follows its calendar's default importance, unless it was set by hand. */
+    fun setCalendar(calendar: CalendarEntity) = update { s ->
+        val old = calendars.value.firstOrNull { it.id == s.calendarId }
+        val follows = isNew && s.importance == old?.defaultImportance
+        s.copy(calendarId = calendar.id, importance = if (follows) calendar.defaultImportance else s.importance)
     }
 
     /** Switching between event and task keeps the date and time, and picks sensible reminders. */
@@ -229,8 +243,9 @@ class EventEditorViewModel(
                 val edited = EventEntity(
                     id = eventId,
                     calendarId = s.calendarId,
-                    title = s.title.trim(),
+                    title = SmartEventParser.cleanTitle(s.title),
                     description = s.description.trim(),
+                    people = s.people,
                     location = s.location.trim(),
                     start = EventEntity.toStored(s.start, s.allDay),
                     end = EventEntity.toStored(s.end, s.allDay),

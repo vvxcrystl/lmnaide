@@ -38,10 +38,11 @@ class WidgetQuickAddActivity : ComponentActivity() {
                             Toast.makeText(this@WidgetQuickAddActivity, message, Toast.LENGTH_SHORT).show()
                             finish()
                         },
-                        onMoreOptions = { text, task, calendarId ->
+                        onMoreOptions = { text, task, calendarId, people ->
                             startActivity(Intent(this@WidgetQuickAddActivity, MainActivity::class.java)
                                 .putExtra("widget_edit", true)
                                 .putExtra("widget_text", text)
+                                .putExtra("widget_people", people)
                                 .putExtra("widget_task", task)
                                 .putExtra("widget_calendar", calendarId ?: 0L)
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP))

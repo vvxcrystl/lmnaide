@@ -56,6 +56,7 @@ import dev.lmnaide.calendar.ui.common.ConfirmDialog
 import dev.lmnaide.calendar.ui.common.EventColors
 import dev.lmnaide.calendar.ui.common.appViewModelFactory
 import dev.lmnaide.calendar.ui.common.contentColor
+import dev.lmnaide.calendar.ui.event.ImportanceSelector
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -181,6 +182,7 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
     var name by remember { mutableStateOf(initial.name) }
     var color by remember { mutableStateOf(initial.color) }
     var keywords by remember { mutableStateOf(initial.keywords) }
+    var importance by remember { mutableStateOf(initial.defaultImportance) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial.id == 0L) "New calendar" else "Edit calendar") },
@@ -202,6 +204,7 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                ImportanceSelector(importance, label = "Default importance") { importance = it }
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -235,7 +238,7 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(initial.copy(name = name.trim(), color = color, keywords = keywords.split(',').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(", "))) },
+                onClick = { onSave(initial.copy(name = name.trim(), color = color, keywords = keywords.split(',').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(", "), defaultImportance = importance)) },
                 enabled = name.isNotBlank(),
             ) { Text("Save") }
         },

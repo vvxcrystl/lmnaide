@@ -29,6 +29,8 @@ data class CalendarEntity(
     val visible: Boolean = true,
     /** Comma-separated words that send quick add items to this calendar, like "produce, shift". */
     @ColumnInfo(defaultValue = "") val keywords: String = "",
+    /** Importance given to new items in this calendar, like High for work. */
+    val defaultImportance: Importance? = null,
 ) {
     val keywordList: List<String> get() = keywords.split(',').map { it.trim() }.filter { it.isNotEmpty() }
 }
@@ -73,6 +75,7 @@ data class EventEntity(
     /** Epoch days of the task occurrences that have been completed. */
     @ColumnInfo(defaultValue = "") val completions: List<Long> = emptyList(),
     val importance: Importance? = null,
+    @ColumnInfo(defaultValue = "'[]'") val people: List<dev.lmnaide.calendar.contacts.EventPerson> = emptyList(),
 ) {
     val isTask: Boolean get() = kind == EventKind.TASK
 

@@ -31,7 +31,7 @@ object Routes {
     const val SETTINGS = "settings"
     const val CALENDARS = "calendars"
     const val EVENT = "event/{eventId}/{instance}"
-    const val EDIT = "edit?eventId={eventId}&instance={instance}&date={date}&minute={minute}&allDay={allDay}&task={task}&text={text}&calendar={calendar}"
+    const val EDIT = "edit?eventId={eventId}&instance={instance}&date={date}&minute={minute}&allDay={allDay}&task={task}&text={text}&calendar={calendar}&people={people}"
 
     const val NO_VALUE = Long.MIN_VALUE
 
@@ -43,8 +43,8 @@ object Routes {
      * [minute] is minutes after midnight, or -1 for the next full hour. [text] is a quick add
      * sentence to fill the editor from, and [calendarId] the calendar it picked.
      */
-    fun newEvent(date: LocalDate, minute: Int = -1, allDay: Boolean = false, task: Boolean = false, text: String = "", calendarId: Long? = null) =
-        "edit?date=${date.toEpochDay()}&minute=$minute&allDay=$allDay&task=$task&text=${Uri.encode(text)}&calendar=${calendarId ?: NO_VALUE}"
+    fun newEvent(date: LocalDate, minute: Int = -1, allDay: Boolean = false, task: Boolean = false, text: String = "", calendarId: Long? = null, people: String = "[]") =
+        "edit?date=${date.toEpochDay()}&minute=$minute&allDay=$allDay&task=$task&text=${Uri.encode(text)}&calendar=${calendarId ?: NO_VALUE}&people=${Uri.encode(people)}"
 }
 
 /**
@@ -77,7 +77,7 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
             MainScreen(
                 onOpenEvent = { nav.navigate(Routes.event(it)) },
                 onCreateEvent = { date, minute, allDay, task -> nav.navigate(Routes.newEvent(date, minute, allDay, task)) },
-                onMoreOptions = { date, task, text, calendarId -> nav.navigate(Routes.newEvent(date, task = task, text = text, calendarId = calendarId)) },
+                onMoreOptions = { date, task, text, calendarId, people -> nav.navigate(Routes.newEvent(date, task = task, text = text, calendarId = calendarId, people = people)) },
                 onSearch = { nav.navigate(Routes.SEARCH) },
                 onSettings = { nav.navigate(Routes.SETTINGS) },
                 onManageCalendars = { nav.navigate(Routes.CALENDARS) },
@@ -105,6 +105,7 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
                 navArgument("minute") { type = NavType.IntType; defaultValue = -1 },
                 navArgument("allDay") { type = NavType.BoolType; defaultValue = false },
                 navArgument("task") { type = NavType.BoolType; defaultValue = false },
+                navArgument("people") { type = NavType.StringType; defaultValue = "[]" },
                 navArgument("text") { type = NavType.StringType; defaultValue = "" },
                 navArgument("calendar") { type = NavType.LongType; defaultValue = Routes.NO_VALUE },
             ),

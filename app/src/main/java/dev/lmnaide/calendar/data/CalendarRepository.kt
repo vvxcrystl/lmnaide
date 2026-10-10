@@ -24,7 +24,7 @@ class CalendarRepository(private val db: AppDatabase) {
     suspend fun ensureDefaults() {
         if (calendarDao.count() == 0) {
             calendarDao.insert(CalendarEntity(name = "Personal", color = EventColors.Peacock.argb))
-            calendarDao.insert(CalendarEntity(name = "Work", color = EventColors.Grape.argb))
+            calendarDao.insert(CalendarEntity(name = "Work", color = EventColors.Grape.argb, defaultImportance = Importance.HIGH))
         }
     }
 

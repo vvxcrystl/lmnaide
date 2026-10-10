@@ -8,6 +8,7 @@ import androidx.compose.material3.FilledTonalButton
 import dev.lmnaide.calendar.data.Importance
 import android.net.Uri
 import androidx.compose.foundation.background
+import dev.lmnaide.calendar.contacts.PersonAvatar
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +33,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material3.DropdownMenu
@@ -242,6 +244,30 @@ fun EventDetailScreen(
             }
             DetailRow(icon = Icons.Outlined.Event) {
                 Text(loaded.calendar?.name ?: "Unknown calendar", style = MaterialTheme.typography.bodyLarge)
+            }
+            if (event.people.isNotEmpty()) {
+                DetailRow(icon = Icons.Outlined.Group) {
+                    Column {
+                        Text(
+                            if (event.people.size == 1) "1 person" else "${event.people.size} people",
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                        event.people.forEach { person ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(person.lookupUri))) } }
+                                    .padding(vertical = 8.dp),
+                            ) {
+                                PersonAvatar(person.name, Modifier.size(32.dp))
+                                Text(person.name, style = MaterialTheme.typography.bodyLarge)
+                            }
+                        }
+                    }
+                }
             }
             if (event.description.isNotBlank()) {
                 DetailRow(icon = Icons.AutoMirrored.Outlined.Notes) {

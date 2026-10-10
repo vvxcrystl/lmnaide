@@ -91,7 +91,7 @@ import java.time.YearMonth
 fun MainScreen(
     onOpenEvent: (EventLink) -> Unit,
     onCreateEvent: (date: LocalDate, minute: Int, allDay: Boolean, task: Boolean) -> Unit,
-    onMoreOptions: (date: LocalDate, task: Boolean, text: String, calendarId: Long?) -> Unit,
+    onMoreOptions: (date: LocalDate, task: Boolean, text: String, calendarId: Long?, people: String) -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit,
     onManageCalendars: () -> Unit,
@@ -295,9 +295,9 @@ fun MainScreen(
                             if (result == SnackbarResult.ActionPerformed) onOpenEvent(link)
                         }
                     },
-                    onMoreOptions = { text, task, calendarId ->
+                    onMoreOptions = { text, task, calendarId, people ->
                         quickAddOpen = false
-                        onMoreOptions(maxOf(selectedDate, today), task, text, calendarId)
+                        onMoreOptions(maxOf(selectedDate, today), task, text, calendarId, people)
                     },
                     viewModel = quickAddViewModel,
                 )

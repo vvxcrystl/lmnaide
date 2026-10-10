@@ -4,16 +4,19 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
@@ -24,13 +27,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.ui.draw.clip
+import dev.lmnaide.calendar.contacts.PeopleEditor
+import dev.lmnaide.calendar.contacts.hasPeople
 import dev.lmnaide.calendar.data.CalendarEntity
+import dev.lmnaide.calendar.data.Converters
 import dev.lmnaide.calendar.domain.CalendarMatcher
 import dev.lmnaide.calendar.domain.CalendarReason
 import androidx.compose.material.icons.outlined.Event
+import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.Schedule
@@ -41,7 +48,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,6 +58,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -63,10 +73,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.lmnaide.calendar.data.Importance
 import dev.lmnaide.calendar.data.Recurrence
 import dev.lmnaide.calendar.domain.SmartEventDraft
 import dev.lmnaide.calendar.domain.SmartEventParser
@@ -95,7 +114,7 @@ fun QuickAddSheet(
     defaultDate: LocalDate,
     onDismiss: () -> Unit,
     onSaved: (link: EventLink, message: String, date: LocalDate) -> Unit,
-    onMoreOptions: (text: String, task: Boolean, calendarId: Long?) -> Unit,
+    onMoreOptions: (text: String, task: Boolean, calendarId: Long?, people: String) -> Unit,
     viewModel: QuickAddViewModel,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -105,6 +124,8 @@ fun QuickAddSheet(
     val history by viewModel.history.collectAsStateWithLifecycle()
     val today = rememberNow().toLocalDate()
 
+    var peopleJson by rememberSaveable { mutableStateOf("[]") }
+    val people = remember(peopleJson) { Converters().stringToPeople(peopleJson) }
     var input by rememberSaveable { mutableStateOf("") }
     // Null until a chip is tapped; until then the wording decides.
     var taskChoice by rememberSaveable { mutableStateOf<Boolean?>(null) }
@@ -122,6 +143,13 @@ fun QuickAddSheet(
         ?: match?.calendar
         ?: calendars.firstOrNull { it.id == settings.defaultCalendarId }
         ?: calendars.firstOrNull()
+    // Unset until one is picked from the menu; until then the calendar's default applies.
+    var importanceChoice by rememberSaveable { mutableIntStateOf(IMPORTANCE_UNSET) }
+    val importance = when (importanceChoice) {
+        IMPORTANCE_UNSET -> calendar?.defaultImportance
+        IMPORTANCE_NONE -> null
+        else -> Importance.entries[importanceChoice]
+    }
     val reason = match?.reason?.takeIf { calendarChoice == null && calendar == match.calendar }
     val canSave = draft != null && calendar != null && !viewModel.isSaving
 
@@ -132,7 +160,7 @@ fun QuickAddSheet(
         val d = draft ?: return
         if (!canSave) return
         val c = calendar ?: return
-        viewModel.save(d, isTask, c) { link ->
+        viewModel.save(d, isTask, c, importance, people) { link ->
             val message = "${if (isTask) "Task" else "Event"} added · ${whenLabel(d, isTask, today, settings.use24Hour)}"
             closeThen { onSaved(link, message, d.start.toLocalDate()) }
         }
@@ -147,7 +175,7 @@ fun QuickAddSheet(
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
-            Modifier.padding(start = 24.dp, end = 24.dp, bottom = 16.dp),
+            Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -210,7 +238,13 @@ fun QuickAddSheet(
                         if (draft.recurrence != Recurrence.NONE) {
                             PreviewRow(Icons.Outlined.Repeat, Fmt.recurrence(draft.recurrence, draft.start.toLocalDate()))
                         }
-                        calendar?.let { CalendarRow(it, reason, calendars) { picked -> calendarChoice = picked.id } }
+                        calendar?.let {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CalendarRow(it, reason, calendars) { picked -> calendarChoice = picked.id }
+                                Spacer(Modifier.weight(1f))
+                                ImportanceMenu(importance) { picked -> importanceChoice = picked?.ordinal ?: IMPORTANCE_NONE }
+                            }
+                        }
                     }
                     Preview.Problem -> PreviewRow(
                         Icons.Outlined.Info,
@@ -220,8 +254,16 @@ fun QuickAddSheet(
                 }
             }
 
+            // Only shown once the title mentions someone ("with Sam and Dario") or people were added.
+            if (draft != null && hasPeople(draft.title, people)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Icon(Icons.Outlined.Group, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                    PeopleEditor(draft.title, people) { peopleJson = Converters().peopleToString(it) }
+                }
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { closeThen { onMoreOptions(input.trim(), isTask, calendar?.id) } }) { Text("More options") }
+                TextButton(onClick = { closeThen { onMoreOptions(input.trim(), isTask, calendar?.id, Converters().peopleToString(people)) } }) { Text("More options") }
                 Spacer(Modifier.weight(1f))
                 Button(onClick = ::save, enabled = canSave) { Text("Save") }
             }
@@ -230,6 +272,71 @@ fun QuickAddSheet(
 }
 
 private enum class Preview { Examples, Draft, Problem }
+
+/**
+ * A dropdown menu that opens above its anchor instead of below it. It isn't focusable, because a
+ * focusable popup would take focus from the text field and close the keyboard.
+ */
+@Composable
+private fun PopUpMenu(expanded: Boolean, onDismiss: () -> Unit, alignEnd: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
+    if (!expanded) return
+    val margin = with(LocalDensity.current) { 24.dp.roundToPx() }
+    val position = remember(alignEnd, margin) {
+        object : PopupPositionProvider {
+            override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+                val x = if (alignEnd) anchorBounds.right - popupContentSize.width else anchorBounds.left
+                return IntOffset(
+                    x.coerceIn(margin, (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin)),
+                    (anchorBounds.top - popupContentSize.height).coerceAtLeast(0),
+                )
+            }
+        }
+    }
+    Popup(popupPositionProvider = position, onDismissRequest = onDismiss, properties = PopupProperties(focusable = false)) {
+        Surface(
+            shape = MenuDefaults.shape,
+            color = MenuDefaults.containerColor,
+            tonalElevation = MenuDefaults.TonalElevation,
+            shadowElevation = MenuDefaults.ShadowElevation,
+        ) {
+            Column(Modifier.width(160.dp).padding(vertical = 8.dp), content = content)
+        }
+    }
+}
+
+private const val IMPORTANCE_UNSET = -2
+private const val IMPORTANCE_NONE = -1
+
+/** A compact chip on the calendar row showing the importance, with a menu to change it. */
+@Composable
+private fun ImportanceMenu(importance: Importance?, onPick: (Importance?) -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .clip(CircleShape)
+                .clickable(onClickLabel = "Change importance") { menuOpen = true }
+                .padding(start = 10.dp, top = 6.dp, bottom = 6.dp, end = 2.dp),
+        ) {
+            if (importance != null) ColorDot(Color(importance.argb), size = 10.dp)
+            else Icon(Icons.Outlined.Flag, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.size(6.dp))
+            Text(importance?.label ?: "No priority", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        PopUpMenu(expanded = menuOpen, onDismiss = { menuOpen = false }) {
+            (listOf<Importance?>(null) + Importance.entries).forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option?.label ?: "None") },
+                    leadingIcon = { if (option != null) ColorDot(Color(option.argb), size = 14.dp) else Icon(Icons.Outlined.Flag, contentDescription = null) },
+                    trailingIcon = if (option == importance) ({ Icon(Icons.Default.Check, contentDescription = "Selected") }) else null,
+                    onClick = { menuOpen = false; onPick(option) },
+                )
+            }
+        }
+    }
+}
 
 @Composable
 private fun KindChip(label: String, icon: ImageVector, selected: Boolean, onClick: () -> Unit) {
@@ -273,7 +380,7 @@ private fun CalendarRow(calendar: CalendarEntity, reason: CalendarReason?, calen
             }
             Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+        PopUpMenu(expanded = menuOpen, onDismiss = { menuOpen = false }, alignEnd = true) {
             calendars.forEach { option ->
                 DropdownMenuItem(
                     text = { Text(option.name) },

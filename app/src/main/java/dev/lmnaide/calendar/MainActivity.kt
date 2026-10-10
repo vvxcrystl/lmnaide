@@ -67,6 +67,7 @@ class MainActivity : ComponentActivity() {
                 java.time.LocalDate.now(),
                 task = intent.getBooleanExtra("widget_task", false),
                 text = intent.getStringExtra("widget_text").orEmpty(),
+                people = intent.getStringExtra("widget_people") ?: "[]",
                 calendarId = intent.getLongExtra("widget_calendar", 0L).takeIf { it != 0L },
             )
         }

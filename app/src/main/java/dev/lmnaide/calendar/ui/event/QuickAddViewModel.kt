@@ -9,6 +9,7 @@ import dev.lmnaide.calendar.data.CalendarEntity
 import dev.lmnaide.calendar.data.CalendarRepository
 import dev.lmnaide.calendar.data.EventEntity
 import dev.lmnaide.calendar.data.EventKind
+import dev.lmnaide.calendar.data.Importance
 import dev.lmnaide.calendar.data.Settings
 import dev.lmnaide.calendar.data.SettingsRepository
 import dev.lmnaide.calendar.domain.SmartEventDraft
@@ -37,7 +38,7 @@ class QuickAddViewModel(
     var isSaving by mutableStateOf(false)
         private set
 
-    fun save(draft: SmartEventDraft, task: Boolean, calendar: CalendarEntity, onSaved: (EventLink) -> Unit) {
+    fun save(draft: SmartEventDraft, task: Boolean, calendar: CalendarEntity, importance: Importance?, people: List<dev.lmnaide.calendar.contacts.EventPerson>, onSaved: (EventLink) -> Unit) {
         if (isSaving) return
         isSaving = true
         viewModelScope.launch {
@@ -53,6 +54,8 @@ class QuickAddViewModel(
                         // Tasks remind when they're due; events use the default notification.
                         reminders = if (task) listOf(0) else listOfNotNull(settings.value.defaultReminderMinutes),
                         kind = if (task) EventKind.TASK else EventKind.EVENT,
+                        importance = importance,
+                        people = people,
                     ),
                 )
                 onSaved(EventLink(id, draft.start.toEpochSecond(ZoneOffset.UTC)))

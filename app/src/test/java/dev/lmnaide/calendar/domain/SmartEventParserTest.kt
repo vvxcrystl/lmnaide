@@ -58,6 +58,45 @@ class SmartEventParserTest {
         assertEquals(LocalDate.of(2027, 1, 2), event("Holiday January 2").start.toLocalDate())
         assertEquals(LocalDate.of(2028, 2, 29), event("Leap day February 29").start.toLocalDate())
     }
+    @Test fun abbreviatedMonthDates() {
+        listOf("Work at Oct 17th", "Work on Oct 17th", "Work Oct 17th", "Work at October 17th", "Work at OCT 17TH").forEach {
+            check(it, "Work", "2026-10-17T00:00", "2026-10-18T00:00")
+            assertTrue(event(it).allDay)
+        }
+        check("Work at Oct 17th at 3pm", "Work", "2026-10-17T15:00", "2026-10-17T16:00")
+        check("Work on Sep 17th", "Work", "2027-09-17T00:00", "2027-09-18T00:00")
+        check("Work on Sept 17th 2027", "Work", "2027-09-17T00:00", "2027-09-18T00:00")
+        assertTrue(SmartEventParser.looksLikeTask("Pay rent by Oct 17th"))
+        val task = SmartEventParser.parse("Pay rent by Oct 17th", today, task = true) as SmartEventResult.Success
+        assertEquals("Pay rent", task.event.title)
+        assertEquals(LocalDate.of(2026, 10, 17), task.event.start.toLocalDate())
+        assertTrue(SmartEventParser.parse("Work at Feb 30th", today) is SmartEventResult.NeedsDetails)
+    }
+
+    @Test fun dayOfMonthWithoutMonth() {
+        check("Change engine on 6th", "Change engine", "2026-11-06T00:00", "2026-11-07T00:00")
+        check("Work on 17th at 3pm", "Work", "2026-10-17T15:00", "2026-10-17T16:00")
+        check("Work on 8th", "Work", "2026-10-08T00:00", "2026-10-09T00:00")
+        val shortMonth = SmartEventParser.parse("Work on 31st", LocalDate.of(2026, 4, 10)) as SmartEventResult.Success
+        assertEquals(LocalDate.of(2026, 5, 31), shortMonth.event.start.toLocalDate())
+        assertTrue(SmartEventParser.parse("Work on 32nd", today) is SmartEventResult.NeedsDetails)
+    }
+
+    @Test fun explicitDateRefinesRelativeWording() {
+        check("Lunch with Sam tomorrow on the 23rd", "Lunch with Sam", "2026-10-23T00:00", "2026-10-24T00:00")
+        check("Lunch with Sam on the 23rd tomorrow at noon", "Lunch with Sam", "2026-10-23T12:00", "2026-10-23T13:00")
+        check("Lunch tomorrow on October 23", "Lunch", "2026-10-23T00:00", "2026-10-24T00:00")
+        assertTrue(SmartEventParser.parse("Lunch on the 23rd on the 24th", today) is SmartEventResult.NeedsDetails)
+    }
+
+    @Test fun removesAndIFromTitles() {
+        check("Movie Night with Sam, Dario, Altman and I on the 10th at 7pm",
+            "Movie Night with Sam, Dario, Altman", "2026-10-10T19:00", "2026-10-10T20:00")
+        assertEquals("Dinner with Sam", SmartEventParser.cleanTitle("Dinner with Sam AND I"))
+        assertEquals("Sam go bowling", SmartEventParser.cleanTitle("Sam and I go bowling"))
+        assertEquals("Dinner with Sam and Irene", SmartEventParser.cleanTitle("Dinner with Sam and Irene"))
+    }
+
     @Test fun recurrence() {
         assertEquals(Recurrence.WEEKDAYS, event("Standup every weekday at 9am").recurrence)
         val guitar = event("Guitar every Tuesday at 7pm")
