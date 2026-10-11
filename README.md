@@ -8,9 +8,9 @@ Created in [T3 Code](https://t3.codes). [DESIGN.md](DESIGN.md) covers the design
 
 <p>
   <img src="assets/screenshots/schedule.png" width="24%" alt="Schedule view with an October banner and a week of events">
-  <img src="assets/screenshots/month.png" width="24%" alt="Month view with colored event chips">
+  <img src="assets/screenshots/month-dark.png" width="24%" alt="Month view in dark mode with colored event chips">
   <img src="assets/screenshots/week.png" width="24%" alt="Week view with timed events on a grid">
-  <img src="assets/screenshots/quick-add.png" width="24%" alt="Quick add sheet parsing 'Team standup tomorrow at 9am'">
+  <img src="assets/screenshots/quick-add-dark.png" width="24%" alt="Quick add sheet turning 'Weekend trip to Banff Oct 23 to Oct 25' into an all-day event">
 </p>
 
 ## Features
@@ -23,9 +23,9 @@ Overlapping events sit side by side, and multi-day events stretch across the day
 
 <p>
   <img src="assets/screenshots/day.png" width="24%" alt="Day view with two overlapping work events">
-  <img src="assets/screenshots/event-details.png" width="24%" alt="Event details showing high importance, a reminder and the Work calendar">
-  <img src="assets/screenshots/widget.png" width="24%" alt="Agenda widget on the home screen">
-  <img src="assets/screenshots/dark.png" width="24%" alt="Schedule view in dark mode">
+  <img src="assets/screenshots/event-details-dark.png" width="24%" alt="Event details in dark mode showing high importance, a reminder and the Work calendar">
+  <img src="assets/screenshots/widget-dark.png" width="24%" alt="Agenda widget on the home screen">
+  <img src="assets/screenshots/schedule-dark.png" width="24%" alt="Schedule view in dark mode">
 </p>
 
 ### Quick add
@@ -96,7 +96,9 @@ Choose System, Light or Dark, then pick one of eight themes: Material You (color
 
 <p>
   <img src="assets/screenshots/themes-settings.png" width="24%" alt="Theme picker in Settings">
-  <img src="assets/screenshots/themes.png" width="72%" alt="The drawer in the Blush, Forest, Ocean and Jet Black themes">
+  <img src="assets/screenshots/theme-lemonade.png" width="24%" alt="The drawer in the Lemonade theme">
+  <img src="assets/screenshots/theme-blush.png" width="24%" alt="The drawer in the Blush theme">
+  <img src="assets/screenshots/theme-jet-black.png" width="24%" alt="The drawer in the Jet Black theme">
 </p>
 
 Settings also covers the first day of the week, 24-hour time, and the default calendar, event length and reminder.
