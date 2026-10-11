@@ -58,7 +58,7 @@ Events and tasks can repeat daily, every weekday, weekly, monthly or yearly, wit
 
 ### People
 
-Add device contacts to an event from quick add or the editor. In quick add, names after "with" are matched against your contacts. For example, "Movie night with Sam, Dario and I on the 10th at 7pm" adds Sam and Dario. If a name matches more than one contact, the app asks which one you mean. "I" is skipped. Tap a name in the event details to open that contact.
+Add device contacts to an event from quick add or the editor. In quick add, names after "with" are matched against your contacts. For example, "Movie night with Sam, Dario, Elon and I on the 10th at 7pm" adds Sam, Dario and Elon. If a name matches more than one contact, the app asks which one you mean. "I" is skipped. Tap a name in the event details to open that contact.
 
 People are stored on the device only. The app never sends invitations.
 
