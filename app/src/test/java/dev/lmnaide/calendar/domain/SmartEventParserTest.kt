@@ -20,6 +20,61 @@ class SmartEventParserTest {
         assertEquals(LocalDateTime.parse(end), event.end)
     }
 
+    @Test fun dateRangesFromSunday() {
+        val sunday = LocalDate.of(2026, 10, 11)
+        val forms = listOf("Oct 23 to Oct 25", "Oct 23 - Oct 25", "Oct 23 to 25",
+            "Oct 23-25", "Oct 23–25", "from Friday to Sunday", "Fri to Sun")
+        val results = forms.associateWith { SmartEventParser.parse("Weekend trip to Banff $it", sunday) }
+        results.forEach { (form, result) ->
+            assertTrue("$form: $result", result is SmartEventResult.Success)
+            val draft = (result as SmartEventResult.Success).event
+            assertEquals("Weekend trip to Banff", draft.title)
+            assertTrue(draft.allDay)
+            val firstDay = if (form.contains("Oct")) 23 else 16
+            assertEquals(LocalDate.of(2026, 10, firstDay).atStartOfDay(), draft.start)
+            // All-day end dates are exclusive; the named last day is included.
+            assertEquals(LocalDate.of(2026, 10, firstDay + 3).atStartOfDay(), draft.end)
+        }
+    }
+
+    @Test fun timedDateRanges() {
+        check("Trip Oct 23 at 8pm to Oct 25 at 10am", "Trip", "2026-10-23T20:00", "2026-10-25T10:00")
+        check("Trip Oct 23 10am to Oct 25 10am", "Trip", "2026-10-23T10:00", "2026-10-25T10:00")
+        check("Trip Oct 23 to Oct 25 from 8pm to 10am", "Trip", "2026-10-23T20:00", "2026-10-25T10:00")
+        check("Trip from Fri 8pm to Sun 10am", "Trip", "2026-10-09T20:00", "2026-10-11T10:00")
+        assertFalse(event("Trip Oct 23 at 8pm to Oct 25 at 10am").allDay)
+    }
+
+    @Test fun dateRangeRolloverAndSameDay() {
+        check("Holiday Dec 30 to Jan 2", "Holiday", "2026-12-30T00:00", "2027-01-03T00:00")
+        check("Holiday 2026-12-30 to 2027-01-02", "Holiday", "2026-12-30T00:00", "2027-01-03T00:00")
+        check("Trip Oct 23 to Oct 23", "Trip", "2026-10-23T00:00", "2026-10-24T00:00")
+        check("Trip Oct 23 10am to Oct 23 11am", "Trip", "2026-10-23T10:00", "2026-10-23T11:00")
+        check("Trip Oct 23 to 25 all day yearly", "Trip", "2026-10-23T00:00", "2026-10-26T00:00")
+        assertEquals(Recurrence.YEARLY, event("Trip Oct 23 to 25 yearly").recurrence)
+        check("Trip Friday to Monday", "Trip", "2026-10-09T00:00", "2026-10-13T00:00")
+    }
+
+    @Test fun invalidOrIncompleteDateRanges() {
+        listOf("Trip Oct 25 to 23", "Trip Oct 25 to Oct 23", "Trip Feb 28 to 30",
+            "Trip 2026-10-25 to 2026-10-23", "Trip Oct 23 8pm to Oct 25",
+            "Trip Oct 23 to Oct 25 10am", "Trip Oct 23 to Oct 25 at 10am",
+            "Trip Oct 23 to Oct 25 for 2 hours", "Trip Oct 23 to Oct 25 tomorrow",
+            "Trip Oct 23 10am to Oct 23 10am", "Trip Oct 23 8pm to Oct 23 10am",
+            "Trip Friday to today", "Trip Oct 23 to Oct 25 to Oct 27", "Trip Oct 23 to Oct 25 Oct 23",
+        ).forEach { assertTrue("Should clarify: $it", SmartEventParser.parse(it, today) is SmartEventResult.NeedsDetails) }
+    }
+
+    @Test fun comparisonInputsFromSunday() {
+        val sunday = LocalDate.of(2026, 10, 11)
+        listOf("Design review Tuesday 10am to 11:30am", "Movie night Friday 8pm to 10:30pm",
+            "Haircut Oct 20 at 12pm").forEach {
+            assertTrue(it, SmartEventParser.parse(it, sunday) is SmartEventResult.Success)
+        }
+        assertTrue(SmartEventParser.looksLikeTask("Pay rent by Thursday"))
+        assertTrue(SmartEventParser.parse("Pay rent by Thursday", sunday, task = true) is SmartEventResult.Success)
+    }
+
     @Test fun originalExample() {
         check("Work from 3 to 5pm tomorrow", "Work", "2026-10-09T15:00", "2026-10-09T17:00")
     }

@@ -52,6 +52,13 @@ class SmartTaskParserTest {
         ).forEach { assertTrue(it, SmartEventParser.parse(it, today, task = true) is SmartEventResult.NeedsDetails) }
         assertTrue(SmartEventParser.parse("Call doctor by 9pm today", today) is SmartEventResult.NeedsDetails)
     }
+    @Test fun dateRangesNeedOneDueDate() {
+        listOf("Pay rent Oct 23 to Oct 25", "Pay rent Oct 23-25", "Pay rent Fri to Sun",
+            "Pay rent Friday 8pm to Sunday 10am").forEach {
+            val result = SmartEventParser.parse(it, today, task = true)
+            assertEquals(SmartEventResult.NeedsDetails("Use one due date for a task."), result)
+        }
+    }
     @Test fun deadlinesReadAsTasks() {
         listOf("Pay rent by Friday", "Call doctor by 9pm today", "Submit report by October 20", "Renew passport by next Monday")
             .forEach { assertTrue(it, SmartEventParser.looksLikeTask(it)) }

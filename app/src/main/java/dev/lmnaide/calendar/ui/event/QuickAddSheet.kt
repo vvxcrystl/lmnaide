@@ -414,6 +414,8 @@ private fun whenLabel(draft: SmartEventDraft, task: Boolean, today: LocalDate, u
     return when {
         task && draft.allDay -> "Due ${startDay.lowercaseRelative()}"
         task -> "Due ${startDay.lowercaseRelative()} by $start"
+        draft.allDay && draft.end.toLocalDate().minusDays(1) != draft.start.toLocalDate() ->
+            "$startDay – ${day(draft.end.toLocalDate().minusDays(1))} · All day"
         draft.allDay -> "$startDay · All day"
         draft.end.toLocalDate() != draft.start.toLocalDate() ->
             "$startDay, $start – ${day(draft.end.toLocalDate())}, ${Fmt.time(draft.end.toLocalTime(), use24h)}"

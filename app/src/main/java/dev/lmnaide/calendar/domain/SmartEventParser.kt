@@ -29,7 +29,13 @@ object SmartEventParser {
         .replace(Regex("\\s+"), " ")
         .trim(' ', ',', '.', '-', '–')
 
-    private val weekdays = DayOfWeek.entries.associateBy { it.name.lowercase(Locale.US) }
+    private val weekdays = buildMap {
+        DayOfWeek.entries.forEach { day ->
+            val name = day.name.lowercase(Locale.US)
+            put(name, day)
+            put(name.take(3), day)
+        }
+    }
     private val months = buildMap {
         Month.entries.forEach { month ->
             val name = month.name.lowercase(Locale.US)
@@ -88,6 +94,39 @@ object SmartEventParser {
             }
             remove(repeat)
         }
+        var endDate: LocalDate? = null
+        // Consume both endpoints before the single-date ambiguity check. Bare ending days
+        // inherit the starting month; named months and weekdays resolve against the start.
+        val dateAtom = "(?:\\d{4}-\\d{2}-\\d{2}|(?:$monthNames)\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?|(?:next\\s+)?(?:$dayNames)|the day after tomorrow|day after tomorrow|tomorrow|today|\\d{1,2}(?:st|nd|rd|th))"
+        val dateRange = regex("\\b(?:from\\s+|on\\s+)?($dateAtom)(?:\\s+(?:at\\s+)?($CLOCK))?\\s*(?:to|[-–])\\s*($dateAtom|\\d{1,2})(?![\\w:])(?:\\s+(?:at\\s+)?($CLOCK)(?![\\w:]))?").find(text)?.takeUnless {
+            regex("\\d{1,2}").matches(it.groupValues[3]) &&
+                !regex("(?:$monthNames)\\s+.*|\\d{1,2}(?:st|nd|rd|th)").matches(it.groupValues[1])
+        }
+        if (dateRange != null) {
+            if (task) return problem("Use one due date for a task.")
+            val first = dateRange.groupValues[1].lowercase(Locale.US)
+            val last = dateRange.groupValues[3].lowercase(Locale.US)
+            val parsedStart: LocalDate
+            val parsedEnd: LocalDate
+            try {
+                parsedStart = resolveDate(first, today)
+                parsedEnd = if (regex("\\d{1,2}(?:st|nd|rd|th)?").matches(last)) {
+                    parsedStart.withDayOfMonth(last.takeWhile { it.isDigit() }.toInt())
+                } else resolveDate(last, parsedStart, rangeEnd = true, relativeDay = today)
+            } catch (_: RuntimeException) {
+                return problem("Check the date range. Try “October 23 to October 25”.")
+            }
+            if (parsedEnd < parsedStart) return problem("The end date must be on or after the start date.")
+            if (date != null && date != parsedStart) return problem("Use one start date for this event.")
+            date = parsedStart
+            endDate = parsedEnd
+            val firstTime = dateRange.groupValues[2]
+            val lastTime = dateRange.groupValues[4]
+            if (firstTime.isNotEmpty() != lastTime.isNotEmpty())
+                return problem("Add both a start time and an end time for the date range.")
+            text = text.replaceRange(dateRange.range,
+                if (firstTime.isEmpty()) "" else " from $firstTime to $lastTime ").trim()
+        }
         val datePrefix = if (task) "(?:on|at|by)" else "(?:on|at)"
         val datePattern = regex("\\b(?:$datePrefix\\s+)?(?:the\\s+)?(the day after tomorrow|day after tomorrow|tomorrow|today|in\\s+\\d+\\s+(?:days?|weeks?)|\\d{4}-\\d{2}-\\d{2}|(?:next\\s+)?(?:$dayNames)|(?:$monthNames)\\s+\\d{1,2}(?:st|nd|rd|th)?(?:,?\\s+\\d{4})?|\\d{1,2}(?:st|nd|rd|th))\\b")
         // A concrete date refines casual relative wording, e.g. "tomorrow on the 23rd".
@@ -96,48 +135,21 @@ object SmartEventParser {
             val raw = it.groupValues[1]
             regex("^(?:\\d|$monthNames)").containsMatchIn(raw)
         }
-        if (explicitDates.size == 1) {
+        if (endDate == null && explicitDates.size == 1) {
             dateMatches.filter { it != explicitDates.single() &&
                 it.groupValues[1].lowercase(Locale.US) in listOf("today", "tomorrow", "day after tomorrow", "the day after tomorrow")
             }.sortedByDescending { it.range.first }.forEach(::remove)
         }
         val dateMatch = datePattern.find(text)
         if (dateMatch != null) {
+            if (endDate != null) return problem("Use one start date for this event.")
             val raw = dateMatch.groupValues[1].lowercase(Locale.US)
-            val parsed = try {
-                when {
-                    raw.endsWith("day after tomorrow") -> today.plusDays(2)
-                    raw == "tomorrow" -> today.plusDays(1)
-                    raw == "today" -> today
-                    raw.startsWith("in ") -> {
-                        val amount = raw.split(" ")[1].toLong()
-                        if (amount > 36500) return problem("That date is too far away. Use a specific date.")
-                        if (raw.contains("week")) today.plusWeeks(amount) else today.plusDays(amount)
-                    }
-                    regex("\\d{4}-\\d{2}-\\d{2}").matches(raw) -> LocalDate.parse(raw)
-                    regex("\\d{1,2}(?:st|nd|rd|th)").matches(raw) -> {
-                        val day = raw.takeWhile { it.isDigit() }.toInt()
-                        if (day !in 1..31) return problem("Check the day. Use a number from 1 to 31.")
-                        var month = java.time.YearMonth.from(today)
-                        while (day > month.lengthOfMonth() || month.atDay(day).isBefore(today)) month = month.plusMonths(1)
-                        month.atDay(day)
-                    }
-                    weekdays.containsKey(raw.removePrefix("next ")) -> today.with(TemporalAdjusters.next(weekdays.getValue(raw.removePrefix("next "))))
-                    else -> {
-                        val parts = raw.replace(",", "").replace(regex("(\\d)(st|nd|rd|th)\\b"), "$1").split(" ")
-                        val month = months.getValue(parts[0])
-                        val year = parts.getOrNull(2)?.toInt() ?: today.year
-                        // MonthDay validates leap-day input before choosing the next valid year.
-                        val day = parts[1].toInt()
-                        if (parts.size > 2) LocalDate.of(year, month, day) else {
-                            val md = java.time.MonthDay.of(month, day)
-                            var candidateYear = year
-                            while (!md.isValidYear(candidateYear) || md.atYear(candidateYear).isBefore(today)) candidateYear++
-                            md.atYear(candidateYear)
-                        }
-                    }
-                }
-            } catch (_: RuntimeException) { return problem("Check the date. Try “October 20” or “2026-10-20”.") }
+            if (raw.startsWith("in ") && raw.split(" ")[1].toLongOrNull()?.let { it > 36500 } == true)
+                return problem("That date is too far away. Use a specific date.")
+            if (regex("\\d{1,2}(?:st|nd|rd|th)").matches(raw) && raw.takeWhile { it.isDigit() }.toInt() !in 1..31)
+                return problem("Check the day. Use a number from 1 to 31.")
+            val parsed = try { resolveDate(raw, today) }
+            catch (_: RuntimeException) { return problem("Check the date. Try “October 20” or “2026-10-20”.") }
             if (date != null && date != parsed) return problem("Use one start date for this event.")
             date = parsed
             remove(dateMatch)
@@ -169,16 +181,16 @@ object SmartEventParser {
                 ?: return problem("Check the end time, or use 24-hour time like “17:00”.")
             // With no am or pm anywhere, prefer the reading that ends the same day: 6 to 2 is a day shift.
             val firstHour = bareHour(first)
-            if (suffix == null && firstHour in 1..12 && bareHour(last) in 1..12 && endTime < startTime) {
+            if ((endDate == null || endDate == date) && suffix == null && firstHour in 1..12 && bareHour(last) in 1..12 && endTime < startTime) {
                 val flipped = startTime.plusHours(12)
                 val flippedEnd = nextAfter(bareHour(last)!!, flipped)
                 if (flippedEnd > flipped) { startTime = flipped; endTime = flippedEnd }
             }
             // Shared suffix: 11 to 1pm means 11am to 1pm, rather than an overnight range.
-            if (suffix != null && !regex("am|pm|noon|midnight").containsMatchIn(first) && first.substringBefore(':').trim().toIntOrNull() in 1..12 && endTime <= startTime) {
+            if ((endDate == null || endDate == date) && suffix != null && !regex("am|pm|noon|midnight").containsMatchIn(first) && first.substringBefore(':').trim().toIntOrNull() in 1..12 && endTime <= startTime) {
                 startTime = if (startTime.hour >= 12) startTime.minusHours(12) else startTime.plusHours(12)
             }
-            if (endTime == startTime) return problem("The start and end times are the same. Add an end time or duration.")
+            if ((endDate == null || endDate == date) && endTime == startTime) return problem("The start and end times are the same. Add an end time or duration.")
             remove(range)
         } else {
             val timePrefix = if (task) "(?:at|by)" else "at"
@@ -194,6 +206,10 @@ object SmartEventParser {
             return problem(if (task) "I couldn't read all the due-date details. Try “Call doctor by 9pm today”."
                 else "I couldn't read all the date or time details. Try “Work tomorrow from 3 to 5pm”.")
         }
+        if (endDate != null && startTime != null && endTime == null)
+            return problem("Add both a start time and an end time for the date range.")
+        if (endDate != null && durationMatch != null)
+            return problem("Use either an end date or a duration.")
         if (allDayMatch != null && startTime != null) return problem("Use either all-day or a start time.")
         val title = cleanTitle(text)
         if (title.isBlank()) return problem("Add an event title, for example “Work tomorrow at 3pm”.")
@@ -201,12 +217,53 @@ object SmartEventParser {
         if (durationMatch != null && startTime == null) return problem("Add a start time for the duration.")
         val start = (date ?: defaultDate).atTime(startTime ?: LocalTime.MIDNIGHT)
         val end = when {
-            startTime == null -> start.plusDays(1)
+            startTime == null -> (endDate ?: start.toLocalDate()).plusDays(1).atStartOfDay()
             task -> start
             endTime == null -> start.plusMinutes(duration)
+            endDate != null -> endDate.atTime(endTime)
             else -> start.toLocalDate().atTime(endTime).let { if (it < start) it.plusDays(1) else it }
         }
+        if (end <= start && !task) return problem("The end must be after the start of the event.")
         return SmartEventResult.Success(SmartEventDraft(title, start, end, startTime == null, recurrence))
+    }
+
+    /** Resolve range ends relative to their start, including week/year rollover. */
+    private fun resolveDate(
+        raw: String, reference: LocalDate, rangeEnd: Boolean = false, relativeDay: LocalDate = reference,
+    ): LocalDate = when {
+        raw.endsWith("day after tomorrow") -> relativeDay.plusDays(2)
+        raw == "tomorrow" -> relativeDay.plusDays(1)
+        raw == "today" -> relativeDay
+        raw.startsWith("in ") -> {
+            val amount = raw.split(" ")[1].toLong()
+            require(amount <= 36500)
+            if (raw.contains("week")) reference.plusWeeks(amount) else reference.plusDays(amount)
+        }
+        regex("\\d{4}-\\d{2}-\\d{2}").matches(raw) -> LocalDate.parse(raw)
+        regex("\\d{1,2}(?:st|nd|rd|th)").matches(raw) -> {
+            val day = raw.takeWhile { it.isDigit() }.toInt()
+            require(day in 1..31)
+            var month = java.time.YearMonth.from(reference)
+            while (day > month.lengthOfMonth() || month.atDay(day).isBefore(reference)) month = month.plusMonths(1)
+            month.atDay(day)
+        }
+        weekdays.containsKey(raw.removePrefix("next ")) -> {
+            val weekday = weekdays.getValue(raw.removePrefix("next "))
+            reference.with(if (rangeEnd && !raw.startsWith("next ")) TemporalAdjusters.nextOrSame(weekday)
+                else TemporalAdjusters.next(weekday))
+        }
+        else -> {
+            val parts = raw.replace(",", "").replace(regex("(\\d)(st|nd|rd|th)\\b"), "$1").split(" ")
+            val month = months.getValue(parts[0])
+            val year = parts.getOrNull(2)?.toInt() ?: reference.year
+            val day = parts[1].toInt()
+            if (parts.size > 2 || (rangeEnd && month == reference.month)) LocalDate.of(year, month, day) else {
+                val md = java.time.MonthDay.of(month, day)
+                var candidateYear = year
+                while (!md.isValidYear(candidateYear) || md.atYear(candidateYear).isBefore(reference)) candidateYear++
+                md.atYear(candidateYear)
+            }
+        }
     }
 
     private fun clock(raw: String, inheritedSuffix: String? = null): LocalTime? {
