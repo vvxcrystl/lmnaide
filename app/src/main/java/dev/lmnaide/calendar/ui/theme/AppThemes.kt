@@ -22,8 +22,7 @@ enum class AppTheme(val label: String) {
     AMETHYST("Amethyst"),
     FOREST("Forest"),
     OCEAN("Ocean"),
-    EMBER("Ember"),
-    IRIS("Iris");
+    EMBER("Ember");
 
     /** Material You uses baseline colors before Android 12. */
     val isAvailable: Boolean get() = true
@@ -53,7 +52,6 @@ enum class AppTheme(val label: String) {
             FOREST -> if (useDark) palette(true, 0xFF6FD39B, 0xFF0F1511) else palette(false, 0xFF2E7D52, 0xFFF7F8F1)
             OCEAN -> if (useDark) palette(true, 0xFF63B3F0, 0xFF0C1519) else palette(false, 0xFF1F6FB8, 0xFFF5F9FC)
             EMBER -> if (useDark) palette(true, 0xFFFFA06B, 0xFF17100D) else palette(false, 0xFFB5532A, 0xFFFFF8F4)
-            IRIS -> if (useDark) palette(true, 0xFFB9A1FF, 0xFF120F1A) else palette(false, 0xFF7B5BD6, 0xFFFAF7FF)
         }
     }
 }

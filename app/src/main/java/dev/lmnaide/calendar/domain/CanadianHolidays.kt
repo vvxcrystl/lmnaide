@@ -19,7 +19,8 @@ data class Holiday(
 
 /** Federal, provincial and territorial holidays in Canada, plus widely observed days. */
 object CanadianHolidays {
-    const val CALENDAR_NAME = "Canadian Holidays"
+    const val CALENDAR_NAME = "Holidays"
+    const val PREVIOUS_CALENDAR_NAME = "Canadian Holidays"
 
     const val COLOR = 0xFF479A8F.toInt()
 

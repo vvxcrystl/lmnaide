@@ -229,6 +229,7 @@ fun MainScreen(
                                 selectedDate = selectedDate,
                                 jumpCount = jumpCount,
                                 index = index,
+                                weekStart = settings.weekStart,
                                 use24h = settings.use24Hour,
                                 now = now,
                                 onVisibleRange = { visibleRange = it },

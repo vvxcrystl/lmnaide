@@ -1,12 +1,17 @@
 package dev.lmnaide.calendar.ui.main
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,6 +20,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -22,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -30,6 +37,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.lmnaide.calendar.domain.EventIndex
 import dev.lmnaide.calendar.domain.Occurrence
@@ -37,9 +46,11 @@ import dev.lmnaide.calendar.ui.common.DayNumber
 import dev.lmnaide.calendar.ui.common.EventCard
 import dev.lmnaide.calendar.ui.common.Fmt
 import kotlinx.coroutines.flow.distinctUntilChanged
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.YearMonth
+import java.time.temporal.TemporalAdjusters
 
 private sealed interface ScheduleRow {
     val key: String
@@ -48,6 +59,11 @@ private sealed interface ScheduleRow {
     data class MonthHeader(val month: YearMonth) : ScheduleRow {
         override val key = "m$month"
         override val date: LocalDate = month.atDay(1)
+    }
+
+    /** A "Oct 11 – 17" label opening each week that has something in it. */
+    data class WeekHeader(override val date: LocalDate, val end: LocalDate) : ScheduleRow {
+        override val key = "w$date"
     }
 
     data class Day(override val date: LocalDate, val occurrences: List<Occurrence>) : ScheduleRow {
@@ -61,6 +77,7 @@ fun ScheduleView(
     selectedDate: LocalDate,
     jumpCount: Int,
     index: EventIndex,
+    weekStart: DayOfWeek,
     use24h: Boolean,
     now: LocalDateTime,
     onVisibleRange: (ClosedRange<LocalDate>) -> Unit,
@@ -70,7 +87,7 @@ fun ScheduleView(
 ) {
     // Jumping to another date rebuilds the list around it.
     key(selectedDate, jumpCount) {
-        ScheduleList(selectedDate, index, use24h, now, onVisibleRange, onOpenEvent, onOpenDay, onToggleTask)
+        ScheduleList(selectedDate, index, weekStart, use24h, now, onVisibleRange, onOpenEvent, onOpenDay, onToggleTask)
     }
 }
 
@@ -78,6 +95,7 @@ fun ScheduleView(
 private fun ScheduleList(
     anchor: LocalDate,
     index: EventIndex,
+    weekStart: DayOfWeek,
     use24h: Boolean,
     now: LocalDateTime,
     onVisibleRange: (ClosedRange<LocalDate>) -> Unit,
@@ -90,7 +108,7 @@ private fun ScheduleList(
     var end by remember(anchor) { mutableStateOf(YearMonth.from(anchor).plusMonths(6).atEndOfMonth()) }
     val limit = remember(anchor) { anchor.plusYears(5) }
 
-    val rows = remember(index, start, end, today, anchor) { buildRows(index, start, end, today, anchor) }
+    val rows = remember(index, start, end, today, anchor, weekStart) { buildRows(index, start, end, today, anchor, weekStart) }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = indexOf(rows, anchor))
     // Events load after the first frame; once they arrive, put the anchor date back at the top.
     var positioned by remember(anchor) { mutableStateOf(false) }
@@ -124,17 +142,33 @@ private fun ScheduleList(
                     row.month,
                     Modifier.padding(start = 12.dp, end = 12.dp, top = 16.dp, bottom = 8.dp),
                 )
-                is ScheduleRow.Day -> DayRow(row, today, use24h, now, onOpenEvent, onOpenDay, onToggleTask)
+                is ScheduleRow.WeekHeader -> WeekLabel(row.date, row.end)
+                is ScheduleRow.Day -> DayRow(
+                    row,
+                    // How far this day has scrolled up under the top edge, read at layout time.
+                    scrolledPast = { listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == row.key }?.offset?.let { -it } ?: 0 },
+                    today,
+                    use24h,
+                    now,
+                    onOpenEvent,
+                    onOpenDay,
+                    onToggleTask,
+                )
             }
         }
     }
 }
 
-/** The row for [date], or its month banner when the date opens the month. */
+/** The row for [date], or the month banner and week label sitting directly above it. */
 private fun indexOf(rows: List<ScheduleRow>, date: LocalDate): Int {
-    val day = rows.indexOfFirst { it is ScheduleRow.Day && it.date >= date }.coerceAtLeast(0)
-    val header = rows.getOrNull(day - 1)
-    return if (header is ScheduleRow.MonthHeader && header.month == YearMonth.from(rows[day].date)) day - 1 else day
+    var i = rows.indexOfFirst { it is ScheduleRow.Day && it.date >= date }.coerceAtLeast(0)
+    val month = YearMonth.from(rows.getOrNull(i)?.date ?: return 0)
+    while (i > 0) {
+        val above = rows[i - 1]
+        if (above !is ScheduleRow.WeekHeader && !(above is ScheduleRow.MonthHeader && above.month == month)) break
+        i--
+    }
+    return i
 }
 
 private fun buildRows(
@@ -143,26 +177,58 @@ private fun buildRows(
     end: LocalDate,
     today: LocalDate,
     anchor: LocalDate,
+    weekStart: DayOfWeek,
 ): List<ScheduleRow> {
     val byDay = index.byDay(start, end)
     val rows = mutableListOf<ScheduleRow>()
     var month = YearMonth.from(start).minusMonths(1)
+    var labelledWeek: LocalDate? = null
     var day = start
     while (day <= end) {
         if (YearMonth.from(day) != month) {
             month = YearMonth.from(day)
             rows += ScheduleRow.MonthHeader(month)
+            // A new month banner restarts the week label, like Google Calendar does.
+            labelledWeek = null
         }
         val occurrences = byDay[day].orEmpty()
-        if (occurrences.isNotEmpty() || day == today || day == anchor) rows += ScheduleRow.Day(day, occurrences)
+        if (occurrences.isNotEmpty() || day == today || day == anchor) {
+            val week = day.with(TemporalAdjusters.previousOrSame(weekStart))
+            if (week != labelledWeek) {
+                labelledWeek = week
+                rows += ScheduleRow.WeekHeader(maxOf(week, month.atDay(1)), minOf(week.plusDays(6), month.atEndOfMonth()))
+            }
+            rows += ScheduleRow.Day(day, occurrences)
+        }
         day = day.plusDays(1)
     }
     return rows
 }
 
 @Composable
+private fun WeekLabel(start: LocalDate, end: LocalDate) {
+    Text(
+        Fmt.weekRange(start, end),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(start = 72.dp, top = 12.dp, bottom = 4.dp),
+    )
+}
+
+/** The current-time marker Google draws between today's past and upcoming events. */
+@Composable
+private fun NowLine() {
+    val color = MaterialTheme.colorScheme.onSurface
+    Box(Modifier.fillMaxWidth().height(12.dp), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.fillMaxWidth().height(2.dp).background(color))
+        Box(Modifier.size(12.dp).background(color, CircleShape))
+    }
+}
+
+@Composable
 private fun DayRow(
     row: ScheduleRow.Day,
+    scrolledPast: () -> Int,
     today: LocalDate,
     use24h: Boolean,
     now: LocalDateTime,
@@ -171,13 +237,19 @@ private fun DayRow(
     onToggleTask: (Occurrence) -> Unit,
 ) {
     val isToday = row.date == today
+    var rowHeight by remember { mutableIntStateOf(0) }
+    var labelHeight by remember { mutableIntStateOf(0) }
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
+            .onSizeChanged { rowHeight = it.height }
+            .padding(start = 12.dp, end = 12.dp, top = 6.dp, bottom = 10.dp),
     ) {
         Column(
             Modifier
+                // Keep the date pinned to the top while its events scroll by, until the next day pushes it off.
+                .offset { IntOffset(0, scrolledPast().coerceIn(0, (rowHeight - labelHeight - 16.dp.roundToPx()).coerceAtLeast(0))) }
+                .onSizeChanged { labelHeight = it.height }
                 .width(52.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .clickable { onOpenDay(row.date) }
@@ -195,7 +267,7 @@ private fun DayRow(
             Modifier
                 .weight(1f)
                 .padding(start = 8.dp, top = 2.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (row.occurrences.isEmpty()) {
                 Text(
@@ -205,7 +277,11 @@ private fun DayRow(
                     modifier = Modifier.padding(top = 14.dp, start = 4.dp),
                 )
             }
-            row.occurrences.forEach { occurrence ->
+            // Untimed items and anything already started sit above the line; the rest below it.
+            val nowAt = if (!isToday) -1 else row.occurrences.indexOfFirst { !it.allDay && it.start > now }
+                .let { if (it < 0) row.occurrences.size else it }
+            row.occurrences.forEachIndexed { i, occurrence ->
+                if (i == nowAt) NowLine()
                 val time = when {
                     occurrence.isTask && occurrence.allDay -> "Task"
                     occurrence.isTask -> "Task, due ${Fmt.time(occurrence.start.toLocalTime(), use24h)}"
@@ -224,6 +300,7 @@ private fun DayRow(
                     onToggleTask = { onToggleTask(occurrence) },
                 )
             }
+            if (nowAt == row.occurrences.size) NowLine()
         }
     }
 }

@@ -31,6 +31,7 @@ class CalendarRepository(private val db: AppDatabase) {
     /** Adds a calendar of Canadian holidays once; deleting or hiding it afterwards sticks. */
     suspend fun seedHolidays(settings: SettingsRepository) {
         if (settings.holidaysSeeded) {
+            renameLegacyHolidaysCalendar()
             recolorHolidays(settings)
             return
         }
@@ -57,6 +58,13 @@ class CalendarRepository(private val db: AppDatabase) {
         }
         settings.holidaysSeeded = true
         settings.holidaysRecolored = true
+    }
+
+    /** Renames the original seeded calendar without overriding a name the user chose. */
+    private suspend fun renameLegacyHolidaysCalendar() {
+        calendarDao.observeAll().first()
+            .filter { it.name == CanadianHolidays.PREVIOUS_CALENDAR_NAME }
+            .forEach { calendarDao.update(it.copy(name = CanadianHolidays.CALENDAR_NAME)) }
     }
 
     /** The calendar first shipped in red; moves it to the teal color unless it was changed since. */

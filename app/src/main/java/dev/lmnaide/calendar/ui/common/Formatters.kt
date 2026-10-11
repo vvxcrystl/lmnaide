@@ -46,6 +46,12 @@ object Fmt {
 
     fun monthYearShort(month: YearMonth): String = pattern("MMM yyyy").format(month)
 
+    /** "Oct 11 – 17", or "Oct 1 – 1" collapsed to "Oct 1" for a one-day range. */
+    fun weekRange(start: LocalDate, end: LocalDate): String = when (start) {
+        end -> pattern("MMM d").format(start)
+        else -> "${pattern("MMM d").format(start)} – ${end.dayOfMonth}"
+    }
+
     fun weekdayShort(day: DayOfWeek): String = day.getDisplayName(TextStyle.SHORT, locale)
 
     fun weekdayNarrow(day: DayOfWeek): String = day.getDisplayName(TextStyle.NARROW, locale)

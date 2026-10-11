@@ -21,6 +21,4 @@ internal val widgetThemeResources = mapOf(
     (AppTheme.OCEAN to true) to intArrayOf(R.drawable.widget_theme_ocean_dark_background, R.drawable.widget_theme_ocean_dark_add, R.drawable.widget_theme_ocean_dark_today, R.drawable.widget_theme_ocean_dark_tasks),
     (AppTheme.EMBER to false) to intArrayOf(R.drawable.widget_theme_ember_light_background, R.drawable.widget_theme_ember_light_add, R.drawable.widget_theme_ember_light_today, R.drawable.widget_theme_ember_light_tasks),
     (AppTheme.EMBER to true) to intArrayOf(R.drawable.widget_theme_ember_dark_background, R.drawable.widget_theme_ember_dark_add, R.drawable.widget_theme_ember_dark_today, R.drawable.widget_theme_ember_dark_tasks),
-    (AppTheme.IRIS to false) to intArrayOf(R.drawable.widget_theme_iris_light_background, R.drawable.widget_theme_iris_light_add, R.drawable.widget_theme_iris_light_today, R.drawable.widget_theme_iris_light_tasks),
-    (AppTheme.IRIS to true) to intArrayOf(R.drawable.widget_theme_iris_dark_background, R.drawable.widget_theme_iris_dark_add, R.drawable.widget_theme_iris_dark_today, R.drawable.widget_theme_iris_dark_tasks),
 )

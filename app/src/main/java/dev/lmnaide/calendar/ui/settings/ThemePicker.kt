@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,7 +38,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import dev.lmnaide.calendar.data.ThemeMode
@@ -54,8 +55,8 @@ fun ThemePicker(
     val systemDark = isSystemInDarkTheme()
     val dark = appTheme.isDark(themeMode, systemDark)
     val context = LocalContext.current
-    val accentLight = remember(appTheme) { appTheme.colorScheme(false, context).primary }
-    val accentDark = remember(appTheme) { appTheme.colorScheme(true, context).primary }
+    val lightScheme = remember(appTheme) { appTheme.colorScheme(false, context) }
+    val darkScheme = remember(appTheme) { appTheme.colorScheme(true, context) }
 
     Column(Modifier.padding(16.dp)) {
         Text("Color scheme", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -68,7 +69,7 @@ fun ThemePicker(
                     onClick = { onThemeMode(mode) },
                     modifier = Modifier.weight(1f),
                 ) {
-                    SchemePreview(mode, accentLight, accentDark)
+                    SchemePreview(mode, lightScheme, darkScheme)
                 }
             }
         }
@@ -141,35 +142,43 @@ private fun SchemeCard(
     }
 }
 
-/** A tiny calendar window: sidebar, month title, two event rows and a toolbar. System splits it light and dark. */
+/** A tiny schedule screen in the theme's own colors. System splits it light and dark. */
 @Composable
-private fun SchemePreview(mode: ThemeMode, accentLight: Color, accentDark: Color) {
+private fun SchemePreview(mode: ThemeMode, light: ColorScheme, dark: ColorScheme) {
     Canvas(Modifier.fillMaxWidth().aspectRatio(1.35f)) {
         when (mode) {
-            ThemeMode.LIGHT -> mockWindow(light = true, accent = accentLight)
-            ThemeMode.DARK -> mockWindow(light = false, accent = accentDark)
-            ThemeMode.SYSTEM -> {
-                clipRect(right = size.width / 2) { mockWindow(light = true, accent = accentLight) }
-                clipRect(left = size.width / 2) { mockWindow(light = false, accent = accentDark) }
-            }
+            ThemeMode.LIGHT -> mockSchedule(light, light, light, dark)
+            ThemeMode.DARK -> mockSchedule(dark, dark, light, dark)
+            ThemeMode.SYSTEM -> mockSchedule(light, dark, light, dark)
         }
     }
 }
 
-private fun DrawScope.mockWindow(light: Boolean, accent: Color) {
-    val bg = if (light) Color(0xFFFFFFFF) else Color(0xFF151517)
-    val bar = if (light) Color(0xFFE6E6EA) else Color(0xFF2B2B30)
-    val side = if (light) Color(0xFFF3F3F6) else Color(0xFF1D1D20)
+/**
+ * Today's date circle beside three event cards, all in shades of the theme's accent.
+ * When [left] and [right] differ, the background splits sharply down the middle while the accents blend across it.
+ */
+private fun DrawScope.mockSchedule(left: ColorScheme, right: ColorScheme, light: ColorScheme, dark: ColorScheme) {
     val w = size.width
     val h = size.height
-    drawRect(bg)
-    drawRect(side, size = Size(w * 0.28f, h))
-    listOf(0.2f, 0.34f, 0.48f).forEach { y -> drawRoundRect(bar, Offset(w * 0.05f, h * y), Size(w * 0.18f, h * 0.07f), CornerRadius(h * 0.035f)) }
-    drawRoundRect(bar, Offset(w * 0.4f, h * 0.12f), Size(w * 0.3f, h * 0.08f), CornerRadius(h * 0.04f))
-    drawRoundRect(accent.copy(alpha = 0.85f), Offset(w * 0.34f, h * 0.3f), Size(w * 0.5f, h * 0.1f), CornerRadius(h * 0.05f))
-    drawRoundRect(bar, Offset(w * 0.34f, h * 0.46f), Size(w * 0.42f, h * 0.1f), CornerRadius(h * 0.05f))
-    drawRoundRect(bar, Offset(w * 0.34f, h * 0.62f), Size(w * 0.5f, h * 0.1f), CornerRadius(h * 0.05f))
-    drawCircle(accent, radius = h * 0.075f, center = Offset(w * 0.9f, h * 0.88f))
+    if (right === left) {
+        drawRect(left.surface)
+    } else {
+        drawRect(left.surface, size = Size(w / 2, h))
+        drawRect(right.surface, Offset(w / 2, 0f), Size(w / 2, h))
+    }
+    // Shades step toward the other mode's accent rather than the background, so they stay solid.
+    fun shade(scheme: ColorScheme, step: Float) =
+        lerp(scheme.primary, if (scheme === light) dark.primary else light.primary, step)
+    fun accent(step: Float) = Brush.horizontalGradient(
+        0.42f to shade(left, step),
+        0.58f to shade(right, step),
+        endX = w,
+    )
+    drawCircle(accent(0f), radius = h * 0.1f, center = Offset(w * 0.17f, h * 0.27f))
+    listOf(0f, 0.4f, 0.8f).forEachIndexed { i, step ->
+        drawRoundRect(accent(step), Offset(w * 0.34f, h * (0.17f + i * 0.24f)), Size(w * 0.56f, h * 0.18f), CornerRadius(h * 0.06f))
+    }
 }
 
 @Composable
@@ -191,7 +200,7 @@ private fun ThemeCard(theme: AppTheme, selected: Boolean, dark: Boolean, onClick
 
 /** A glass-like sphere in a theme's colors: background at the edge, accent blooming from a corner. */
 @Composable
-private fun Orb(scheme: androidx.compose.material3.ColorScheme) {
+private fun Orb(scheme: ColorScheme) {
     Canvas(Modifier.size(44.dp).clip(CircleShape)) {
         drawRect(scheme.background)
         drawRect(
