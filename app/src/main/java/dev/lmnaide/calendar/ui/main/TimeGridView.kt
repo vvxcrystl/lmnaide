@@ -107,7 +107,7 @@ fun TimeGridView(
     var allDayExpanded by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(pagerState.settledPage) { draftSlot = null }
 
-    HorizontalPager(state = pagerState, beyondViewportPageCount = 1, key = { it }) { page ->
+    HorizontalPager(state = pagerState, key = { it }) { page ->
         val range = paging.rangeOf(page)
         val dates = remember(range) { (0 until days).map { range.start.plusDays(it.toLong()) } }
         val occurrences = remember(index, range) { index.occurrences(range.start, range.endInclusive) }

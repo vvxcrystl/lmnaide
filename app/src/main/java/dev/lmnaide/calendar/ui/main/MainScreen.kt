@@ -96,7 +96,6 @@ fun MainScreen(
     onSettings: () -> Unit,
     onManageCalendars: () -> Unit,
     viewModel: MainViewModel = viewModel(factory = MainViewModel.Factory),
-    quickAddViewModel: QuickAddViewModel = viewModel(factory = QuickAddViewModel.Factory),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val calendars by viewModel.calendars.collectAsStateWithLifecycle()
@@ -300,7 +299,7 @@ fun MainScreen(
                         quickAddOpen = false
                         onMoreOptions(maxOf(selectedDate, today), task, text, calendarId, people)
                     },
-                    viewModel = quickAddViewModel,
+                    viewModel = viewModel(factory = QuickAddViewModel.Factory),
                 )
             }
         }

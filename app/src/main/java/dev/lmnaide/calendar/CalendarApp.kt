@@ -30,16 +30,16 @@ class CalendarApp : Application() {
 
 class AppContainer(private val context: Context) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val repository = CalendarRepository(AppDatabase.build(context))
+    val repository = CalendarRepository({ AppDatabase.build(context) }, appScope)
     val settings = SettingsRepository(context)
-    val reminders = ReminderScheduler(context, repository, settings)
+    val reminders by lazy { ReminderScheduler(context, repository, settings) }
 
     fun start() {
         appScope.launch {
             kotlinx.coroutines.flow.combine(repository.events, repository.calendars, settings.settings) { _, _, _ -> Unit }
                 .collectLatest { dev.lmnaide.calendar.widget.AgendaWidgetProvider.refresh(context) }
         }
-        appScope.launch {
+        appScope.launch(Dispatchers.IO) {
             repository.ensureDefaults()
             repository.seedHolidays(settings)
             // Keep the next reminder alarm in sync with every change to the events.

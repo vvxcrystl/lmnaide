@@ -3,19 +3,38 @@ package dev.lmnaide.calendar.data
 import androidx.room.withTransaction
 import dev.lmnaide.calendar.domain.CanadianHolidays
 import dev.lmnaide.calendar.ui.common.EventColors
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.shareIn
 import java.time.LocalDate
 import java.time.LocalDateTime
 
-class CalendarRepository(private val db: AppDatabase) {
-    private val calendarDao = db.calendarDao()
-    private val eventDao = db.eventDao()
+class CalendarRepository(database: () -> AppDatabase, scope: CoroutineScope) {
+    // Construct Room on the collecting worker, not while Application is launching.
+    private val db by lazy(database)
+    private val calendarDao by lazy { db.calendarDao() }
+    private val eventDao by lazy { db.eventDao() }
 
-    val calendars: Flow<List<CalendarEntity>> = calendarDao.observeAll()
-    val events: Flow<List<EventEntity>> = eventDao.observeAll()
+    // The calendar, drawer, reminders and quick add all consume these same snapshots.
+    // Replay only real query results: an artificial empty list could clear reminder alarms.
+    val calendars: Flow<List<CalendarEntity>> = flow { emitAll(calendarDao.observeAll()) }
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.IO)
+        .shareIn(scope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), replay = 1)
+    val events: Flow<List<EventEntity>> = flow { emitAll(eventDao.observeAll()) }
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.IO)
+        .shareIn(scope, SharingStarted.WhileSubscribed(5_000, replayExpirationMillis = 0), replay = 1)
 
-    fun observeEvent(id: Long): Flow<EventEntity?> = eventDao.observe(id)
+    fun observeEvent(id: Long): Flow<EventEntity?> = flow { emitAll(eventDao.observe(id)) }
+        .flowOn(Dispatchers.IO)
 
     suspend fun getEvent(id: Long): EventEntity? = eventDao.get(id)
 

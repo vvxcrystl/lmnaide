@@ -58,7 +58,6 @@ fun MonthView(
         WeekdayHeader(weekStart)
         HorizontalPager(
             state = pagerState,
-            beyondViewportPageCount = 1,
             key = { it },
             modifier = Modifier.weight(1f),
         ) { page ->
