@@ -1,0 +1,54 @@
+body.shared-page {
+  overflow: auto;
+  padding: 24px 16px;
+  height: auto;
+  min-height: 100%;
+  background: var(--container-low);
+}
+.shared-card {
+  max-width: 600px;
+  margin: 40px auto;
+  padding: 32px;
+  background: var(--surface);
+  border-radius: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.shared-brand {
+  color: var(--primary);
+  text-decoration: none;
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+.shared-card h1,
+.shared-card p {
+  overflow-wrap: anywhere;
+}
+.shared-card #content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.shared-card .shared-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.shared-card .shared-notes {
+  white-space: pre-wrap;
+}
+.shared-card button {
+  align-self: flex-start;
+}
+.share-link {
+  width: 100%;
+  min-width: 0;
+  margin-top: 16px;
+}
+@media (max-width: 480px) {
+  .shared-card {
+    margin: 12px auto;
+    padding: 24px;
+  }
+}

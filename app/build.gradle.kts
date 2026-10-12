@@ -33,6 +33,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Device checks install separately from the user’s Cloud app and data.
+            if (providers.gradleProperty("cloudDeviceTest").orNull == "true") {
+                applicationIdSuffix = ".devicetest"
+                resValue("string", "app_name", "Calendar Cloud Test")
+            }
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

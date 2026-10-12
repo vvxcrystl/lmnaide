@@ -119,7 +119,20 @@ function validate(change) {
 export function createApp({
   dbPath = process.env.DB_PATH || "./data/calendar.sqlite",
   allowRegistration = process.env.ALLOW_REGISTRATION !== "false",
+  publicUrl = process.env.PUBLIC_URL || "",
 } = {}) {
+  if (publicUrl) {
+    const url = new URL(publicUrl);
+    if (
+      !["http:", "https:"].includes(url.protocol) ||
+      url.username ||
+      url.password
+    )
+      throw new Error(
+        "PUBLIC_URL must be an HTTP(S) server address without credentials",
+      );
+    publicUrl = url.origin;
+  }
   if (dbPath !== ":memory:") mkdirSync(dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
@@ -129,6 +142,13 @@ export function createApp({
     CREATE INDEX IF NOT EXISTS record_changes ON records(userId,version);
     CREATE TABLE IF NOT EXISTS history(id TEXT PRIMARY KEY,userId TEXT NOT NULL,kind TEXT NOT NULL,recordId TEXT NOT NULL,data TEXT,deleted INTEGER NOT NULL,created INTEGER NOT NULL,reason TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS operations(userId TEXT NOT NULL,operationId TEXT NOT NULL,fingerprint TEXT NOT NULL,PRIMARY KEY(userId,operationId));
+    CREATE TABLE IF NOT EXISTS shares(userId TEXT NOT NULL REFERENCES users(id),eventId TEXT NOT NULL,token TEXT UNIQUE NOT NULL,PRIMARY KEY(userId,eventId));
+    CREATE TRIGGER IF NOT EXISTS revoke_inserted_tombstones AFTER INSERT ON records WHEN NEW.kind='event' AND NEW.deleted=1 BEGIN
+      DELETE FROM shares WHERE userId=NEW.userId AND eventId=NEW.id;
+    END;
+    CREATE TRIGGER IF NOT EXISTS revoke_deleted_shares AFTER UPDATE OF deleted ON records WHEN NEW.kind='event' AND NEW.deleted=1 BEGIN
+      DELETE FROM shares WHERE userId=NEW.userId AND eventId=NEW.id;
+    END;
     CREATE TABLE IF NOT EXISTS counter(id INTEGER PRIMARY KEY CHECK(id=1),value INTEGER NOT NULL);
     INSERT OR IGNORE INTO counter VALUES(1,0);`);
   const limits = new Map();
@@ -163,9 +183,37 @@ export function createApp({
         "Content-Security-Policy",
         "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
       );
+      res.setHeader("X-Robots-Tag", "noindex, nofollow");
       const path = new URL(req.url, "http://localhost").pathname;
       if (req.method === "GET" && path === "/health")
         return send(200, { ok: true, version: "0.1.0" });
+      if (req.method === "GET" && path.startsWith("/api/shared/")) {
+        const shareToken = path.slice("/api/shared/".length);
+        if (!/^[a-f0-9]{64}$/.test(shareToken))
+          fail(404, "This link is no longer available.");
+        const row = db
+          .prepare(
+            "SELECT r.data FROM shares s JOIN records r ON r.userId=s.userId AND r.id=s.eventId AND r.kind='event' AND r.deleted=0 WHERE s.token=?",
+          )
+          .get(shareToken);
+        if (!row) fail(404, "This link is no longer available.");
+        const event = JSON.parse(row.data);
+        return send(200, {
+          event: Object.fromEntries(
+            [
+              "title",
+              "description",
+              "location",
+              "start",
+              "end",
+              "allDay",
+              "recurrence",
+              "recurrenceUntil",
+              "kind",
+            ].map((key) => [key, event[key]]),
+          ),
+        });
+      }
       if (req.method === "GET" && !path.startsWith("/api/")) {
         const types = {
           ".html": "text/html",
@@ -182,7 +230,14 @@ export function createApp({
         try {
           file = resolve(
             publicDir,
-            "." + decodeURIComponent(path === "/" ? "/index.html" : path),
+            "." +
+              decodeURIComponent(
+                path === "/"
+                  ? "/index.html"
+                  : /^\/s\/[a-f0-9]{64}$/.test(path)
+                    ? "/share.html"
+                    : path,
+              ),
           );
         } catch {
           fail(400, "Invalid path");
@@ -294,6 +349,42 @@ export function createApp({
           .get(hash(token), Date.now());
       if (!session) fail(401, "Session expired. Sign in again.");
       const userId = session.userId;
+      if (req.method === "POST" && path === "/api/share") {
+        const b = await body();
+        if (
+          !b ||
+          typeof b.eventId !== "string" ||
+          !["status", "create", "revoke"].includes(b.action)
+        )
+          fail(400, "Invalid share request");
+        const event = db
+          .prepare(
+            "SELECT id FROM records WHERE userId=? AND kind='event' AND id=? AND deleted=0",
+          )
+          .get(userId, b.eventId);
+        if (!event) fail(404, "Sync this event before sharing it.");
+        if (b.action === "revoke")
+          db.prepare("DELETE FROM shares WHERE userId=? AND eventId=?").run(
+            userId,
+            b.eventId,
+          );
+        if (b.action === "create")
+          db.prepare("INSERT OR IGNORE INTO shares VALUES(?,?,?)").run(
+            userId,
+            b.eventId,
+            randomBytes(32).toString("hex"),
+          );
+        const share = db
+          .prepare("SELECT token FROM shares WHERE userId=? AND eventId=?")
+          .get(userId, b.eventId);
+        const sharePath = share ? "/s/" + share.token : null;
+        return send(200, {
+          active: !!share,
+          path: sharePath,
+          url:
+            sharePath && publicUrl ? new URL(sharePath, publicUrl).href : null,
+        });
+      }
       if (req.method === "POST" && path === "/api/logout") {
         db.prepare("DELETE FROM sessions WHERE token=?").run(hash(token));
         return send(200, { ok: true });

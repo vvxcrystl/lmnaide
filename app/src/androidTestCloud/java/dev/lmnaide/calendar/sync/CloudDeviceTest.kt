@@ -37,6 +37,11 @@ class CloudDeviceTest {
                 false,
             )
             assertTrue(app.cloud.state.value.message, app.cloud.state.value.connected)
+            assertEquals(
+                app.cloud.state.value.message,
+                args.getString("email") ?: "device-test@example.com",
+                app.cloud.state.value.email,
+            )
             assertTrue(app.cloud.state.value.message, app.cloud.sync())
         }
         val today = LocalDate.now()

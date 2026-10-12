@@ -224,6 +224,40 @@ class CloudSync(
             }
         }
 
+    /** Share the synced event/series; reminders, contacts and calendar metadata stay private. */
+    suspend fun share(eventId: Long, action: String): String? =
+        withContext(Dispatchers.IO) {
+            ready.await()
+            check(state.value.connected) { "Connect Cloud sync in Settings before sharing events." }
+            if (action != "revoke") check(sync()) { state.value.message }
+            mutex.withLock {
+                val remoteId =
+                    sql.query(
+                            "SELECT remoteId,dirty FROM sync_meta WHERE kind='event' AND localId=? AND deleted=0",
+                            arrayOf<Any>(eventId),
+                        )
+                        .use {
+                            check(it.moveToFirst()) { "This event is no longer available." }
+                            if (action == "create")
+                                check(it.getInt(1) == 0) { "Sync this event before sharing it." }
+                            it.getString(0)
+                        }
+                val server = prefs.getString("server", "").orEmpty()
+                val token = prefs.getString("token", null)?.let { TokenVault.decrypt(it) }
+                check(token != null) { "Sign in to Cloud sync again." }
+                val result =
+                    request(
+                        server,
+                        "share",
+                        JSONObject().put("eventId", remoteId).put("action", action),
+                        token,
+                    )
+                if (!result.getBoolean("active")) null
+                else if (!result.isNull("url")) result.getString("url")
+                else URI(server + "/").resolve(result.getString("path")).toString()
+            }
+        }
+
     private fun request(
         server: String,
         path: String,

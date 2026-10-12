@@ -78,6 +78,7 @@ import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.common.ConfirmDialog
 import dev.lmnaide.calendar.ui.common.Fmt
 import dev.lmnaide.calendar.ui.common.Motion
+import dev.lmnaide.calendar.sync.EventShareAction
 import dev.lmnaide.calendar.ui.common.OptionsDialog
 import java.time.LocalDate
 
@@ -120,6 +121,12 @@ fun EventDetailScreen(
                 },
                 actions = {
                     if (loaded != null) {
+                        EventShareAction(
+                            loaded.occurrence.event.id,
+                            loaded.occurrence.event.title,
+                            loaded.occurrence.event.recurrence != Recurrence.NONE,
+                            overBanner(art != null),
+                        )
                         IconButton(onClick = { onEdit(EventLink(loaded.occurrence.event.id, loaded.occurrence.instanceId)) }, colors = overBanner(art != null)) {
                             Icon(Icons.Outlined.Edit, contentDescription = "Edit")
                         }

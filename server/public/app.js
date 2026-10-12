@@ -8,6 +8,7 @@ const SVG = "http://www.w3.org/2000/svg";
 
 /* ---------- Icons ---------- */
 const I = {
+  share: "M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a3.3 3.3 0 0 0 0-1.4l7.05-4.11A3 3 0 1 0 15 5c0 .24.03.47.09.7L8.04 9.81a3 3 0 1 0 0 4.38l7.12 4.16A3 3 0 1 0 18 16.08Z",
   close:
     "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z",
   back: "M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2Z",
@@ -1810,6 +1811,7 @@ function renderDetail() {
           right: box.right - rect.right + 4 + "px",
         },
       },
+      item(I.share, "Share event", () => openShare(o)),
       item(I.copy, "Duplicate", () => duplicate(o)),
       item(I.delete, "Delete", () => deleteOccurrence(o)),
     );
@@ -1916,6 +1918,95 @@ function renderDetail() {
           o.completed ? "Mark uncompleted" : "Mark completed",
         ),
     ),
+  );
+}
+async function openShare(o) {
+  try {
+    await sync();
+    const share = await api("share", {
+      eventId: o.record.id,
+      action: "status",
+    });
+    showShare(o, share);
+  } catch (e) {
+    snackbar(e.message);
+  }
+}
+function showShare(o, share) {
+  const url = share.active
+    ? share.url || new URL(share.path, location.origin).href
+    : "";
+  const input = h("input", {
+    value: url,
+    readonly: true,
+    "aria-label": "Event link",
+    onclick: (e) => e.target.select(),
+  });
+  let working = false;
+  showAlert(
+    "Share event",
+    [
+      h("p", {
+        text: "Anyone with the link can read this event’s title, dates, location and notes. Edits update the shared page.",
+      }),
+      o.event.recurrence !== "NONE" &&
+        h("p", { text: "This link shares the recurring series." }),
+      url && h("label", { class: "field share-link" },
+        h("span", { text: "Event link" }), input),
+    ],
+    (finish) => {
+      const action = (label, callback) =>
+        textButton(label, async () => {
+          if (working) return;
+          working = true;
+          try {
+            await callback();
+          } catch (e) {
+            snackbar(e.message);
+          } finally {
+            working = false;
+          }
+        });
+      return [
+        textButton("Close", () => finish()),
+        url
+          ? action("Stop sharing", async () => {
+              await api("share", { eventId: o.record.id, action: "revoke" });
+              if (alertDone === finish) finish();
+              snackbar("Link disabled");
+            })
+          : action("Create link", async () => {
+              const created = await api("share", {
+                eventId: o.record.id,
+                action: "create",
+              });
+              if (alertDone === finish) {
+                finish();
+                showShare(o, created);
+              }
+            }),
+        url &&
+          action("Copy link", async () => {
+            try {
+              await navigator.clipboard.writeText(url);
+              snackbar("Link copied");
+            } catch {
+              input.focus();
+              input.select();
+              snackbar("Select and copy the link above");
+            }
+          }),
+        url &&
+          navigator.share &&
+          action("Share", async () => {
+            try {
+              await navigator.share({ title: o.event.title, url });
+            } catch (e) {
+              if (e.name !== "AbortError") throw e;
+            }
+          }),
+      ];
+    },
   );
 }
 async function duplicate(o) {

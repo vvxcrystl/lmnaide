@@ -70,6 +70,7 @@ For a plain Node service, environment variables are:
 | `HOST` | `0.0.0.0` | Listen interface; use `127.0.0.1` behind a host reverse proxy |
 | `DB_PATH` | `./data/calendar.sqlite` | Persistent SQLite file, relative to the working directory |
 | `ALLOW_REGISTRATION` | `true` | Set exactly `false` to disable new accounts |
+| `PUBLIC_URL` | empty | Public server origin for share links, e.g. `https://calendar.example.com`; production Compose sets this from `CALENDAR_DOMAIN` |
 
 For a simple consistent backup, stop the calendar service and copy the whole data directory or Docker data volume, including SQLite's WAL files, then restart. Restore with the service stopped. Keep the data volume when updating the server.
 
@@ -118,3 +119,15 @@ tools/cloud/device-sync-test.sh
 This suite creates a recurring task on emulator one, edits/completes it on the phone, verifies it on emulator two and one, deletes its calendar, verifies the cascade on all devices, then removes ADB reverse, saves offline, force-stops the app, reconnects and verifies the queued event on all devices. It also checks edits made during a request and recovery from a remote deletion cascade on the emulator and phone. It leaves offline/recovery test events for inspection in the test account. The original offline package/data is not touched.
 
 See [TESTING.md](TESTING.md) for the device results from this implementation.
+
+## Share event links
+
+In the browser, open an event → **More options → Share event → Create link**. In Calendar Cloud for Android, open an event and tap the **Share event** icon, then **Create link**. Copy the link or use the device’s share sheet. Anyone with the link can open a read-only page without an account.
+
+The page includes title, dates, location and notes. Recurring events share the series, with its start dates and repeat rule clearly labelled. Timed dates display in the viewer’s time zone; all-day dates stay fixed. Calendar details, contacts, reminders, importance and task completion remain private. Edits update the shared page when it is opened or refreshed.
+
+**Stop sharing** works from either client on the same account. Re-sharing creates a fresh link; revoked links never become valid again. Deleting the event or its calendar also revokes the link permanently, including if you later restore the event. Sharing is opt-in and does not publish other calendar events.
+
+The server must be reachable by recipients. Production Compose sets the public HTTPS origin automatically. For plain Node hosting, set `PUBLIC_URL` to your public origin; otherwise the browser uses its origin and Android uses its configured server address. A localhost/ADB development link only reaches the local test server.
+
+Two-emulator sharing checks: run `tools/cloud/event-share-test.sh` with `CLOUD_TEST_EMAIL` and `CLOUD_TEST_PASSWORD` set to a dedicated account. The script builds with `-PcloudDeviceTest=true`, installing `dev.lmnaide.calendar.cloud.devicetest` separately from Calendar Cloud. The three-device sync script uses that isolated package too. Standard builds keep their original application IDs.

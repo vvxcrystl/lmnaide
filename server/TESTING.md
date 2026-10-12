@@ -36,3 +36,14 @@ A separate browser test created a one-day all-day event using the actual editor 
 - The physical phone's visual lock screen prevented a visual UI walkthrough; its functional checks ran successfully through Android instrumentation.
 
 Public hosting, public DNS/certificate issuance, and a signed distribution release were not performed. The server was run locally, including in Docker, and the deployment configuration is provided in [README.md](README.md).
+
+## Event links — October 11, 2026
+
+- **14 Node tests passed**, including anonymous reads of explicitly shared events, account isolation, stable links on retries, field privacy, live edits, revocation/re-sharing, permanent revocation after event/calendar deletion and restoration, and share persistence after server restart.
+- The browser’s actual sharing dialog created and copied a link. A fresh unauthenticated browser context opened the all-day event page at 390px/light and 1280px/dark, then displayed the unavailable state after revocation and refresh. No page errors or horizontal overflow.
+- Both Android 16 emulators passed `tools/cloud/event-share-test.sh`: first device created a recurring all-day link, second device received it, updated the live notes and revoked it, first device created a fresh link and verified deletion invalidated both links.
+- Native UI checks opened the Android sharing dialog, created a link, copied it, opened the system share sheet with the event title and URL, and disabled the link with **Stop sharing**. Device test builds now use a separate `.devicetest` app ID and check the signed-in account explicitly.
+- Node 24 Docker tests also passed all 14 cases. Standard Cloud/Offline debug builds, the minified unsigned Cloud release, and both lint checks passed; 55 unit tests passed with one opt-in benchmark skipped per edition.
+- Physical-device testing for this feature was skipped at the user’s request.
+
+The feature was tested against the local server; public hosting/DNS remains a deployment step described in README.md.

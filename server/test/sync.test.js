@@ -57,7 +57,7 @@ async function harness(t, options = {}) {
     password: "test-password-123",
   });
   assert.equal(account.status, 200);
-  return { app, api, token: account.token };
+  return { app, api, base, token: account.token };
 }
 test("two devices sync create, task completion, recurring exceptions, and deletions", async (t) => {
   const { api, token } = await harness(t);
@@ -305,9 +305,22 @@ test("database and sessions survive server restart", async (t) => {
     },
     body: JSON.stringify({
       cursor: 0,
-      changes: [change("calendar", "personal", calendar)],
+      changes: [
+        change("calendar", "personal", calendar),
+        change("event", "item", event),
+      ],
     }),
   });
+  const link = await (
+    await fetch(base + "/api/share", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + auth.token,
+      },
+      body: JSON.stringify({ eventId: "item", action: "create" }),
+    })
+  ).json();
   await app.close();
   app = createApp({ dbPath: path });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
@@ -324,4 +337,215 @@ test("database and sessions survive server restart", async (t) => {
     })
   ).json();
   assert.equal(pull.records[0].data.name, "Personal");
+  const shared = await (
+    await fetch(base + "/api/shared/" + link.path.split("/").pop())
+  ).json();
+  assert.equal(shared.event.title, event.title);
+});
+
+test("share links are private by default, account-scoped, live and revocable", async (t) => {
+  const { api, base, token } = await harness(t, {
+    publicUrl: "https://calendar.example.com",
+  });
+  const seed = await api(
+    "sync",
+    {
+      cursor: 0,
+      changes: [
+        change("calendar", "personal", calendar),
+        change("event", "item", event),
+      ],
+    },
+    token,
+  );
+  assert.equal(
+    (await api("share", { eventId: "item", action: "create" })).status,
+    401,
+  );
+  assert.deepEqual(
+    await api("share", { eventId: "item", action: "status" }, token),
+    { status: 200, active: false, path: null, url: null },
+  );
+  const other = await api("register", {
+    email: "other@example.com",
+    password: "test-password-123",
+  });
+  assert.equal(
+    (await api("share", { eventId: "item", action: "create" }, other.token))
+      .status,
+    404,
+  );
+  const link = await api("share", { eventId: "item", action: "create" }, token);
+  assert.match(link.path, /^\/s\/[a-f0-9]{64}$/);
+  assert.equal(link.url, "https://calendar.example.com" + link.path);
+  assert.deepEqual(
+    await api("share", { eventId: "item", action: "create" }, token),
+    link,
+  );
+  const sharedPath = "shared/" + link.path.split("/").pop();
+  const publicEvent = await api(sharedPath);
+  assert.deepEqual(
+    Object.keys(publicEvent.event).sort(),
+    [
+      "title",
+      "description",
+      "location",
+      "start",
+      "end",
+      "allDay",
+      "recurrence",
+      "recurrenceUntil",
+      "kind",
+    ].sort(),
+  );
+  assert.equal(publicEvent.event.title, event.title);
+  const page = await fetch(base + link.path);
+  assert.equal(page.status, 200);
+  assert.match(page.headers.get("x-robots-tag"), /noindex/);
+  assert.match(await page.text(), /share.js/);
+  assert.equal((await api("shared/not-a-token")).status, 404);
+  const version = seed.records.find((r) => r.id === "item").version;
+  await api(
+    "sync",
+    {
+      cursor: seed.cursor,
+      changes: [
+        change("event", "item", { ...event, title: "Updated title" }, version),
+      ],
+    },
+    token,
+  );
+  assert.equal((await api(sharedPath)).event.title, "Updated title");
+  assert.equal(
+    (await api("share", { eventId: "item", action: "revoke" }, other.token))
+      .status,
+    404,
+  );
+  await api("share", { eventId: "item", action: "revoke" }, token);
+  assert.equal((await api(sharedPath)).status, 404);
+  const replacement = await api(
+    "share",
+    { eventId: "item", action: "create" },
+    token,
+  );
+  assert.notEqual(replacement.path, link.path);
+  assert.equal((await api(sharedPath)).status, 404);
+});
+test("calendar deletion permanently revokes links, including after restoring events", async (t) => {
+  const { api, token } = await harness(t);
+  const seed = await api(
+    "sync",
+    {
+      cursor: 0,
+      changes: [
+        change("calendar", "personal", calendar),
+        change("event", "item", {
+          ...event,
+          allDay: true,
+          start: Date.UTC(2026, 9, 11),
+          end: Date.UTC(2026, 9, 13),
+        }),
+      ],
+    },
+    token,
+  );
+  const link = await api("share", { eventId: "item", action: "create" }, token);
+  const path = "shared/" + link.path.split("/").pop();
+  assert.equal(
+    (await api(path)).event.end - (await api(path)).event.start,
+    2 * 86400000,
+  );
+  const deleted = await api(
+    "sync",
+    {
+      cursor: seed.cursor,
+      changes: [
+        change(
+          "calendar",
+          "personal",
+          null,
+          seed.records.find((r) => r.kind === "calendar").version,
+          true,
+        ),
+      ],
+    },
+    token,
+  );
+  assert.equal((await api(path)).status, 404);
+  await api(
+    "sync",
+    {
+      cursor: deleted.cursor,
+      changes: [
+        change(
+          "calendar",
+          "personal",
+          calendar,
+          deleted.records.find((r) => r.kind === "calendar").version,
+        ),
+        change(
+          "event",
+          "item",
+          event,
+          deleted.records.find((r) => r.kind === "event").version,
+        ),
+      ],
+    },
+    token,
+  );
+  assert.equal((await api(path)).status, 404);
+  assert.equal(
+    (await api("share", { eventId: "item", action: "status" }, token)).active,
+    false,
+  );
+});
+
+test("direct event deletion permanently revokes its link", async (t) => {
+  const { api, token } = await harness(t);
+  const seed = await api(
+    "sync",
+    {
+      cursor: 0,
+      changes: [
+        change("calendar", "personal", calendar),
+        change("event", "item", event),
+      ],
+    },
+    token,
+  );
+  const link = await api("share", { eventId: "item", action: "create" }, token);
+  const path = "shared/" + link.path.split("/").pop();
+  const deleted = await api(
+    "sync",
+    {
+      cursor: seed.cursor,
+      changes: [
+        change(
+          "event",
+          "item",
+          null,
+          seed.records.find((r) => r.id === "item").version,
+          true,
+        ),
+      ],
+    },
+    token,
+  );
+  assert.equal((await api(path)).status, 404);
+  await api(
+    "sync",
+    {
+      cursor: deleted.cursor,
+      changes: [
+        change(
+          "event",
+          "item",
+          event,
+          deleted.records.find((r) => r.id === "item").version,
+        ),
+      ],
+    },
+    token,
+  );
+  assert.equal((await api(path)).status, 404);
 });
