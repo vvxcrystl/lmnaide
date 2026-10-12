@@ -108,6 +108,8 @@ fun SettingsScreen(
                 .padding(horizontal = 16.dp)
                 .padding(bottom = 24.dp),
         ) {
+            dev.lmnaide.calendar.sync.CloudSettings()
+
             Section("Appearance") {
                 ThemePicker(
                     themeMode = settings.themeMode,

@@ -7,3 +7,7 @@ local.properties
 .DS_Store
 captures/
 .venv-smollm-bench/
+
+server/data/
+server/node_modules/
+server/.env

@@ -56,6 +56,16 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    override fun onResume() {
+        super.onResume()
+        container.cloud.setForeground(true)
+    }
+
+    override fun onPause() {
+        container.cloud.setForeground(false)
+        super.onPause()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)

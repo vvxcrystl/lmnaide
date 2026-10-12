@@ -32,6 +32,7 @@ class AppContainer(private val context: Context) {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val repository = CalendarRepository({ AppDatabase.build(context) }, appScope)
     val settings = SettingsRepository(context)
+    val cloud = dev.lmnaide.calendar.sync.CloudSync(context, repository, appScope)
     val reminders by lazy { ReminderScheduler(context, repository, settings) }
 
     fun start() {
@@ -42,6 +43,7 @@ class AppContainer(private val context: Context) {
         appScope.launch(Dispatchers.IO) {
             repository.ensureDefaults()
             repository.seedHolidays(settings)
+            cloud.start()
             // Keep the next reminder alarm in sync with every change to the events.
             repository.events.collectLatest { reminders.reschedule() }
         }

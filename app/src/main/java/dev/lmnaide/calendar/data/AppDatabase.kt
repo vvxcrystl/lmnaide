@@ -19,6 +19,11 @@ abstract class AppDatabase : RoomDatabase() {
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context, AppDatabase::class.java, "calendar.db")
                 .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addCallback(object : Callback() {
+                    override fun onOpen(db: SupportSQLiteDatabase) {
+                        dev.lmnaide.calendar.sync.CloudDatabase.install(db)
+                    }
+                })
                 .build()
 
         private val MIGRATION_4_5 = object : Migration(4, 5) {

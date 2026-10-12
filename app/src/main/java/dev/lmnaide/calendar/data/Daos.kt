@@ -12,6 +12,9 @@ interface CalendarDao {
     @Query("SELECT * FROM calendars ORDER BY id")
     fun observeAll(): Flow<List<CalendarEntity>>
 
+    @Query("SELECT * FROM calendars ORDER BY id")
+    suspend fun getAll(): List<CalendarEntity>
+
     @Query("SELECT COUNT(*) FROM calendars")
     suspend fun count(): Int
 

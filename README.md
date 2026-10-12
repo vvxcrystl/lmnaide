@@ -2,7 +2,9 @@
 
 # lmnaide Calendar
 
-An offline Android calendar built with Jetpack Compose and Material 3. It works like Google Calendar and looks like it too, with Material You colors, Google Sans Flex type, solid event chips and illustrated month banners. Nothing leaves your phone. There are no accounts and no sync.
+The offline edition is an Android calendar built with Jetpack Compose and Material 3. It works like Google Calendar and looks like it too, with Material You colors, Google Sans Flex type, solid event chips and illustrated month banners. Nothing leaves your phone. There are no accounts and no sync.
+
+**Cloud edition:** This branch also includes a separate Node.js sync server, browser calendar, and Android **Calendar Cloud** variant. See [server/README.md](server/README.md) for setup, HTTPS deployment, and cross-device testing. The original offline edition remains available.
 
 Created in [T3 Code](https://t3.codes). [DESIGN.md](DESIGN.md) covers the design system.
 
@@ -114,8 +116,9 @@ Settings also covers the first day of the week, 24-hour time, and the default ca
 You need JDK 17 and the Android SDK with platform 37. Gradle downloads the right JDK on its own, as set in `gradle/gradle-daemon-jvm.properties`.
 
 ```sh
-./gradlew assembleDebug   # builds app/build/outputs/apk/debug/app-debug.apk
-./gradlew installDebug    # installs on a connected device or emulator
+./gradlew assembleOfflineDebug   # app/build/outputs/apk/offline/debug/app-offline-debug.apk
+./gradlew installOfflineDebug    # installs the offline edition
+./gradlew assembleCloudDebug     # builds the separate Cloud edition
 ```
 
 The app runs on Android 8.0 (API 26) and later.

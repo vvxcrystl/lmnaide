@@ -18,7 +18,7 @@ import java.time.LocalDateTime
 
 class CalendarRepository(database: () -> AppDatabase, scope: CoroutineScope) {
     // Construct Room on the collecting worker, not while Application is launching.
-    private val db by lazy(database)
+    internal val db by lazy(database)
     private val calendarDao by lazy { db.calendarDao() }
     private val eventDao by lazy { db.eventDao() }
 
@@ -39,6 +39,8 @@ class CalendarRepository(database: () -> AppDatabase, scope: CoroutineScope) {
     suspend fun getEvent(id: Long): EventEntity? = eventDao.get(id)
 
     suspend fun getAllEvents(): List<EventEntity> = eventDao.getAll()
+
+    suspend fun getAllCalendars(): List<CalendarEntity> = calendarDao.getAll()
 
     suspend fun ensureDefaults() {
         if (calendarDao.count() == 0) {

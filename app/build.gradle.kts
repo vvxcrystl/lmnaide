@@ -14,6 +14,22 @@ android {
         targetSdk = 36
         versionCode = 3
         versionName = "0.0.3-alpha"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    flavorDimensions += "edition"
+    productFlavors {
+        create("offline") {
+            dimension = "edition"
+            buildConfigField("boolean", "CLOUD_ENABLED", "false")
+        }
+        create("cloud") {
+            dimension = "edition"
+            applicationIdSuffix = ".cloud"
+            versionNameSuffix = "-cloud"
+            resValue("string", "app_name", "Calendar Cloud")
+            buildConfigField("boolean", "CLOUD_ENABLED", "true")
+        }
     }
 
     buildTypes {
@@ -32,6 +48,7 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+        resValues = true
     }
 }
 
@@ -40,6 +57,9 @@ ksp {
 }
 
 dependencies {
+    "androidTestCloudImplementation"("androidx.test:runner:1.7.0")
+    "androidTestCloudImplementation"("androidx.test.ext:junit:1.3.0")
+    "cloudImplementation"("androidx.work:work-runtime-ktx:2.11.1")
     testImplementation("junit:junit:4.13.2")
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
