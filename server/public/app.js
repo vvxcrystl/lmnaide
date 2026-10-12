@@ -4255,8 +4255,9 @@ function openQuickAdd({ date } = {}) {
         dialog.close();
     }
   };
-  draw();
   showModal(dialog);
+  // Drawn once it's open, so the text box can measure its height.
+  draw();
   input.focus();
 }
 
