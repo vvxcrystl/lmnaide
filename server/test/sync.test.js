@@ -4,6 +4,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src.js";
+import { defaultRecords } from "../public/holidays.js";
+import { createHash } from "node:crypto";
 const calendar = {
   name: "Personal",
   color: -13388167,
@@ -548,4 +550,68 @@ test("direct event deletion permanently revokes its link", async (t) => {
     token,
   );
   assert.equal((await api(path)).status, 404);
+});
+
+test("a phone joining web-seeded calendars acknowledges identical seeds without conflicts", async (t) => {
+  const { api, token } = await harness(t);
+  const seeds = defaultRecords();
+  assert.equal(seeds.filter((r) => r.kind === "calendar").length, 3);
+  assert.equal(seeds.filter((r) => r.kind === "event").length, 366);
+  for (const r of seeds.filter((r) => r.kind === "event")) {
+    const digest = createHash("sha256")
+      .update(`${r.data.title}:${r.data.start}`)
+      .digest("hex");
+    assert.equal(r.id, "seed:holiday:" + digest);
+  }
+  const web = await api(
+    "sync",
+    { cursor: 0, changes: seeds.map((r) => change(r.kind, r.id, r.data)) },
+    token,
+  );
+  assert.equal(web.status, 200);
+  const phone = await api(
+    "sync",
+    {
+      cursor: 0,
+      changes: seeds.map((r) =>
+        change(
+          r.kind,
+          r.id,
+          Object.fromEntries(Object.entries(r.data).reverse()),
+        ),
+      ),
+    },
+    token,
+  );
+  assert.equal(phone.status, 200);
+  assert.deepEqual(phone.conflicts, []);
+  assert.equal(phone.cursor, web.cursor);
+  assert.equal(phone.records.length, seeds.length);
+  assert.deepEqual((await api("history", null, token)).history, []);
+  const personal = web.records.find((r) => r.id === "seed:calendar:Personal");
+  await api(
+    "sync",
+    {
+      cursor: web.cursor,
+      changes: [
+        change(
+          "calendar",
+          personal.id,
+          { ...personal.data, name: "My personal calendar" },
+          personal.version,
+        ),
+      ],
+    },
+    token,
+  );
+  const laterPhone = await api(
+    "sync",
+    { cursor: 0, changes: [change("calendar", personal.id, personal.data)] },
+    token,
+  );
+  assert.deepEqual(laterPhone.conflicts, [personal.id]);
+  assert.equal(
+    laterPhone.records.find((r) => r.id === personal.id).data.name,
+    "My personal calendar",
+  );
 });

@@ -131,3 +131,9 @@ The page includes title, dates, location and notes. Recurring events share the s
 The server must be reachable by recipients. Production Compose sets the public HTTPS origin automatically. For plain Node hosting, set `PUBLIC_URL` to your public origin; otherwise the browser uses its origin and Android uses its configured server address. A localhost/ADB development link only reaches the local test server.
 
 Two-emulator sharing checks: run `tools/cloud/event-share-test.sh` with `CLOUD_TEST_EMAIL` and `CLOUD_TEST_PASSWORD` set to a dedicated account. The script builds with `-PcloudDeviceTest=true`, installing `dev.lmnaide.calendar.cloud.devicetest` separately from Calendar Cloud. The three-device sync script uses that isolated package too. Standard builds keep their original application IDs.
+
+## Web appearance and quick add
+
+The browser has colored themes, a desktop calendar layout, Material date/time pickers and smart quick add using the Android parser’s rules. New accounts start with Personal, Work and Holidays calendars; their stable IDs match Android’s defaults so devices share the same records.
+
+Use the top-bar account button to add, change or remove a profile photo. Photos are stored privately per account via authenticated `/api/profile`, accept JPEG/PNG/WebP data URLs up to 200,000 characters, and do not appear on shared event pages.
