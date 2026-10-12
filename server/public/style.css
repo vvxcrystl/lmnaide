@@ -582,15 +582,17 @@ textarea::placeholder {
   flex: none;
   width: 18px;
   height: 18px;
-  margin: 0 31px 0 23px;
+  /* Lines the box up under "Calendars" and the names up with the menu labels. */
+  margin: 0 18px 0 12px;
   border: 2px solid var(--box);
   border-radius: 2px;
   display: grid;
   place-items: center;
 }
+/* The border leaves 14px inside the box; the tick fills exactly that. */
 .checkbox svg {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   color: #fff;
   display: none;
 }
@@ -2264,7 +2266,7 @@ input.time-field.on {
     margin: auto;
     border-radius: 28px;
     width: 560px;
-    padding-top: 8px;
+    padding: 24px;
   }
   .sheet .sheet-handle {
     display: none;
