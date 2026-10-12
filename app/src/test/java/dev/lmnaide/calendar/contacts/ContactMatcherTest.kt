@@ -7,6 +7,32 @@ import dev.lmnaide.calendar.domain.SmartEventResult
 import java.time.LocalDate
 
 class ContactMatcherTest {
+    @Test fun wordIndexKeepsOrderAndRequiresConsecutivePartsWithoutDuplicateMatches() {
+        val contacts = listOf(EventPerson("Alex Alex Smith", "1"), EventPerson("Alex Lee Smith", "2"), EventPerson("Dr Alex Smith", "3"))
+        val index = ContactMatcher.Index(contacts)
+        assertEquals(contacts, index.matches("Alex"))
+        assertEquals(listOf(contacts[0], contacts[2]), index.matches("Alex Smith"))
+        assertTrue(index.matches("Smith Alex").isEmpty())
+        assertEquals(listOf(contacts[0]), index.matches("Alex Alex"))
+    }
+
+    @Test fun reusableIndexPreservesAccentsPunctuationAmbiguityAndExactPreference() {
+        val contacts = listOf(
+            EventPerson("João D’Angelo", "1"), EventPerson("João Smith", "2"),
+            EventPerson("Mary-Jane Watson", "3"), EventPerson("João", "4"),
+        )
+        val index = ContactMatcher.Index(contacts)
+        assertEquals(listOf(contacts[0]), index.matches("d'angelo"))
+        assertEquals(listOf(contacts[2]), index.matches("MARY-JANE"))
+        assertEquals(listOf(contacts[3]), index.matches("João"))
+        assertEquals(listOf(contacts[0]), index.matches("João D'Angelo"))
+        assertTrue(index.matches("João D'Angelo Extra").isEmpty())
+        assertTrue(index.matches("Mary").isEmpty())
+        assertTrue(index.matches("...").isEmpty())
+        val ambiguous = ContactMatcher.Index(contacts.dropLast(1))
+        assertEquals(contacts.take(2), ambiguous.matches("João"))
+    }
+
     @Test fun smartParserMatchesFirstOrLastNameToFullContact() {
         val sam = EventPerson("Sam Altman", "1")
         listOf("Sam", "Altman", "sam", "ALTMAN").forEach { name ->

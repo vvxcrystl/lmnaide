@@ -20,8 +20,8 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.PersonSearch
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -40,6 +40,10 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private class ContactSnapshot(val contacts: List<EventPerson>) {
+    val index = ContactMatcher.Index(contacts)
+}
+
 /** Permission is requested only when the user chooses to connect contacts. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -47,7 +51,8 @@ fun PeopleEditor(title: String, people: List<EventPerson>, autoMatch: Boolean = 
     val context = LocalContext.current
     var allowed by remember { mutableStateOf(context.checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) }
     var denied by remember { mutableStateOf(false) }
-    var contacts by remember { mutableStateOf<List<EventPerson>>(emptyList()) }
+    var contactSnapshot by remember { mutableStateOf(ContactSnapshot(emptyList())) }
+    val contacts = contactSnapshot.contacts
     var loaded by remember { mutableStateOf(false) }
     var loadFailed by remember { mutableStateOf(false) }
     var picker by remember { mutableStateOf(false) }
@@ -55,6 +60,8 @@ fun PeopleEditor(title: String, people: List<EventPerson>, autoMatch: Boolean = 
     var previousAutomatic by remember { mutableStateOf(setOf<String>()) }
     var excluded by remember { mutableStateOf(setOf<String>()) }
     val names = remember(title) { ContactMatcher.names(title) }
+    val contactIndex = contactSnapshot.index
+    val matchesByName = remember(names, contactIndex) { names.associateWith(contactIndex::matches) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         allowed = it
         denied = !it
@@ -73,16 +80,17 @@ fun PeopleEditor(title: String, people: List<EventPerson>, autoMatch: Boolean = 
                         found += EventPerson(name, ContactsContract.Contacts.getLookupUri(cursor.getLong(0), key).toString())
                     }
                 } ?: error("Contacts unavailable")
-                found.distinctBy { it.lookupUri }
+                // Tokenize and index on the same worker that loads the contact snapshot.
+                ContactSnapshot(found.distinctBy { it.lookupUri })
             }
         }
-        contacts = result.getOrDefault(emptyList())
+        contactSnapshot = result.getOrElse { ContactSnapshot(emptyList()) }
         loadFailed = result.isFailure
         loaded = true
     }
     LaunchedEffect(names, contacts, loaded) {
         if (!loaded || !autoMatch) return@LaunchedEffect
-        val automatic = names.flatMap { ContactMatcher.matches(it, contacts).singleOrNull()?.let(::listOf).orEmpty() }
+        val automatic = names.mapNotNull { matchesByName.getValue(it).singleOrNull() }
             .filter { it.lookupUri !in excluded }
         val updated = (people.filterNot { it.lookupUri in previousAutomatic } + automatic).distinctBy { it.lookupUri }
         previousAutomatic = automatic.map { it.lookupUri }.toSet()
@@ -109,7 +117,7 @@ fun PeopleEditor(title: String, people: List<EventPerson>, autoMatch: Boolean = 
             }
             if (allowed && loaded) {
                 // Names from the title that still need a contact: none found, or more than one.
-                names.filter { name -> ContactMatcher.matches(name, contacts).none { match -> people.any { it.lookupUri == match.lookupUri } } }
+                names.filter { name -> matchesByName.getValue(name).none { match -> people.any { it.lookupUri == match.lookupUri } } }
                     .forEach { name ->
                         AssistChip(
                             onClick = { search = name; picker = true },
@@ -155,12 +163,12 @@ fun PeopleEditor(title: String, people: List<EventPerson>, autoMatch: Boolean = 
                     shape = CircleShape,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                val shown = contacts.filter { it.name.contains(search.trim(), ignoreCase = true) }
+                val shown = remember(contacts, search) { contacts.filter { it.name.contains(search.trim(), ignoreCase = true) } }
                 if (shown.isEmpty()) {
                     Text("No contacts found", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
-                    shown.forEach { person ->
+                LazyColumn(Modifier.fillMaxWidth().heightIn(max = 320.dp)) {
+                    items(shown, key = { it.lookupUri }) { person ->
                         val selected = people.any { it.lookupUri == person.lookupUri }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
