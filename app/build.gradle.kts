@@ -12,8 +12,8 @@ android {
         applicationId = "dev.lmnaide.calendar"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "0.0.3-alpha"
+        versionCode = 4
+        versionName = "0.0.4-alpha"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -25,19 +25,16 @@ android {
         }
         create("cloud") {
             dimension = "edition"
-            applicationIdSuffix = ".cloud"
-            versionNameSuffix = "-cloud"
-            resValue("string", "app_name", "Calendar Cloud")
             buildConfigField("boolean", "CLOUD_ENABLED", "true")
         }
     }
 
     buildTypes {
         debug {
-            // Device checks install separately from the user’s Cloud app and data.
+            // Device checks install separately from the user’s app and data.
             if (providers.gradleProperty("cloudDeviceTest").orNull == "true") {
                 applicationIdSuffix = ".devicetest"
-                resValue("string", "app_name", "Calendar Cloud Test")
+                resValue("string", "app_name", "calander Test")
             }
         }
         release {

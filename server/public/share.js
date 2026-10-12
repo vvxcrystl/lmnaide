@@ -27,7 +27,7 @@ async function load() {
     if (!res.ok) throw new Error(data.error || "Unable to open this event.");
     const e = data.event;
     title.textContent = e.title;
-    document.title = e.title + " · lmnaide";
+    document.title = e.title + " · calander";
     const last = e.allDay ? Math.max(e.start, e.end - 86400000) : e.end;
     const when =
       date(e.start, e.allDay) +
@@ -62,7 +62,7 @@ async function load() {
     content.replaceChildren(...rows);
   } catch (error) {
     title.textContent = "Event unavailable";
-    document.title = "Event unavailable · lmnaide";
+    document.title = "Event unavailable · calander";
     content.replaceChildren(section("", error.message));
   } finally {
     refresh.disabled = false;

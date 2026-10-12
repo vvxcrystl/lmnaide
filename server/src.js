@@ -116,11 +116,21 @@ function validate(change) {
     ].map((k) => [k, d[k] ?? null]),
   );
 }
-export function createApp({
-  dbPath = process.env.DB_PATH || "./data/calendar.sqlite",
-  allowRegistration = process.env.ALLOW_REGISTRATION !== "false",
-  publicUrl = process.env.PUBLIC_URL || "",
-} = {}) {
+export function resolvePublicUrl({ publicUrl = "", domain = "" } = {}) {
+  if (!publicUrl && domain) {
+    // A single DNS hostname also keeps the Caddy site address unambiguous.
+    if (
+      domain.length > 253 ||
+      /[^a-z0-9.-]/i.test(domain) ||
+      !domain.split(".").every((label) =>
+        /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label),
+      )
+    )
+      throw new Error(
+        "CALENDAR_DOMAIN must be a single DNS hostname, such as calander.domain.com (no scheme, port or path)",
+      );
+    publicUrl = `https://${domain}`;
+  }
   if (publicUrl) {
     const url = new URL(publicUrl);
     if (
@@ -133,6 +143,15 @@ export function createApp({
       );
     publicUrl = url.origin;
   }
+  return publicUrl;
+}
+export function createApp({
+  dbPath = process.env.DB_PATH || "./data/calendar.sqlite",
+  allowRegistration = process.env.ALLOW_REGISTRATION !== "false",
+  publicUrl = process.env.PUBLIC_URL || "",
+  domain = process.env.CALENDAR_DOMAIN || "",
+} = {}) {
+  publicUrl = resolvePublicUrl({ publicUrl, domain });
   if (dbPath !== ":memory:") mkdirSync(dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
@@ -618,7 +637,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const app = createApp();
   const port = Number(process.env.PORT || 3000);
   app.server.listen(port, process.env.HOST || "0.0.0.0", () =>
-    console.log(`Calendar Cloud listening on ${port}`),
+    console.log(`calander server listening on ${port}`),
   );
   for (const signal of ["SIGINT", "SIGTERM"])
     process.on(signal, () => app.close().then(() => process.exit(0)));

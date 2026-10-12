@@ -53,3 +53,11 @@ The feature was tested against the local server; public hosting/DNS remains a de
 - **19 Node tests passed** after integrating `6fdc02d`, including profile validation/account isolation, the ported Android smart-parser cases, and every event-sharing regression.
 - A new regression test sends all 369 web starter records (3 calendars and 366 holidays), then simulates a fresh phone sending identical records with new operation IDs and a different JSON property order. The server returns the existing versions with no conflicts, duplicate records or history entries. A later actual calendar edit remains protected from an older phone’s seed data.
 - The local server restarted on port 3000 with `/api/profile` available. The collaborative preview timed out repeatedly, so a fresh visual UI spot-check could not be completed in this handoff.
+
+## Main app identity and merge preparation — October 11, 2026
+
+- Both standard Android editions use the main app’s package, `dev.lmnaide.calendar`, and display **calander**. Version `0.0.4-alpha` / code `4` is newer than main’s code `3`. The browser and shared event pages use the same name.
+- Cloud/Offline debug builds, the minified unsigned Cloud release, both lint checks and Android unit tests passed. APK metadata confirmed the package, display name and version. All 19 Node tests passed.
+- An actual in-place upgrade on `emulator-5554` replaced the existing main app’s `0.0.2-alpha` build with the Cloud build. All 4 calendars, all 396 event records and every existing preference file were preserved exactly. The cloud journal was initialized for each existing record, and sync remained disconnected. The native drawer displayed **calander**.
+- Device-test builds use the isolated `dev.lmnaide.calendar.devicetest` package; test scripts were updated accordingly. Creation, live edits, revocation, re-sharing and deletion passed in three instrumentation phases on the emulator with the new package. Standard APK outputs were rebuilt afterward.
+- `origin/main` is an ancestor of this branch; merge readiness was checked without modifying main. The user will perform the merge.

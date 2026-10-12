@@ -17,7 +17,7 @@ done
 phase() {
   local device="$1" action="$2" output
   printf "Testing %s on %s\n" "$action" "$device"
-  output="$(adb -s "$device" shell am instrument -w -e class dev.lmnaide.calendar.sync.CloudDeviceTest -e phase "$action" -e run "$run" -e email "$CLOUD_TEST_EMAIL" -e password "$CLOUD_TEST_PASSWORD" dev.lmnaide.calendar.cloud.devicetest.test/androidx.test.runner.AndroidJUnitRunner)"
+  output="$(adb -s "$device" shell am instrument -w -e class dev.lmnaide.calendar.sync.CloudDeviceTest -e phase "$action" -e run "$run" -e email "$CLOUD_TEST_EMAIL" -e password "$CLOUD_TEST_PASSWORD" dev.lmnaide.calendar.devicetest.test/androidx.test.runner.AndroidJUnitRunner)"
   printf '%s\n' "$output"
   [[ "$output" == *"OK (1 test)"* ]]
 }
@@ -31,7 +31,7 @@ phase "$phone" verifyDeleted
 adb -s "$first" reverse --remove tcp:3000
 trap 'adb -s "$first" reverse tcp:3000 tcp:3000 >/dev/null' EXIT
 phase "$first" queueOffline
-adb -s "$first" shell am force-stop dev.lmnaide.calendar.cloud.devicetest
+adb -s "$first" shell am force-stop dev.lmnaide.calendar.devicetest
 adb -s "$first" reverse tcp:3000 tcp:3000
 phase "$first" verifyOffline
 phase "$phone" verifyOffline

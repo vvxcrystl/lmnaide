@@ -1,10 +1,10 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# lmnaide Calendar
+# calander
 
-The offline edition is an Android calendar built with Jetpack Compose and Material 3. It works like Google Calendar and looks like it too, with Material You colors, Google Sans Flex type, solid event chips and illustrated month banners. Nothing leaves your phone. There are no accounts and no sync.
+calander is an Android calendar built with Jetpack Compose and Material 3, with Material You colors, Google Sans Flex type, solid event chips and illustrated month banners. It works offline, with optional account sync through a separate Node.js server and a browser calendar. See [server/README.md](server/README.md) for setup, HTTPS deployment, event sharing and cross-device testing.
 
-**Cloud edition:** This branch also includes a separate Node.js sync server, browser calendar, and Android **Calendar Cloud** variant. See [server/README.md](server/README.md) for setup, HTTPS deployment, and cross-device testing. The original offline edition remains available.
+Both build editions use the original app package, `dev.lmnaide.calendar`. The Cloud build adds optional sync; the Offline build has no accounts or network access. Choose one edition to install. Version `0.0.4-alpha` upgrades the existing main app in place when signed with the same key, preserving its calendars, events and settings.
 
 Created in [T3 Code](https://t3.codes). [DESIGN.md](DESIGN.md) covers the design system.
 
@@ -54,7 +54,7 @@ Tap the calendar in the preview to change it before saving.
 
 Highlight a date or event sentence in another app, then choose **Add to calendar** from its text-selection menu (it may be under the overflow menu). A prefilled quick-add sheet lets you check the date, edit the title and pick a calendar before saving. A date on its own gets an editable “New event” title. Saving or dismissing returns to the source app without changing its text. This works in apps that support Android's standard text-selection actions.
 
-For apps with their own message-selection menus, you can also share the selected text to **Add to calendar**. In Google Messages, long-press a message, choose **More → Share**, then **Calendar — Add to calendar**.
+For apps with their own message-selection menus, you can also share the selected text to **Add to calendar**. In Google Messages, long-press a message, choose **More → Share**, then **calander — Add to calendar**.
 
 ### Events and tasks
 
@@ -116,9 +116,9 @@ Settings also covers the first day of the week, 24-hour time, and the default ca
 You need JDK 17 and the Android SDK with platform 37. Gradle downloads the right JDK on its own, as set in `gradle/gradle-daemon-jvm.properties`.
 
 ```sh
-./gradlew assembleOfflineDebug   # app/build/outputs/apk/offline/debug/app-offline-debug.apk
-./gradlew installOfflineDebug    # installs the offline edition
-./gradlew assembleCloudDebug     # builds the separate Cloud edition
+./gradlew assembleCloudDebug     # app/build/outputs/apk/cloud/debug/app-cloud-debug.apk
+./gradlew installCloudDebug      # installs calander with optional sync
+./gradlew assembleOfflineDebug   # builds calander without network access
 ```
 
 The app runs on Android 8.0 (API 26) and later.
