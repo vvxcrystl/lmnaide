@@ -27,7 +27,7 @@ test("profile photos are private to each account and validated", async (t) => {
   const photo = "data:image/jpeg;base64,/9j/4AAQSkZJRg==";
 
   assert.equal((await api("profile")).status, 401);
-  assert.deepEqual(await api("profile", null, a), { status: 200, photo: null });
+  assert.deepEqual(await api("profile", null, a), { status: 200, photo: null, username: null });
   assert.equal((await api("profile", { photo }, a)).photo, photo);
   assert.equal((await api("profile", null, a)).photo, photo);
   assert.equal((await api("profile", null, b)).photo, null);

@@ -345,6 +345,34 @@ test("database and sessions survive server restart", async (t) => {
   assert.equal(shared.event.title, event.title);
 });
 
+test("custom domain share links use the public HTTPS host behind a proxy", async (t) => {
+  const { api, base, token } = await harness(t, {
+    domain: "calander.domain.com",
+    publicUrl: "",
+  });
+  assert.equal((await api("sync", {
+    cursor: 0,
+    changes: [
+      change("calendar", "personal", calendar),
+      change("event", "item", event),
+    ],
+  }, token)).status, 200);
+  const response = await fetch(base + "/api/share", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: "Bearer " + token,
+      "X-Forwarded-Host": "untrusted.example.com",
+      "X-Forwarded-Proto": "http",
+    },
+    body: JSON.stringify({ eventId: "item", action: "create" }),
+  });
+  assert.equal(response.status, 200);
+  const link = await response.json();
+  assert.equal(link.url, "https://calander.domain.com" + link.path);
+  assert.equal((await fetch(base + link.path)).status, 200);
+});
+
 test("share links are private by default, account-scoped, live and revocable", async (t) => {
   const { api, base, token } = await harness(t, {
     publicUrl: "https://calendar.example.com",

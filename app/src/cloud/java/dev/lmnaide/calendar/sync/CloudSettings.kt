@@ -29,6 +29,8 @@ fun CloudSettings() {
     val scope = rememberCoroutineScope()
     var server by rememberSaveable { mutableStateOf(state.server) }
     var email by rememberSaveable { mutableStateOf(state.email) }
+    var username by rememberSaveable { mutableStateOf(state.username) }
+    LaunchedEffect(state.username) { username = state.username }
     // Passwords are kept only in memory, never in saved state or preferences.
     var password by remember { mutableStateOf("") }
     var signingOut by remember { mutableStateOf(false) }
@@ -68,7 +70,21 @@ fun CloudSettings() {
                 if (state.busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
             }
             if (state.connected) {
+                if (state.username.isNotBlank()) Text(state.username, style = MaterialTheme.typography.titleMedium)
                 Text(state.email, style = MaterialTheme.typography.bodyMedium)
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text("Username") },
+                    supportingText = { Text("3–30 letters, numbers or underscores; leave blank to remove") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.busy,
+                )
+                TextButton(
+                    onClick = { scope.launch { cloud.updateUsername(username) } },
+                    enabled = !state.busy && username.trim() != state.username,
+                ) { Text("Save username") }
                 Text(
                     state.server,
                     style = MaterialTheme.typography.bodySmall,
@@ -125,6 +141,15 @@ fun CloudSettings() {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     enabled = !state.busy,
                 )
+                OutlinedTextField(
+                    value = username,
+                    onValueChange = { username = it },
+                    label = { Text("Username · optional for new accounts") },
+                    supportingText = { Text("3–30 letters, numbers or underscores") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.busy,
+                )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val ready =
                         server.isNotBlank() &&
@@ -145,7 +170,7 @@ fun CloudSettings() {
                     TextButton(
                         onClick = {
                             scope.launch {
-                                cloud.connect(server, email, password, true)
+                                cloud.connect(server, email, password, true, username)
                                 if (cloud.state.value.connected) password = ""
                             }
                         },

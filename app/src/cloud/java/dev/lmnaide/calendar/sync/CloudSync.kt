@@ -26,6 +26,7 @@ data class SyncState(
     val connected: Boolean = false,
     val busy: Boolean = false,
     val email: String = "",
+    val username: String = "",
     val server: String = "",
     val message: String = "Connect your devices",
     val lastSync: Long = 0,
@@ -58,6 +59,7 @@ class CloudSync(
         SyncState(
             connected = prefs.contains("token"),
             email = prefs.getString("email", "").orEmpty(),
+            username = prefs.getString("username", "").orEmpty(),
             server = prefs.getString("server", "").orEmpty(),
             lastSync = prefs.getLong("lastSync", 0),
             message = if (prefs.contains("token")) "Ready to sync" else "Connect your devices",
@@ -137,7 +139,7 @@ class CloudSync(
         }
     }
 
-    suspend fun connect(server: String, email: String, password: String, register: Boolean) =
+    suspend fun connect(server: String, email: String, password: String, register: Boolean, username: String = "") =
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 mutableState.value = state.value.copy(busy = true, message = "Connecting…")
@@ -160,7 +162,9 @@ class CloudSync(
                         request(
                             address,
                             if (register) "register" else "login",
-                            JSONObject().put("email", email.trim()).put("password", password),
+                            JSONObject().put("email", email.trim()).put("password", password).apply {
+                                if (register) put("username", username.trim())
+                            },
                             null,
                         )
                     val binding = address + ":" + result.getString("userId")
@@ -177,6 +181,7 @@ class CloudSync(
                         .edit()
                         .putString("server", address)
                         .putString("email", result.getString("email"))
+                        .putString("username", if (result.isNull("username")) "" else result.optString("username"))
                         .putString("token", TokenVault.encrypt(result.getString("token")))
                         .putString("binding", binding)
                         .commit()
@@ -223,6 +228,25 @@ class CloudSync(
                         .copy(message = "Signed out. Your local calendar stays on this device.")
             }
         }
+
+    suspend fun updateUsername(username: String) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            mutableState.value = state.value.copy(busy = true)
+            try {
+                val token = prefs.getString("token", null)?.let { TokenVault.decrypt(it) }
+                check(token != null) { "Sign in to Cloud sync again." }
+                val result = request(
+                    prefs.getString("server", "").orEmpty(), "profile",
+                    JSONObject().put("username", username.trim()), token,
+                )
+                prefs.edit().putString("username", if (result.isNull("username")) "" else result.optString("username")).commit()
+                mutableState.value = readState().copy(message = "Username updated")
+            } catch (e: Exception) {
+                mutableState.value = readState().copy(message = e.message ?: "Could not update username")
+                if (e is CancellationException) throw e
+            }
+        }
+    }
 
     /** Share the synced event/series; reminders, contacts and calendar metadata stay private. */
     suspend fun share(eventId: Long, action: String): String? =

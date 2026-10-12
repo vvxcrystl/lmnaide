@@ -3,7 +3,7 @@ services:
     build: .
     volumes: ["calendar-data:/data"]
     environment:
-      PUBLIC_URL: "https://${CALENDAR_DOMAIN:?Set CALENDAR_DOMAIN to your hostname}"
+      CALENDAR_DOMAIN: "${CALENDAR_DOMAIN:?Set CALENDAR_DOMAIN to your hostname}"
       ALLOW_REGISTRATION: "${ALLOW_REGISTRATION:-true}"
     restart: unless-stopped
     healthcheck:

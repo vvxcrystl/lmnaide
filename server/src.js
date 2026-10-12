@@ -16,6 +16,14 @@ const hash = (value) => createHash("sha256").update(value).digest("hex");
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status });
 };
+function validateUsername(value) {
+  if (value === null || value === "") return null;
+  if (typeof value !== "string") fail(400, "Invalid username.");
+  const username = value.trim();
+  if (!/^[A-Za-z0-9_]{3,30}$/.test(username))
+    fail(400, "Use 3–30 letters, numbers or underscores for your username.");
+  return username;
+}
 const enums = {
   importance: ["LOW", "MEDIUM", "HIGH"],
   recurrence: ["NONE", "DAILY", "WEEKDAYS", "WEEKLY", "MONTHLY", "YEARLY"],
@@ -171,6 +179,9 @@ export function createApp({
     CREATE TABLE IF NOT EXISTS profiles(userId TEXT PRIMARY KEY REFERENCES users(id),photo TEXT);
     CREATE TABLE IF NOT EXISTS counter(id INTEGER PRIMARY KEY CHECK(id=1),value INTEGER NOT NULL);
     INSERT OR IGNORE INTO counter VALUES(1,0);`);
+  if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "username"))
+    db.exec("ALTER TABLE users ADD COLUMN username TEXT COLLATE NOCASE");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS user_username ON users(username COLLATE NOCASE)");
   const limits = new Map();
   const encode = (row) => ({
     kind: row.kind,
@@ -328,21 +339,26 @@ export function createApp({
           if (!allowRegistration)
             fail(403, "New accounts are disabled on this server.");
           if (user) fail(409, "An account already exists. Sign in instead.");
+          const username = b.username === undefined ? null : validateUsername(b.username);
           const salt = randomBytes(16).toString("hex");
           const key = await scrypt(b.password, salt, 64);
           user = {
             id: randomUUID(),
             email,
+            username,
             password: `${salt}:${key.toString("hex")}`,
           };
           try {
-            db.prepare("INSERT INTO users VALUES(?,?,?)").run(
+            db.prepare("INSERT INTO users(id,email,password,username) VALUES(?,?,?,?)").run(
               user.id,
               email,
               user.password,
+              username,
             );
-          } catch {
-            fail(409, "An account already exists. Sign in instead.");
+          } catch (e) {
+            if (e.message.includes("users.username")) fail(409, "That username is already taken.");
+            if (e.message.includes("users.email")) fail(409, "An account already exists. Sign in instead.");
+            throw e;
           }
         } else {
           const [salt, stored] = (
@@ -359,7 +375,7 @@ export function createApp({
           user.id,
           Date.now() + 90 * 86400000,
         );
-        return send(200, { token, email, userId: user.id });
+        return send(200, { token, email, userId: user.id, username: user.username ?? null });
       }
       const token = req.headers.authorization?.replace(/^Bearer /, "");
       const session =
@@ -409,24 +425,31 @@ export function createApp({
       if (path === "/api/profile") {
         if (req.method === "POST") {
           const b = await body();
-          const photo = b?.photo ?? null;
-          if (
-            photo !== null &&
-            (typeof photo !== "string" ||
-              photo.length > 200000 ||
-              !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(
-                photo,
-              ))
-          )
+          if (!b || typeof b !== "object" || Array.isArray(b)) fail(400, "Invalid request");
+          const hasPhoto = Object.hasOwn(b, "photo");
+          const photo = b.photo;
+          const hasUsername = Object.hasOwn(b, "username");
+          const username = hasUsername ? validateUsername(b.username) : null;
+          if (hasPhoto && photo !== null &&
+            (typeof photo !== "string" || photo.length > 200000 ||
+              !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(photo)))
             fail(400, "Use a JPEG, PNG or WebP image under 150 KB.");
-          db.prepare(
+          if (hasUsername) {
+            try {
+              db.prepare("UPDATE users SET username=? WHERE id=?").run(username, userId);
+            } catch (e) {
+              if (e.message.includes("users.username")) fail(409, "That username is already taken.");
+              throw e;
+            }
+          }
+          if (hasPhoto) db.prepare(
             "INSERT INTO profiles VALUES(?,?) ON CONFLICT(userId) DO UPDATE SET photo=excluded.photo",
           ).run(userId, photo);
         } else if (req.method !== "GET") fail(404, "Not found");
         const profile = db
           .prepare("SELECT photo FROM profiles WHERE userId=?")
           .get(userId);
-        return send(200, { photo: profile?.photo ?? null });
+        return send(200, { photo: profile?.photo ?? null, username: db.prepare("SELECT username FROM users WHERE id=?").get(userId).username });
       }
       if (req.method === "POST" && path === "/api/logout") {
         db.prepare("DELETE FROM sessions WHERE token=?").run(hash(token));

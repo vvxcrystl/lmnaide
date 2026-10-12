@@ -29,6 +29,7 @@ const I = {
   more: "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2Zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2Zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2Z",
   delete:
     "M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1ZM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7Z",
+  mail: "M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2Zm0 14H4V8l8 5 8-5v10Zm-8-7L4 6h16l-8 5Z",
   copy: "M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1Zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2Zm0 16H8V7h11v14Z",
   flag: "m12.36 6 .4 2H18v6h-3.36l-.4-2H7V6h5.36M14 4H5v17h2v-7h5.6l.4 2h7V6h-5.6L14 4Z",
   place:
@@ -185,11 +186,24 @@ const atMinute = (date, minute) =>
   );
 
 /* ---------- Formatting, as in ui/common/Formatters.kt ---------- */
-const fmt = (d, o) => d.toLocaleDateString(undefined, o);
+// Locale calls otherwise allocate a native formatter for every label on every refresh.
+// Cache formatting styles, not dates, and bound the cache independently of navigation.
+const dateFormatters = new Map();
+function fmt(d, o) {
+  const key = JSON.stringify(o);
+  let formatter = dateFormatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(undefined, o);
+    if (dateFormatters.size >= 32)
+      dateFormatters.delete(dateFormatters.keys().next().value);
+    dateFormatters.set(key, formatter);
+  }
+  return formatter.format(d);
+}
 function time(d) {
   if (prefs.use24h) return pad(d.getHours()) + ":" + pad(d.getMinutes());
-  return d.toLocaleTimeString(
-    undefined,
+  return fmt(
+    d,
     d.getMinutes()
       ? { hour: "numeric", minute: "2-digit", hour12: true }
       : { hour: "numeric", hour12: true },
@@ -514,9 +528,11 @@ async function authenticate(register) {
     const result = await api(register ? "register" : "login", {
       email: $("email").value,
       password: $("password").value,
+      ...(register ? { username: $("username").value.trim() } : {}),
     });
     token = result.token;
     email = result.email;
+    username = result.username ?? null;
     sessionStorage.setItem("token", token);
     sessionStorage.setItem("email", email);
     $("password").value = "";
@@ -650,7 +666,9 @@ function refresh() {
 /** Wide screens get Google Calendar's web layout: a sidebar, and paging in the top bar. */
 const wide = matchMedia("(min-width: 1000px)");
 function render({ jump = false, slide = 0 } = {}) {
-  if (!token) return;
+  // Reload startup fetches data before revealing the calendar. Hidden layouts have
+  // zero dimensions and must not trigger schedule growth or allocate view resources.
+  if (!token || $("calendar").hidden) return;
   renderDrawer();
   $("today-date").textContent = new Date().getDate();
   $("view-label").textContent = VIEWS.find(([id]) => id === prefs.view)[1];
@@ -1069,6 +1087,7 @@ function firstVisibleRow(list) {
   );
 }
 function onScheduleScroll() {
+  if (!this.isConnected || !this.clientHeight) return;
   const row = firstVisibleRow(this);
   if (row) {
     const d = fromDayKey(row.dataset.date);
@@ -1084,7 +1103,7 @@ function onScheduleScroll() {
     this.dataset.growing = "1";
     sched.end = endOfMonth(addMonths(sched.end, 6));
     requestAnimationFrame(
-      () => prefs.view === "SCHEDULE" && renderSchedule(false),
+      () => this.isConnected && prefs.view === "SCHEDULE" && renderSchedule(false),
     );
   }
 }
@@ -2344,12 +2363,46 @@ function pageBar(navPath, navLabel, onNav, title, ...actions) {
   );
 }
 
-/* Event page, as in ui/event/EventDetailScreen.kt */
-let detailOf = null;
+/* Event page, as in ui/event/EventDetailScreen.kt. On wide screens it opens as a card beside the
+   clicked event, like Google Calendar's. */
+let detailOf = null,
+  clicked = null;
+addEventListener(
+  "click",
+  (e) => {
+    clicked = e.target;
+    setTimeout(() => (clicked = null));
+  },
+  true,
+);
 function openDetail(o) {
+  const dialog = $("detail"),
+    anchor =
+      clicked?.closest("#view") &&
+      (clicked.closest("button, [role=button]") || clicked);
   detailOf = { id: o.record.id, start: o.start };
+  dialog.classList.toggle("popover", wide.matches);
   renderDetail();
-  openPage($("detail"));
+  openPage(dialog);
+  dialog.style.left = dialog.style.top = "";
+  if (wide.matches && anchor) placePopover(dialog, anchor);
+}
+/** Puts the card to the side of the event with more room, level with it and kept on screen. */
+function placePopover(dialog, anchor) {
+  const a = anchor.getBoundingClientRect(),
+    w = dialog.offsetWidth,
+    ht = dialog.offsetHeight,
+    gap = 8,
+    edge = 16;
+  const right = innerWidth - a.right,
+    left =
+      right >= w + gap + edge || right >= a.left
+        ? a.right + gap
+        : a.left - gap - w;
+  dialog.style.left =
+    Math.max(edge, Math.min(left, innerWidth - w - edge)) + "px";
+  dialog.style.top =
+    Math.max(edge, Math.min(a.top, innerHeight - ht - edge)) + "px";
 }
 function renderDetail() {
   const dialog = $("detail");
@@ -2360,7 +2413,8 @@ function renderDetail() {
     return;
   }
   detailOf.start = o.start;
-  const d = o.event;
+  const d = o.event,
+    popover = dialog.classList.contains("popover");
   const closeMenu = () => dialog.querySelector(".menu")?.remove();
   const menuButton = iconButton(I.more, "More options", () => {
     if (dialog.querySelector(".menu")) return closeMenu();
@@ -2392,7 +2446,7 @@ function renderDetail() {
       },
       item(I.share, "Share event", () => openShare(o)),
       item(I.copy, "Duplicate", () => duplicate(o)),
-      item(I.delete, "Delete", () => deleteOccurrence(o)),
+      !popover && item(I.delete, "Delete", () => deleteOccurrence(o)),
     );
     dialog.append(menu);
     menu.querySelector("button").focus();
@@ -2400,6 +2454,17 @@ function renderDetail() {
   dialog.onclick = (e) => {
     if (!e.target.closest(".menu") && !menuButton.contains(e.target))
       closeMenu();
+    // A click on the backdrop lands on the dialog itself, outside its box.
+    const box = dialog.getBoundingClientRect();
+    if (
+      popover &&
+      e.target === dialog &&
+      (e.clientX < box.left ||
+        e.clientX > box.right ||
+        e.clientY < box.top ||
+        e.clientY > box.bottom)
+    )
+      dialog.close();
   };
   const row = (path, content, { tint, onclick, gap } = {}) => {
     const svg = icon(path);
@@ -2411,17 +2476,27 @@ function renderDetail() {
       h("div", { class: gap ? "gap" : null }, content),
     );
   };
-  const [whenLine, secondLine] = occurrenceWhen(o);
+  let [whenLine, secondLine] = occurrenceWhen(o);
+  if (popover && secondLine && sameDay(o.startDate, o.lastDate)) {
+    whenLine += "\u00a0\u00a0·\u00a0\u00a0" + secondLine;
+    secondLine = null;
+  }
   const seriesStart = startOfDay(wall(d.start, d.allDay));
+  const editButton = iconButton(I.edit, "Edit", () =>
+    openEditor({ occurrence: o }),
+  );
   dialog.replaceChildren(
-    pageBar(
-      I.close,
-      "Close",
-      () => dialog.close(),
-      "",
-      iconButton(I.edit, "Edit", () => openEditor({ occurrence: o })),
-      menuButton,
-    ),
+    popover
+      ? h(
+          "header",
+          { class: "page-bar" },
+          editButton,
+          iconButton(I.delete, "Delete", () => deleteOccurrence(o)),
+          iconButton(I.mail, "Email event", () => mailEvent(o)),
+          menuButton,
+          iconButton(I.close, "Close", () => dialog.close()),
+        )
+      : pageBar(I.close, "Close", () => dialog.close(), "", editButton, menuButton),
     h(
       "div",
       { class: "page-body detail-page" },
@@ -2504,6 +2579,20 @@ function renderDetail() {
         ),
     ),
   );
+}
+/** Opens a new email with the event's title, time and place. */
+function mailEvent(o) {
+  const d = o.event;
+  const body = [
+    ...occurrenceWhen(o),
+    d.location.trim(),
+    d.description.trim(),
+  ].filter(Boolean);
+  location.href =
+    "mailto:?subject=" +
+    encodeURIComponent(d.title || "(No title)") +
+    "&body=" +
+    encodeURIComponent(body.join("\n"));
 }
 async function openShare(o) {
   try {
@@ -4262,8 +4351,8 @@ function openQuickAdd({ date } = {}) {
 }
 
 /* ---------- Profile photo and account card ---------- */
-let photo = null;
-const initial = () => (email || "?").trim().charAt(0).toUpperCase();
+let photo = null, username = null;
+const initial = () => (username || email || "?").trim().charAt(0).toUpperCase();
 /** A stable color for the letter avatar, picked from the event colors by the email address. */
 function avatarColor() {
   let hash = 0;
@@ -4294,13 +4383,13 @@ function avatar(size) {
 }
 function renderAvatar() {
   $("avatar").replaceChildren(avatar(32));
-  $("avatar").title = email || "Account";
+  $("avatar").title = username || email || "Account";
   if ($("account").open) renderAccount();
 }
 async function loadProfile() {
   renderAvatar();
   try {
-    ({ photo } = await api("profile"));
+    ({ photo, username } = await api("profile"));
   } catch {
     photo = null;
   }
@@ -4312,6 +4401,27 @@ function openAccount() {
 }
 function renderAccount() {
   const dialog = $("account");
+  const usernameInput = h("input", {
+    type: "text", value: username || "", minlength: "3", maxlength: "30",
+    pattern: "[A-Za-z0-9_]{3,30}", autocomplete: "off",
+    placeholder: "3 to 30 letters, numbers or underscores",
+  });
+  const usernameForm = h("form", {
+    class: "account-username",
+    onsubmit: async (e) => {
+      e.preventDefault();
+      const button = usernameForm.querySelector("button");
+      button.disabled = true;
+      try {
+        ({ username } = await api("profile", { username: usernameInput.value.trim() }));
+        renderAvatar();
+        snackbar("Username updated");
+      } catch (error) {
+        snackbar(error.message);
+      } finally { button.disabled = false; }
+    },
+  }, h("label", { class: "field" }, h("span", { text: "Username" }), usernameInput),
+    h("button", { type: "submit", class: "outlined", text: "Save" }));
   dialog.replaceChildren(
     iconButton(I.close, "Close", () => dialog.close(), {
       class: "icon account-close",
@@ -4331,8 +4441,9 @@ function renderAccount() {
     ),
     h("p", {
       class: "account-hello title-large",
-      text: "Hi, " + (email || "").split("@")[0] + "!",
+      text: "Hi, " + (username || (email || "").split("@")[0]) + "!",
     }),
+    usernameForm,
     h(
       "div",
       { class: "account-actions" },
@@ -4435,11 +4546,14 @@ I.logout =
   "m17 7-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5ZM4 5h8V3H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8v-2H4V5Z";
 
 /* ---------- Start ---------- */
-signedIn();
-if (token) {
-  loadProfile();
-  sync().catch(() => {});
-}
+// The first screen waits for the font, events and photo so a reload fades in finished.
+// A slow server only holds it back briefly; the rest then arrives as usual.
+const ready = [document.fonts.load('1em "Google Sans Flex"')];
+if (token) ready.push(loadProfile(), sync().catch(() => {}));
+Promise.race([
+  Promise.all(ready),
+  new Promise((done) => setTimeout(done, 1500)),
+]).then(signedIn);
 if (wide.matches) setDrawer(!sidebarHidden);
 setInterval(() => {
   if (

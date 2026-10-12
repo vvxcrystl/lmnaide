@@ -164,3 +164,5 @@ Two-emulator sharing checks: run `tools/cloud/event-share-test.sh` with `CLOUD_T
 The browser has colored themes, a desktop calendar layout, Material date/time pickers and smart quick add using the Android parser’s rules. New accounts start with Personal, Work and Holidays calendars; their stable IDs match Android’s defaults so devices share the same records.
 
 Use the top-bar account button to add, change or remove a profile photo. Photos are stored privately per account via authenticated `/api/profile`, accept JPEG/PNG/WebP data URLs up to 200,000 characters, and do not appear on shared event pages.
+
+Accounts can have an optional unique username (3–30 letters, numbers or underscores, case-insensitive uniqueness). Set it when creating an account, or add, change or remove it from the browser account card or Android Cloud sync settings. Email remains the sign-in address. Existing accounts and sessions are preserved when the server adds username storage.

@@ -9,6 +9,13 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#ffffff" />
     <title>calander</title>
+    <link
+      rel="preload"
+      href="/fonts/google_sans_flex.ttf"
+      as="font"
+      type="font/ttf"
+      crossorigin
+    />
     <link rel="stylesheet" href="/style.css" />
     <link rel="stylesheet" href="/share.css" />
     <script src="/app.js" type="module"></script>
@@ -49,6 +56,9 @@
               minlength="10"
               required
           /></label>
+          <label class="field"><span>Username · optional</span>
+            <input id="username" type="text" autocomplete="off" minlength="3" maxlength="30" pattern="[A-Za-z0-9_]{3,30}" placeholder="3 to 30 letters, numbers or underscores" />
+          </label>
           <div class="actions">
             <button class="filled">Sign in</button
             ><button type="button" id="register" class="text">

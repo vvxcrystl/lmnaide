@@ -1229,6 +1229,88 @@ dialog::backdrop {
   margin: 16px 0 0 62px;
 }
 
+/* On wide screens the event opens as a card beside it */
+.page.popover {
+  position: fixed;
+  width: 448px;
+  height: fit-content;
+  max-height: calc(100% - 32px);
+  border-radius: 24px;
+  background: var(--container-high);
+  --field-bg: var(--container-high);
+  box-shadow:
+    0 4px 8px 3px rgba(0, 0, 0, 0.15),
+    0 1px 3px rgba(0, 0, 0, 0.3);
+}
+.page.popover[style*="left"] {
+  right: auto;
+  bottom: auto;
+  margin: 0;
+}
+.page.popover[open] {
+  animation: popover-in 0.15s ease-out;
+}
+@keyframes popover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.page.popover::backdrop {
+  background: transparent;
+}
+.popover .page-bar {
+  justify-content: flex-end;
+  gap: 0;
+  height: 48px;
+  padding: 8px 12px 0;
+}
+.popover .page-bar .icon {
+  width: 40px;
+  height: 40px;
+}
+.popover .page-bar svg,
+.popover .detail-row > svg {
+  width: 20px;
+  height: 20px;
+}
+.popover .page-body {
+  padding-bottom: 16px;
+}
+/* The swatch and the row icons share a 20px column, so all the text lines up. */
+.popover .detail-head {
+  gap: 20px;
+  padding: 4px 24px 12px 28px;
+}
+.popover .swatch {
+  width: 16px;
+  height: 16px;
+  margin: 6px 2px 0;
+  border-radius: 4px;
+}
+.popover .detail-head > div {
+  gap: 2px;
+}
+.popover .detail-head h2 {
+  margin-bottom: 2px;
+  font-size: 22px;
+  line-height: 28px;
+}
+.popover .detail-row {
+  gap: 20px;
+  padding: 6px 24px 6px 28px;
+}
+.popover .detail-row > div {
+  padding-top: 0;
+}
+.popover :is(.detail-head, .detail-row) .body-large {
+  font-size: 14px;
+  line-height: 20px;
+}
+.popover .detail-page .tonal {
+  margin: 12px 0 0 68px;
+}
+
 /* Editor */
 .title-input {
   border: 0;
@@ -2407,6 +2489,7 @@ input.time-field.on {
   padding: 8px 16px 16px;
   border-radius: 28px;
   background: var(--container);
+  --field-bg: var(--container);
   text-align: center;
   box-shadow:
     0 4px 8px 3px rgba(0, 0, 0, 0.15),
@@ -2560,4 +2643,20 @@ input.time-field.on {
   from {
     opacity: 0;
   }
+}
+
+.account-username {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding-bottom: 16px;
+  text-align: left;
+}
+.account-username .field {
+  flex: 1;
+  min-width: 0;
+}
+.account-username button {
+  flex: none;
 }
