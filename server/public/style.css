@@ -720,8 +720,13 @@ textarea::placeholder {
   width: 1em;
   height: 1em;
 }
+/* One-line titles end in an ellipsis when they don't fit. */
 .bar-title {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .block {
   position: absolute;
@@ -2544,4 +2549,15 @@ input.time-field.on {
 }
 .month-row > span {
   display: flex;
+}
+
+/* The first screen fades in once app.js has picked it, instead of flashing the wrong one. */
+.auth:not([hidden]),
+.shell:not([hidden]) {
+  animation: screen-in 0.2s ease-out;
+}
+@keyframes screen-in {
+  from {
+    opacity: 0;
+  }
 }
