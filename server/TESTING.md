@@ -29,7 +29,8 @@ A separate browser test created a one-day all-day event using the actual editor 
 ## UI checks
 
 - Android emulator: navigated Menu → Settings, filled the actual server/email/password fields, signed in, and observed “Up to date” plus the last sync time.
-- Browser: account creation/sign-in, full-screen mobile editor, all-day create/edit, task completion, and event details/editor interactions.
+- Browser: account creation/sign-in, full-screen mobile editor, all-day create/edit, task completion, event details/editor interactions, calendar creation/deletion, search, and all five views.
+- Final standalone browser smoke test passed against the finished UI: fresh account, calendar creation, each view, a floating one-day all-day save, search, mobile/light and desktop/dark. No page errors or horizontal overflow. T3 preview became intermittent, so the final smoke test used a local headless Chromium session.
 - Browser desktop and mobile layouts, light/dark appearances, seasonal banner, solid event chips, drawer, typography and calendar controls. No horizontal overflow; bundled Google Sans Flex loaded successfully.
 - Recurring events are ordered by local calendar day, with all-day items first. Inclusive all-day editor dates become exclusive floating UTC end dates on the wire.
 - The physical phone's visual lock screen prevented a visual UI walkthrough; its functional checks ran successfully through Android instrumentation.
