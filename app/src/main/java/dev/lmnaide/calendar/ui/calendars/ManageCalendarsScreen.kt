@@ -57,6 +57,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.lmnaide.calendar.data.CalendarEntity
+import dev.lmnaide.calendar.data.SyncLimits
 import dev.lmnaide.calendar.data.CalendarRepository
 import dev.lmnaide.calendar.ui.common.ColorDot
 import dev.lmnaide.calendar.ui.common.ConfirmDialog
@@ -190,6 +191,7 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
     var color by remember { mutableStateOf(initial.color) }
     var keywords by remember { mutableStateOf(initial.keywords) }
     var importance by remember { mutableStateOf(initial.defaultImportance) }
+    val normalizedKeywords = keywords.split(',').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(", ")
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial.id == 0L) "New calendar" else "Edit calendar") },
@@ -197,14 +199,14 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
             Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { name = it.take(SyncLimits.CALENDAR_NAME) },
                     label = { Text("Name") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = keywords,
-                    onValueChange = { keywords = it },
+                    onValueChange = { keywords = it.take(SyncLimits.KEYWORDS) },
                     label = { Text("Keywords") },
                     placeholder = { Text("produce, shift") },
                     supportingText = { Text("Quick add sends matching items here") },
@@ -250,8 +252,8 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(initial.copy(name = name.trim(), color = color, keywords = keywords.split(',').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(", "), defaultImportance = importance)) },
-                enabled = name.isNotBlank(),
+                onClick = { onSave(initial.copy(name = name.trim(), color = color, keywords = normalizedKeywords, defaultImportance = importance)) },
+                enabled = SyncLimits.validCalendar(name.trim(), normalizedKeywords),
             ) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },

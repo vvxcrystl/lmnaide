@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -54,6 +55,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -76,6 +78,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import dev.lmnaide.calendar.contacts.PeopleEditor
 import dev.lmnaide.calendar.data.Recurrence
+import dev.lmnaide.calendar.data.SyncLimits
 import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.common.ColorDot
 import dev.lmnaide.calendar.ui.common.ConfirmDialog
@@ -174,7 +177,7 @@ fun EventEditorScreen(
             }
             Reveal(!state.isValid) {
                 Text(
-                    "The event ends before it starts",
+                    state.validationMessage.orEmpty(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(start = 62.dp, bottom = 8.dp),
@@ -210,7 +213,7 @@ fun EventEditorScreen(
                     EditorRow(icon = Icons.Outlined.LocationOn) {
                         PlainTextField(
                             value = state.location,
-                            onValueChange = { location -> viewModel.update { it.copy(location = location) } },
+                            onValueChange = { location -> viewModel.update { it.copy(location = location.take(SyncLimits.LOCATION)) } },
                             placeholder = "Add location",
                         )
                     }
@@ -241,7 +244,7 @@ fun EventEditorScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { dialog = EditorDialog.Reminder }
+                            .clickable(enabled = state.reminders.size < SyncLimits.REMINDERS) { dialog = EditorDialog.Reminder }
                             .padding(vertical = 6.dp),
                     )
                 }
@@ -268,7 +271,7 @@ fun EventEditorScreen(
             EditorRow(icon = Icons.AutoMirrored.Outlined.Notes, alignTop = true) {
                 PlainTextField(
                     value = state.description,
-                    onValueChange = { description -> viewModel.update { it.copy(description = description) } },
+                    onValueChange = { description -> viewModel.update { it.copy(description = description.take(SyncLimits.DESCRIPTION)) } },
                     placeholder = "Add description",
                     singleLine = false,
                 )
@@ -354,6 +357,20 @@ fun EventEditorScreen(
             )
             null -> Unit
         }
+
+        viewModel.conflictMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = viewModel::cancelConflict,
+                title = { Text("Changed on another device") },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.confirmConflict(onSaved) }) { Text("Save my edits") }
+                },
+                dismissButton = {
+                    TextButton(onClick = viewModel::cancelConflict) { Text("Cancel") }
+                },
+            )
+        }
     }
 }
 
@@ -425,7 +442,7 @@ private fun TitleField(value: String, onValueChange: (String) -> Unit, autoFocus
     PlainTextField(
         value = value,
         // Wraps long titles instead of scrolling them out of view, but stays one logical line.
-        onValueChange = { onValueChange(it.replace('\n', ' ')) },
+        onValueChange = { onValueChange(it.replace('\n', ' ').take(SyncLimits.TITLE)) },
         placeholder = "Add title",
         singleLine = false,
         textStyle = MaterialTheme.typography.headlineSmall,

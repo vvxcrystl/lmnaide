@@ -1,3 +1,5 @@
 {$CALENDAR_DOMAIN} {
-	reverse_proxy calendar:3000
+	reverse_proxy calendar:3000 {
+		header_up X-Forwarded-For {remote_host}
+	}
 }

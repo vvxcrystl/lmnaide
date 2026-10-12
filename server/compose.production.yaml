@@ -5,6 +5,8 @@ services:
     environment:
       CALENDAR_DOMAIN: "${CALENDAR_DOMAIN:?Set CALENDAR_DOMAIN to your hostname}"
       ALLOW_REGISTRATION: "${ALLOW_REGISTRATION:-true}"
+      TRUSTED_PROXIES: "172.30.0.0/24"
+    networks: [calendar-proxy]
     restart: unless-stopped
     healthcheck:
       test:
@@ -26,6 +28,7 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+    networks: [calendar-proxy]
     restart: unless-stopped
     depends_on:
       calendar:
@@ -34,3 +37,8 @@ volumes:
   calendar-data:
   caddy-data:
   caddy-config:
+networks:
+  calendar-proxy:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

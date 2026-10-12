@@ -98,6 +98,7 @@ For a plain Node service, environment variables are:
 | `ALLOW_REGISTRATION` | `true` | Set exactly `false` to disable new accounts |
 | `CALENDAR_DOMAIN` | empty | Custom DNS hostname, e.g. `calander.domain.com`; supplies the HTTPS origin for share links and configures Caddy in production Compose |
 | `PUBLIC_URL` | empty | Explicit HTTP(S) origin for share links; overrides `CALENDAR_DOMAIN` for plain Node hosting |
+| `TRUSTED_PROXIES` | `127.0.0.1,::1` | Comma-separated proxy IPs or CIDRs allowed to supply `X-Forwarded-For`; only use addresses that cannot be reached by untrusted clients. Production Compose trusts its private Caddy network (`172.30.0.0/24`). |
 
 For a simple consistent backup, stop the calendar service and copy the whole data directory or Docker data volume, including SQLite's WAL files, then restart. Restore with the service stopped. Keep the data volume when updating the server.
 
@@ -108,6 +109,14 @@ For a simple consistent backup, stop the calendar service and copy the whole dat
 - Deletions, including events removed with a calendar.
 
 Contact names and device contact lookup URIs stay local. Appearance, display preferences, selected/default calendar and notification acknowledgement/snooze state also stay local. The server does not send reminders; Android schedules them using its synced local data. The browser includes Schedule, Day, 3 days, Week and Month views, a mini-month picker, event details/editor, search, calendar management and settings. Recurring items can be edited or deleted for one occurrence, this and following, or the entire series. Android retains its offline quick-add parser, contacts and home-screen widget.
+
+## Sync protocol
+
+Client authors use `POST /api/sync` with a cursor and up to 1,000 changes. A change may include a `group` string of 1–250 characters. Changes with the same group in one request are atomic: if any has a stale base version that is not already identical, or an event targets a missing/deleted calendar, none of that group's changes in the request are applied. Each is saved to history as a conflict and its record ID is returned in `conflicts`. Changes without a group keep per-change conflict handling. Operation IDs remain idempotent per change; replaying an applied group is a no-op, the group is part of each operation fingerprint, and clients must keep a group in one request.
+
+Responses include `more`. The server returns up to 500 records and at most 1 MiB of JSON, ordered by version. When `more` is true, sync again with the returned cursor and no changes if needed; continue until it is false. A page cursor advances to the highest version it contains. If no page records are returned, the cursor keeps the server's current high-water mark. Submitted records may also be echoed when space permits so clients can resolve writes and conflicts.
+
+Validation limits are shared across clients: event start/end are epoch milliseconds within 1900–2200 UTC; `recurrenceUntil`, `exceptions` and `completions` are epoch days in the same year range; reminders are 0–525,600 minutes with at most 100 entries; colors are signed 32-bit integers. Titles may be empty and are limited to 1,000 characters; descriptions to 20,000, locations to 2,000, calendar names to 1–200 non-blank characters, and keywords to 2,000. A 400 response for an invalid change includes that change's `operationId`; malformed batch-level fields such as an invalid cursor or more than 1,000 changes return only `error`.
 
 Android keeps working without a connection. A SQLite trigger journal records writes atomically with the local edits, and retries use stable operation IDs. Changes sync after local edits, when opening the app, about every 10 seconds while it is foregrounded, and through network-constrained WorkManager background jobs with a 15-minute minimum interval. Android can delay background work for battery management. Sign out preserves the local calendar and stops sync. Its existing account binding prevents mixing two accounts' records in one local database; clear the Cloud app's storage to start with a different account.
 

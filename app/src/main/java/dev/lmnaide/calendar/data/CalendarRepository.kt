@@ -2,6 +2,7 @@ package dev.lmnaide.calendar.data
 
 import androidx.room.withTransaction
 import dev.lmnaide.calendar.domain.CanadianHolidays
+import dev.lmnaide.calendar.sync.CloudDatabase
 import dev.lmnaide.calendar.ui.common.EventColors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -110,34 +111,42 @@ class CalendarRepository(database: () -> AppDatabase, scope: CoroutineScope) {
 
     /** Removes a single occurrence from a recurring series. */
     suspend fun deleteOccurrence(event: EventEntity, occurrenceDate: LocalDate) {
-        eventDao.update(event.copy(exceptions = event.exceptions + occurrenceDate.toEpochDay()))
+        CloudDatabase.withOperationGroup(db) {
+            eventDao.update(event.copy(exceptions = event.exceptions + occurrenceDate.toEpochDay()))
+        }
     }
 
     /** Ends a recurring series before [occurrenceDate], deleting it entirely if nothing remains. */
     suspend fun deleteFollowing(event: EventEntity, occurrenceDate: LocalDate) {
-        if (occurrenceDate <= event.localStart().toLocalDate()) {
-            eventDao.delete(event)
-        } else {
-            eventDao.update(event.copy(recurrenceUntil = occurrenceDate.minusDays(1).toEpochDay()))
+        CloudDatabase.withOperationGroup(db) {
+            if (occurrenceDate <= event.localStart().toLocalDate()) {
+                eventDao.delete(event)
+            } else {
+                eventDao.update(event.copy(recurrenceUntil = occurrenceDate.minusDays(1).toEpochDay()))
+            }
         }
     }
 
     /** Replaces one occurrence of a series with a standalone [replacement] event. */
     suspend fun replaceOccurrence(series: EventEntity, occurrenceDate: LocalDate, replacement: EventEntity): Long =
-        db.withTransaction {
-            eventDao.update(series.copy(exceptions = series.exceptions + occurrenceDate.toEpochDay()))
-            eventDao.insert(replacement.copy(id = 0))
+        CloudDatabase.withOperationGroup(db) {
+            db.withTransaction {
+                eventDao.update(series.copy(exceptions = series.exceptions + occurrenceDate.toEpochDay()))
+                eventDao.insert(replacement.copy(id = 0))
+            }
         }
 
     /** Splits a series at [occurrenceDate]; [replacement] becomes the new tail of the series. */
     suspend fun replaceFollowing(series: EventEntity, occurrenceDate: LocalDate, replacement: EventEntity): Long =
-        db.withTransaction {
-            if (occurrenceDate <= series.localStart().toLocalDate()) {
-                eventDao.update(replacement.copy(id = series.id))
-                series.id
-            } else {
-                eventDao.update(series.copy(recurrenceUntil = occurrenceDate.minusDays(1).toEpochDay()))
-                eventDao.insert(replacement.copy(id = 0, exceptions = emptyList()))
+        CloudDatabase.withOperationGroup(db) {
+            db.withTransaction {
+                if (occurrenceDate <= series.localStart().toLocalDate()) {
+                    eventDao.update(replacement.copy(id = series.id))
+                    series.id
+                } else {
+                    eventDao.update(series.copy(recurrenceUntil = occurrenceDate.minusDays(1).toEpochDay()))
+                    eventDao.insert(replacement.copy(id = 0, exceptions = emptyList()))
+                }
             }
         }
 

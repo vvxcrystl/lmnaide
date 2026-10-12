@@ -1,6 +1,6 @@
 // The web client mirrors the Android app's screens (ui/main, ui/event, ui/calendars). Sizes,
 // colors, wording and behavior follow the Compose code so both look and work the same.
-import { expandOccurrences } from "./recurrence.js";
+import { expandOccurrences, nextOccurrence } from "./recurrence.js";
 import {
   THEMES,
   schemeFor,
@@ -166,6 +166,13 @@ const fromEpochDay = (n) => {
   const u = new Date(n * DAY);
   return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate());
 };
+const MIN_CALENDAR_DATE = new Date(1900, 0, 1);
+const MAX_CALENDAR_DATE = new Date(2200, 11, 31);
+const MIN_EVENT_TIME = Date.UTC(1900, 0, 1);
+const MAX_EVENT_TIME = Date.UTC(2201, 0, 1) - 1;
+const calendarDate = (d) => d >= MIN_CALENDAR_DATE && d <= MAX_CALENDAR_DATE;
+const clampCalendarDate = (d) =>
+  minDate(maxDate(startOfDay(d), MIN_CALENDAR_DATE), MAX_CALENDAR_DATE);
 const daysBetween = (a, b) => epochDay(b) - epochDay(a);
 const sameDay = (a, b) => !!a && !!b && dayKey(a) === dayKey(b);
 const sameMonth = (a, b) =>
@@ -349,8 +356,10 @@ let token = sessionStorage.getItem("token"),
   records = [],
   cursor = 0,
   busy = false,
+  sessionGeneration = 0,
   lastSync = 0,
-  syncMessage = "";
+  syncMessage = "",
+  quarantinedChanges = [];
 
 const calendars = () =>
   records.filter((r) => r.kind === "calendar" && !r.deleted);
@@ -472,7 +481,7 @@ function findOccurrence(id, start) {
 }
 /** The next occurrence from today for a series, or the first one if none are upcoming. */
 function representative(r, c) {
-  const upcoming = expandOccurrences(r, dayKey(today()), 5 * 366)[0];
+  const upcoming = nextOccurrence(r, dayKey(today()), 5 * 366);
   if (upcoming) return makeOccurrence(r, c, upcoming);
   const first = startOfDay(wall(r.data.start, r.data.allDay));
   const x = expandOccurrences(r, dayKey(first), 1)[0];
@@ -480,17 +489,38 @@ function representative(r, c) {
 }
 
 /* ---------- Server ---------- */
-async function api(path, body) {
-  const res = await fetch("/api/" + path, {
-    method: body ? "POST" : "GET",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: "Bearer " + token } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Request failed");
+const staleSessionError = () =>
+  Object.assign(new Error("Session changed"), { stale: true });
+function invalidateSession() {
+  sessionGeneration++;
+  syncQueue = Promise.resolve();
+  busy = false;
+  return sessionGeneration;
+}
+async function api(path, body, authToken = token) {
+  const generation = sessionGeneration;
+  const requestToken = authToken;
+  let res, data;
+  try {
+    res = await fetch("/api/" + path, {
+      method: body ? "POST" : "GET",
+      headers: {
+        "Content-Type": "application/json",
+        ...(requestToken ? { Authorization: "Bearer " + requestToken } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    data = await res.json();
+  } catch (error) {
+    if (generation !== sessionGeneration) throw staleSessionError();
+    throw error;
+  }
+  if (generation !== sessionGeneration) throw staleSessionError();
+  if (!res.ok)
+    throw Object.assign(new Error(data.error || "Request failed"), {
+      operationId: data.operationId,
+      status: res.status,
+    });
   return data;
 }
 let snackTimer;
@@ -514,8 +544,12 @@ function snackbar(text, action) {
         ]
       : []),
   );
-  if (text)
+  // Reopening the popover puts it above any modal dialog opened since, such as Settings.
+  if (bar.matches(":popover-open")) bar.hidePopover();
+  if (text) {
+    bar.showPopover();
     snackTimer = setTimeout(() => bar.replaceChildren(), action ? 6000 : 4000);
+  }
 }
 function signedIn() {
   $("auth").hidden = !!token;
@@ -524,11 +558,13 @@ function signedIn() {
 }
 async function authenticate(register) {
   snackbar();
+  const generation = invalidateSession();
   try {
     const result = await api(register ? "register" : "login", {
       email: $("email").value,
       password: $("password").value,
     });
+    if (generation !== sessionGeneration) return;
     token = result.token;
     email = result.email;
     username = result.username ?? null;
@@ -538,11 +574,13 @@ async function authenticate(register) {
     records = [];
     cursor = 0;
     seedTried = false;
+    quarantinedChanges = [];
+    lastSync = 0;
     signedIn();
     loadProfile();
     await sync();
   } catch (e) {
-    snackbar(e.message);
+    if (!e.stale) snackbar(e.message);
   }
 }
 $("login").onsubmit = (e) => {
@@ -555,36 +593,229 @@ $("register").onclick = () => {
 
 // Syncs run one at a time, so polling can never drop a save.
 let syncQueue = Promise.resolve();
+function invalidClientChange(c) {
+  if (
+    !c ||
+    !["calendar", "event"].includes(c.kind) ||
+    typeof c.id !== "string" ||
+    !c.id ||
+    c.id.length > 200 ||
+    !Number.isSafeInteger(c.baseVersion) ||
+    c.baseVersion < 0 ||
+    typeof c.operationId !== "string" ||
+    !c.operationId ||
+    c.operationId.length > 250 ||
+    typeof c.deleted !== "boolean"
+  )
+    return "Invalid change";
+  if (
+    c.group !== undefined &&
+    (typeof c.group !== "string" || !c.group || c.group.length > 250)
+  )
+    return "Invalid change group";
+  if (c.deleted) return null;
+  const d = c.data;
+  if (!d || typeof d !== "object" || Array.isArray(d)) return "Missing record";
+  if (c.kind === "calendar") {
+    if (typeof d.name !== "string" || !d.name.trim() || d.name.length > 200)
+      return "Calendar names must be 1 to 200 characters";
+    if (typeof d.keywords !== "string" || d.keywords.length > 2000)
+      return "Calendar keywords must be 2000 characters or fewer";
+    if (
+      !Number.isSafeInteger(d.color) ||
+      d.color < -2147483648 ||
+      d.color > 2147483647
+    )
+      return "Invalid calendar color";
+    if (typeof d.visible !== "boolean") return "Invalid calendar visibility";
+    if (
+      d.defaultImportance != null &&
+      !["LOW", "MEDIUM", "HIGH"].includes(d.defaultImportance)
+    )
+      return "Invalid default importance";
+    return null;
+  }
+  const minDay = MIN_EVENT_TIME / DAY;
+  const maxDay = Date.UTC(2201, 0, 1) / DAY - 1;
+  const arrayOfDays = (value) =>
+    Array.isArray(value) &&
+    value.length <= 10000 &&
+    value.every(
+      (day) => Number.isSafeInteger(day) && day >= minDay && day <= maxDay,
+    );
+  if (typeof d.title !== "string" || d.title.length > 1000)
+    return "Event titles must be 1000 characters or fewer";
+  if (typeof d.description !== "string" || d.description.length > 20000)
+    return "Descriptions must be 20000 characters or fewer";
+  if (typeof d.location !== "string" || d.location.length > 2000)
+    return "Locations must be 2000 characters or fewer";
+  if (
+    typeof d.calendarId !== "string" ||
+    !d.calendarId ||
+    d.calendarId.length > 200
+  )
+    return "Invalid calendar";
+  if (
+    !Number.isSafeInteger(d.start) ||
+    !Number.isSafeInteger(d.end) ||
+    d.start < MIN_EVENT_TIME ||
+    d.start > MAX_EVENT_TIME ||
+    d.end < MIN_EVENT_TIME ||
+    d.end > MAX_EVENT_TIME ||
+    d.end < d.start ||
+    typeof d.allDay !== "boolean"
+  )
+    return "Event dates must be between 1900 and 2200";
+  if (
+    !["EVENT", "TASK"].includes(d.kind) ||
+    !["NONE", "DAILY", "WEEKDAYS", "WEEKLY", "MONTHLY", "YEARLY"].includes(
+      d.recurrence,
+    ) ||
+    (d.importance != null &&
+      !["LOW", "MEDIUM", "HIGH"].includes(d.importance))
+  )
+    return "Invalid event settings";
+  if (
+    d.color != null &&
+    (!Number.isInteger(d.color) ||
+      d.color < -2147483648 ||
+      d.color > 2147483647)
+  )
+    return "Invalid event color";
+  if (
+    d.recurrenceUntil != null &&
+    (!Number.isSafeInteger(d.recurrenceUntil) ||
+      d.recurrenceUntil < minDay ||
+      d.recurrenceUntil > maxDay)
+  )
+    return "Repeat dates must be between 1900 and 2200";
+  if (!arrayOfDays(d.exceptions) || !arrayOfDays(d.completions))
+    return "Event dates must be between 1900 and 2200";
+  if (
+    !Array.isArray(d.reminders) ||
+    d.reminders.length > 100 ||
+    !d.reminders.every(
+      (minutes) =>
+        Number.isSafeInteger(minutes) && minutes >= 0 && minutes <= 525600,
+    )
+  )
+    return "Notifications must be between 0 and 525600 minutes, with at most 100";
+  return null;
+}
 function sync(changes = []) {
-  const task = syncQueue.then(() => performSync(changes));
+  if (!token) return Promise.reject(staleSessionError());
+  const invalid = changes
+    .map((change) => ({ change, error: invalidClientChange(change) }))
+    .find((item) => item.error);
+  if (invalid) {
+    const group = invalid.change.group;
+    const dropped = changes.filter(
+      (c) => c === invalid.change || (group && c.group === group),
+    );
+    quarantinedChanges.push(...dropped);
+    quarantinedChanges = quarantinedChanges.slice(-50);
+    syncMessage = "Could not sync: " + invalid.error;
+    snackbar(invalid.error);
+    if ($("settings-page").open) renderSettings({ statusOnly: true });
+    const remaining = changes.filter((c) => !dropped.includes(c));
+    return remaining.length ? sync(remaining) : Promise.resolve(false);
+  }
+  const generation = sessionGeneration;
+  const task = syncQueue.then(() => {
+    if (generation !== sessionGeneration) throw staleSessionError();
+    return performSync(changes, generation);
+  });
   syncQueue = task.catch(() => {});
   return task;
 }
-async function performSync(changes) {
+function changeBatches(changes) {
+  const groups = new Map();
+  for (const c of changes) {
+    const key = c.group || Symbol();
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  }
+  if (!groups.size) return [[]];
+  const batches = [];
+  let batch = [];
+  for (const group of groups.values()) {
+    if (group.length > 1000)
+      throw new Error("A save group cannot contain more than 1000 changes");
+    if (batch.length + group.length > 1000) {
+      batches.push(batch);
+      batch = [];
+    }
+    batch.push(...group);
+  }
+  if (batch.length) batches.push(batch);
+  return batches;
+}
+async function performSync(changes, generation = sessionGeneration) {
+  if (generation !== sessionGeneration) throw staleSessionError();
   busy = true;
   try {
-    const data = await api("sync", { cursor, changes });
-    for (const r of data.records) {
-      const i = records.findIndex((x) => x.kind === r.kind && x.id === r.id);
-      if (i < 0) records.push(r);
-      else records[i] = r;
+    const conflicts = [];
+    try {
+      for (const batch of changeBatches(changes)) {
+        let pending = batch;
+        let more;
+        do {
+          const data = await api("sync", { cursor, changes: pending });
+          if (generation !== sessionGeneration) throw staleSessionError();
+          for (const r of data.records) {
+            const i = records.findIndex(
+              (x) => x.kind === r.kind && x.id === r.id,
+            );
+            if (i < 0) records.push(r);
+            else records[i] = r;
+          }
+          cursor = data.cursor;
+          conflicts.push(...(data.conflicts ?? []));
+          more = data.more === true;
+          pending = [];
+        } while (more);
+      }
+    } catch (error) {
+      if (generation !== sessionGeneration || error.stale) throw error;
+      const rejected = changes.find((c) => c.operationId === error.operationId);
+      if (!rejected) throw error;
+      const dropped = changes.filter(
+        (c) => c === rejected || (rejected.group && c.group === rejected.group),
+      );
+      quarantinedChanges.push(...dropped);
+      quarantinedChanges = quarantinedChanges.slice(-50);
+      snackbar(error.message);
+      const remaining = changes.filter((c) => !dropped.includes(c));
+      if (remaining.length) {
+        await performSync(remaining, generation);
+        return false;
+      }
+      syncMessage = "Could not sync: " + error.message;
+      if ($("settings-page").open) renderSettings({ statusOnly: true });
+      return false;
     }
-    cursor = data.cursor;
+    if (generation !== sessionGeneration) throw staleSessionError();
     lastSync = Date.now();
     syncMessage = "Up to date";
     seedNewAccount();
     refresh();
-    if (data.conflicts.length)
+    if (conflicts.length)
       snackbar(
         "An item changed on another device. Your edit is saved in Edit history.",
       );
+    return true;
   } catch (e) {
+    if (generation !== sessionGeneration || e.stale) throw e;
     syncMessage = "Could not sync: " + e.message;
     snackbar(e.message);
-    if ($("settings-page").open) renderSettings();
+    if ($("settings-page").open) renderSettings({ statusOnly: true });
     throw e;
   } finally {
-    busy = false;
+    if (generation === sessionGeneration) {
+      busy = false;
+      const settings = $("settings-page");
+      if (settings.open) updateSettingsSyncStatus(settings);
+    }
   }
 }
 /**
@@ -595,7 +826,9 @@ let seedTried = false;
 function seedNewAccount() {
   if (seedTried || records.some((r) => r.kind === "calendar")) return;
   seedTried = true;
-  sync(defaultRecords().map((r) => change(r, r.data))).catch(() => {});
+  sync(atomicChanges(defaultRecords().map((r) => change(r, r.data)))).catch(
+    () => {},
+  );
 }
 const change = (record, data, deleted = false) => ({
   kind: record.kind,
@@ -605,11 +838,15 @@ const change = (record, data, deleted = false) => ({
   deleted,
   data: deleted ? null : data,
 });
+function atomicChanges(changes) {
+  if (changes.length < 2 || changes.some((c) => c.group)) return changes;
+  const group = crypto.randomUUID();
+  return changes.map((c) => ({ ...c, group }));
+}
 const newRecord = (kind) => ({ kind, id: crypto.randomUUID(), version: 0 });
 async function save(changes) {
   try {
-    await sync(changes);
-    return true;
+    return (await sync(atomicChanges(changes))) === true;
   } catch {
     return false;
   }
@@ -660,7 +897,7 @@ function refresh() {
   if ($("detail").open) renderDetail();
   if ($("calendars").open) renderCalendars();
   if ($("search-page").open) renderResults();
-  if ($("settings-page").open) renderSettings();
+  if ($("settings-page").open) renderSettings({ statusOnly: true });
 }
 /** Wide screens get Google Calendar's web layout: a sidebar, and paging in the top bar. */
 const wide = matchMedia("(min-width: 1000px)");
@@ -1593,7 +1830,7 @@ function gridBlock(p, columnWidth) {
         text: p.o.event.title || "(No title)",
         style: { "-webkit-line-clamp": String(titleLines) },
       }),
-      importanceDot(p.o.event.importance),
+      !compact && importanceDot(p.o.event.importance),
     ),
     showTime &&
       h("small", {
@@ -1601,6 +1838,9 @@ function gridBlock(p, columnWidth) {
         style: { "font-size": titleSize - 1 + "px" },
       }),
   );
+  // Narrow blocks keep the whole width for the title and tuck the dot into the corner.
+  const dot = compact && importanceDot(p.o.event.importance);
+  if (dot) block.append(Object.assign(dot, { className: "importance corner" }));
   return paint(block, p.o);
 }
 function renderGrid(slide) {
@@ -1947,7 +2187,7 @@ function showModal(dialog) {
 /* ---------- Date and time pickers, as Material 3's DatePickerDialog and TimePicker ---------- */
 /** Resolves with the picked date, or undefined when cancelled. */
 function datePicker(initial, title = "Select date") {
-  let picked = startOfDay(initial);
+  let picked = clampCalendarDate(initial);
   let month = startOfMonth(picked);
   let choosingYear = false;
   const body = h("div", { class: "date-picker" });
@@ -1963,7 +2203,7 @@ function datePicker(initial, title = "Select date") {
       ? h(
           "div",
           { class: "years" },
-          [...Array(201)].map((_, i) => {
+          [...Array(301)].map((_, i) => {
             const year = 1900 + i;
             return h("button", {
               type: "button",
@@ -1986,7 +2226,8 @@ function datePicker(initial, title = "Select date") {
             { class: "day-grid" },
             [...Array(weeks * 7)].map((_, i) => {
               const date = addDays(first, i);
-              if (!sameMonth(date, month)) return h("span");
+              if (!sameMonth(date, month) || !calendarDate(date))
+                return h("span");
               const isToday = sameDay(date, today());
               const chosen = sameDay(date, picked);
               return h("button", {
@@ -2031,11 +2272,11 @@ function datePicker(initial, title = "Select date") {
             iconButton(I.left, "Previous month", () => {
               month = addMonths(month, -1);
               draw(-1);
-            }),
+            }, { disabled: month <= startOfMonth(MIN_CALENDAR_DATE) }),
             iconButton(I.right, "Next month", () => {
               month = addMonths(month, 1);
               draw(1);
-            }),
+            }, { disabled: month >= startOfMonth(MAX_CALENDAR_DATE) }),
           ),
       ),
       grid,
@@ -2594,15 +2835,18 @@ function mailEvent(o) {
     encodeURIComponent(body.join("\n"));
 }
 async function openShare(o) {
+  const generation = sessionGeneration;
   try {
     await sync();
+    if (generation !== sessionGeneration) return;
     const share = await api("share", {
       eventId: o.record.id,
       action: "status",
     });
+    if (generation !== sessionGeneration) return;
     showShare(o, share);
   } catch (e) {
-    snackbar(e.message);
+    if (!e.stale) snackbar(e.message);
   }
 }
 function showShare(o, share) {
@@ -2640,7 +2884,7 @@ function showShare(o, share) {
           try {
             await callback();
           } catch (e) {
-            snackbar(e.message);
+            if (!e.stale) snackbar(e.message);
           } finally {
             working = false;
           }
@@ -2688,11 +2932,12 @@ function showShare(o, share) {
   );
 }
 async function duplicate(o) {
+  const generation = sessionGeneration;
   const d = o.event;
   const start = toStored(o.start, d.allDay);
   const record = newRecord("event");
   if (
-    await save([
+    (await save([
       change(record, {
         ...d,
         start,
@@ -2700,11 +2945,13 @@ async function duplicate(o) {
         exceptions: [],
         completions: [],
       }),
-    ])
+    ])) &&
+    generation === sessionGeneration
   )
     openDetail({ record, start: o.start });
 }
 async function deleteOccurrence(o) {
+  const generation = sessionGeneration;
   const d = o.event,
     r = o.record;
   let scope = "ALL";
@@ -2722,6 +2969,7 @@ async function deleteOccurrence(o) {
     scope = await choose("Delete recurring event", SCOPES, null);
     if (!scope) return;
   }
+  if (generation !== sessionGeneration) return;
   const day = epochDay(o.startDate);
   const seriesDay = epochDay(wall(d.start, d.allDay));
   let ch;
@@ -2731,7 +2979,8 @@ async function deleteOccurrence(o) {
   else if (scope === "FOLLOWING" && day > seriesDay)
     ch = change(r, { ...d, recurrenceUntil: day - 1 });
   else ch = change(r, null, true);
-  if (await save([ch])) $("detail").close();
+  if ((await save([ch])) && generation === sessionGeneration)
+    $("detail").close();
 }
 
 /* Event editor, as in ui/event/EventEditorScreen.kt */
@@ -2742,10 +2991,37 @@ const edStart = (s = ed.state) =>
   s.allDay ? s.startDate : atMinute(s.startDate, s.startTime);
 const edEnd = (s = ed.state) =>
   s.allDay ? s.endDate : atMinute(s.endDate, s.endTime);
-const edValid = (s = ed.state) =>
-  s.kind === "TASK" ||
-  (s.allDay ? s.endDate >= s.startDate : edEnd(s) >= edStart(s));
-const edCanSave = () => edValid() && !!ed.state.title.trim() && !ed.saving;
+const edValid = (s = ed.state) => {
+  const start = edStart(s);
+  const end = edEnd(s);
+  const storedStart = toStored(start, s.allDay);
+  const storedEnd =
+    s.kind === "TASK"
+      ? s.allDay
+        ? storedStart + DAY
+        : storedStart
+      : s.allDay
+        ? toStored(addDays(s.endDate, 1), true)
+        : end.getTime();
+  return (
+    calendarDate(s.startDate) &&
+    (s.kind === "TASK" || calendarDate(s.endDate)) &&
+    (!s.until || calendarDate(s.until)) &&
+    storedStart >= MIN_EVENT_TIME &&
+    storedStart <= MAX_EVENT_TIME &&
+    storedEnd >= MIN_EVENT_TIME &&
+    storedEnd <= MAX_EVENT_TIME &&
+    s.title.length <= 1000 &&
+    s.description.length <= 20000 &&
+    s.location.length <= 2000 &&
+    s.reminders.length <= 100 &&
+    s.reminders.every(
+      (m) => Number.isSafeInteger(m) && m >= 0 && m <= 525600,
+    ) &&
+    (s.kind === "TASK" || end >= start)
+  );
+};
+const edCanSave = (s = ed.state, editor = ed) => edValid(s) && !editor.saving;
 /**
  * Opens the full editor on an occurrence, or for a new item on [date] at [minute]. Quick add's
  * More options passes what it understood: [title], [task], [calendarId] and a parsed [draft].
@@ -2850,6 +3126,10 @@ function updateEditor(fn) {
   fn(ed.state);
   renderEditor();
 }
+async function editorSaveAttempt(editor, create) {
+  if (!editor.pendingSave) editor.pendingSave = await create();
+  return editor.pendingSave;
+}
 /** Moving the start keeps the event's length, like most calendars do. */
 function setStart(date, minute) {
   updateEditor((s) => {
@@ -2874,6 +3154,10 @@ function setStart(date, minute) {
   });
 }
 async function closeEditor() {
+  if (ed.pendingSave) {
+    snackbar("Retry the save before closing this event.");
+    return;
+  }
   if (
     JSON.stringify(ed.state) === ed.initial ||
     (await confirmAlert(
@@ -2891,6 +3175,7 @@ $("editor").oncancel = (e) => {
 function renderEditor() {
   const s = ed.state;
   const dialog = $("editor");
+  const locked = !!ed.pendingSave;
   const calendar = calendarById(s.calendarId);
   const color = s.color ?? calendar?.data.color;
   const isTask = s.kind === "TASK";
@@ -2932,12 +3217,13 @@ function renderEditor() {
       path && icon(path),
       h("div", { class: "grow" }, content),
     );
-  const plain = (tag, value, placeholder, oninput) => {
+  const plain = (tag, value, placeholder, oninput, maxlength) => {
     const el = h(tag, {
       class: "plain body-large",
       placeholder,
       "aria-label": placeholder,
       rows: tag === "textarea" ? 1 : null,
+      maxlength,
     });
     el.value = value;
     el.oninput = () => oninput(el.value);
@@ -2946,7 +3232,7 @@ function renderEditor() {
   const saveButton = h("button", {
     type: "button",
     class: "filled",
-    text: "Save",
+    text: ed.saving ? "Saving…" : locked ? "Retry save" : "Save",
     disabled: !edCanSave(),
     onclick: saveEditor,
   });
@@ -3016,10 +3302,12 @@ function renderEditor() {
           (m) => updateEditor((x) => (x.endTime = m)),
           !valid,
         ),
+      ed.saveError &&
+        h("p", { class: "editor-error", text: "Save failed: " + ed.saveError }),
       !valid &&
         h("p", {
           class: "editor-error",
-          text: "The event ends before it starts",
+          text: "Check the event dates and notifications",
         }),
       row(I.repeat, recurrenceText(s.recurrence, s.startDate), {
         onclick: async () => {
@@ -3085,7 +3373,13 @@ function renderEditor() {
       !isTask &&
         row(
           I.place,
-          plain("input", s.location, "Add location", (v) => (s.location = v)),
+          plain(
+            "input",
+            s.location,
+            "Add location",
+            (v) => (s.location = v),
+            2000,
+          ),
         ),
       !isTask && h("hr"),
       row(
@@ -3109,7 +3403,9 @@ function renderEditor() {
             type: "button",
             class: "add-reminder",
             text: "Add notification",
+            disabled: s.reminders.length >= 100,
             onclick: async () => {
+              if (s.reminders.length >= 100) return;
               const options = (
                 s.allDay ? ALL_DAY_REMINDERS : TIMED_REMINDERS
               ).filter((m) => !s.reminders.includes(m));
@@ -3207,6 +3503,7 @@ function renderEditor() {
           s.description,
           "Add description",
           (v) => (s.description = v),
+          20000,
         ),
         {
           top: true,
@@ -3214,7 +3511,9 @@ function renderEditor() {
       ),
     ),
   );
-  dialog.querySelector(".page-body").scrollTop = scrollTop;
+  const body = dialog.querySelector(".page-body");
+  body.inert = locked;
+  body.scrollTop = scrollTop;
 }
 function importanceChips(value, onSelect) {
   return h(
@@ -3242,30 +3541,26 @@ function importanceChips(value, onSelect) {
     }),
   );
 }
-async function saveEditor() {
-  const s = ed.state;
-  if (!edCanSave()) return;
-  const { series, opened } = ed;
+async function buildEditorSaveAttempt(editor) {
+  const s = editor.state;
+  const { series, opened } = editor;
   let scope = null;
-  // Editing one instance of a series asks which instances the change applies to.
-  // "This event" makes no sense once the repeat rule itself is changed.
   if (series && opened) {
     const options =
       s.recurrence !== series.data.recurrence ? SCOPES.slice(1) : SCOPES;
     scope = await choose("Save recurring event", options, null);
-    if (!scope) return;
+    if (!scope) return null;
   }
   const isTask = s.kind === "TASK";
-  const startAt = edStart();
+  const startAt = edStart(s);
   const start = toStored(startAt, s.allDay);
-  // All-day end dates are inclusive here and exclusive on the wire.
   const end = isTask
     ? s.allDay
       ? start + DAY
       : start
     : s.allDay
       ? toStored(addDays(s.endDate, 1), true)
-      : edEnd().getTime();
+      : edEnd(s).getTime();
   const edited = {
     calendarId: s.calendarId,
     title: s.title.trim(),
@@ -3285,7 +3580,8 @@ async function saveEditor() {
     importance: s.importance,
   };
   const changes = [];
-  let target = series ?? newRecord("event");
+  let target =
+    series ?? (editor.draftRecord ??= newRecord("event"));
   if (!series || !opened) changes.push(change(target, edited));
   else {
     const d = series.data;
@@ -3306,13 +3602,11 @@ async function saveEditor() {
         }),
       );
     } else if (scope === "FOLLOWING" && openedDay > seriesDay) {
-      // Splits the series; the edit becomes its new tail.
       changes.push(change(series, { ...d, recurrenceUntil: openedDay - 1 }));
       target = newRecord("event");
       changes.push(change(target, { ...edited, exceptions: [] }));
     } else if (scope === "FOLLOWING") changes.push(change(series, edited));
     else {
-      // The series start moves by as many days as this occurrence was moved.
       const shift = daysBetween(startOfDay(opened), s.startDate);
       const seriesDate = addDays(fromEpochDay(seriesDay), shift);
       const newStart = toStored(
@@ -3329,17 +3623,49 @@ async function saveEditor() {
       );
     }
   }
-  ed.saving = true;
+  if (changes.length > 1) {
+    const group = crypto.randomUUID();
+    changes.splice(0, changes.length, ...changes.map((c) => ({ ...c, group })));
+  }
+  return { changes, target, startAt, date: s.startDate };
+}
+async function saveEditor() {
+  const editor = ed;
+  const generation = sessionGeneration;
+  if (!edCanSave(editor.state, editor)) return;
+  const attempt = await editorSaveAttempt(editor, () =>
+    buildEditorSaveAttempt(editor),
+  );
+  if (!attempt) return;
+  if (editor !== ed || generation !== sessionGeneration) return;
+  editor.pendingSave = attempt;
+  editor.saving = true;
+  editor.saveError = null;
   renderEditor();
-  const ok = await save(changes);
-  ed.saving = false;
-  if (!ok) return renderEditor();
+  let error = null;
+  try {
+    if ((await sync(attempt.changes)) === false) {
+      editor.pendingSave = null;
+      throw new Error(syncMessage.replace(/^Could not sync: /, ""));
+    }
+  } catch (e) {
+    error = e;
+  }
+  if (editor !== ed || generation !== sessionGeneration) return;
+  editor.saving = false;
+  if (error) {
+    if (error.stale) return;
+    editor.saveError = error.message;
+    return renderEditor();
+  }
+  editor.pendingSave = null;
+  editor.saveError = null;
   $("editor").close();
   if ($("detail").open) {
-    detailOf = { id: target.id, start: startAt };
+    detailOf = { id: attempt.target.id, start: attempt.startAt };
     renderDetail();
   }
-  jumpTo(s.startDate);
+  jumpTo(attempt.date);
 }
 
 /* Calendars page, as in ui/calendars/ManageCalendarsScreen.kt */
@@ -3434,9 +3760,13 @@ function editCalendar(record, data) {
       h("label", { class: "field" }, h("span", { text: label }), input),
     ];
   };
-  const [name, nameField] = field("Name", state.name, { maxlength: 200 });
+  const [name, nameField] = field("Name", state.name, {
+    maxlength: 200,
+    required: true,
+  });
   const [keywords, keywordField] = field("Keywords", state.keywords, {
     placeholder: "produce, shift",
+    maxlength: 2000,
   });
   keywordField.append(
     h("small", { text: "Quick add sends matching items here" }),
@@ -3474,33 +3804,57 @@ function editCalendar(record, data) {
     );
   };
   draw();
-  let saveButton;
-  name.oninput = () => (saveButton.disabled = !name.value.trim());
+  let saveButton, cancelButton, pendingChanges = null;
+  const valid = () =>
+    !!name.value.trim() && name.value.length <= 200 && keywords.value.length <= 2000;
+  name.oninput = keywords.oninput = () => (saveButton.disabled = !valid());
+  const formBody = h("div", {}, nameField, keywordField, importance, swatches);
   showAlert(
     record ? "Edit calendar" : "New calendar",
-    [nameField, keywordField, importance, swatches],
+    formBody,
     (finish) => {
+      cancelButton = textButton("Cancel", () => finish(false));
       saveButton = textButton(
         "Save",
-        () => {
-          finish(true);
-          save([
+        async () => {
+          pendingChanges ??= [
             change(record ?? newRecord("calendar"), {
               ...state,
               name: name.value.trim(),
               keywords: keywordList(keywords.value).join(", "),
             }),
-          ]);
+          ];
+          await submitCalendarSave(
+            pendingChanges,
+            finish,
+            saveButton,
+            formBody,
+            cancelButton,
+          );
         },
-        !state.name.trim(),
+        !valid(),
       );
-      return [textButton("Cancel", () => finish(false)), saveButton];
+      return [cancelButton, saveButton];
     },
     { form: true },
   );
   name.focus();
 }
+async function submitCalendarSave(changes, finish, button, form, cancelButton) {
+  button.disabled = true;
+  button.textContent = "Saving…";
+  form.inert = true;
+  cancelButton.disabled = true;
+  const ok = await save(changes);
+  if (ok) finish(true);
+  else {
+    button.disabled = false;
+    button.textContent = "Retry save";
+  }
+  return ok;
+}
 async function deleteCalendar(c) {
+  const generation = sessionGeneration;
   if (
     !(await confirmAlert(
       `Delete “${c.data.name}”?`,
@@ -3509,17 +3863,17 @@ async function deleteCalendar(c) {
     ))
   )
     return;
-  const events = records.filter(
-    (r) => r.kind === "event" && !r.deleted && r.data.calendarId === c.id,
-  );
-  await save([
-    ...events.map((r) => change(r, null, true)),
-    change(c, null, true),
-  ]);
+  if (generation !== sessionGeneration) return;
+  await save(calendarDeleteChanges(c));
+}
+function calendarDeleteChanges(calendar) {
+  return [change(calendar, null, true)];
 }
 
 /* Search page, as in ui/search/SearchScreen.kt */
-let query = "";
+let query = "",
+  searchTimer = null;
+const SEARCH_RESULT_LIMIT = 100;
 function openSearch() {
   const dialog = $("search-page");
   const input = h("input", {
@@ -3532,6 +3886,7 @@ function openSearch() {
   const clear = iconButton(I.close, "Clear search", () => {
     query = input.value = "";
     clear.hidden = true;
+    clearTimeout(searchTimer);
     renderResults();
     input.focus();
   });
@@ -3539,7 +3894,8 @@ function openSearch() {
   input.oninput = () => {
     query = input.value;
     clear.hidden = !query;
-    renderResults();
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(renderResults, 180);
   };
   dialog.replaceChildren(
     h(
@@ -3570,10 +3926,11 @@ function renderResults() {
         .map(([r, c]) => representative(r, c))
         .filter(Boolean)
     : [];
-  const results = [
+  const ordered = [
     ...found.filter((o) => o.lastDate >= now).sort((a, b) => a.start - b.start),
     ...found.filter((o) => o.lastDate < now).sort((a, b) => b.start - a.start),
   ];
+  const results = ordered.slice(0, SEARCH_RESULT_LIMIT);
   $("results").replaceChildren(
     results.length
       ? h(
@@ -3586,6 +3943,11 @@ function renderResults() {
               o.event.location,
             ),
           ),
+          ordered.length > SEARCH_RESULT_LIMIT &&
+            h("p", {
+              class: "body-small variant",
+              text: `Showing the first ${SEARCH_RESULT_LIMIT} results`,
+            }),
         )
       : h("p", {
           class: "empty body-medium",
@@ -3596,24 +3958,78 @@ function renderResults() {
   );
 }
 
-function usernameForm() {
+function captureUsernameDraft(dialog) {
+  const input = dialog.querySelector(".account-username input");
+  if (!input) return null;
+  return {
+    value: input.value,
+    dirty: input.dataset.dirty === "true",
+    focused: document.activeElement === input,
+    start: input.selectionStart,
+    end: input.selectionEnd,
+  };
+}
+function restoreUsernameDraft(dialog, draft) {
+  if (!draft) return;
+  const input = dialog.querySelector(".account-username input");
+  if (!input) return;
+  if (draft.dirty) {
+    input.value = draft.value;
+    input.dataset.dirty = "true";
+  }
+  if (draft.focused) {
+    input.focus();
+    if (draft.start != null && draft.end != null)
+      input.setSelectionRange(draft.start, draft.end);
+  }
+}
+function updateSettingsSyncStatus(dialog) {
+  const message = dialog.querySelector("#sync-message");
+  if (message) message.textContent = syncMessage;
+  const last = dialog.querySelector("#last-sync");
+  if (last) {
+    last.hidden = lastSync <= 0;
+    last.textContent = lastSync
+      ? "Last synced " +
+        new Date(lastSync).toLocaleString(undefined, {
+          dateStyle: "short",
+          timeStyle: "short",
+        })
+      : "";
+  }
+  const syncNow = dialog.querySelector("#sync-now");
+  if (syncNow) syncNow.disabled = busy;
+}
+function usernameForm(value = username || "", dirty = false) {
   const usernameInput = h("input", {
-    type: "text", value: username || "", minlength: "3", maxlength: "30",
+    type: "text", value, minlength: "3", maxlength: "30",
     pattern: "[A-Za-z0-9_]{3,30}", autocomplete: "off",
     placeholder: "3 to 30 letters, numbers or underscores",
   });
+  usernameInput.dataset.dirty = dirty ? "true" : "false";
+  usernameInput.oninput = () => {
+    usernameInput.dataset.dirty =
+      usernameInput.value === (username || "") ? "false" : "true";
+  };
   const form = h("form", {
     class: "account-username",
     onsubmit: async (e) => {
       e.preventDefault();
       const button = form.querySelector("button");
+      const generation = sessionGeneration;
       button.disabled = true;
       try {
-        ({ username } = await api("profile", { username: usernameInput.value.trim() }));
+        const profile = await api("profile", {
+          username: usernameInput.value.trim(),
+        });
+        if (generation !== sessionGeneration) return;
+        username = profile.username;
+        usernameInput.value = username || "";
+        usernameInput.dataset.dirty = "false";
         renderAvatar();
         snackbar("Username updated");
       } catch (error) {
-        snackbar(error.message);
+        if (!error.stale) snackbar(error.message);
       } finally { button.disabled = false; }
     },
   }, h("label", { class: "field" }, h("span", { text: "Username" }), usernameInput),
@@ -3626,8 +4042,13 @@ function openSettings() {
   renderSettings();
   openPage($("settings-page"));
 }
-function renderSettings() {
+function renderSettings({ statusOnly = false } = {}) {
   const dialog = $("settings-page");
+  const usernameDraft = captureUsernameDraft(dialog);
+  if (statusOnly && usernameDraft?.dirty) {
+    updateSettingsSyncStatus(dialog);
+    return;
+  }
   const setting = (title, value, onclick) =>
     h(
       "button",
@@ -3661,21 +4082,31 @@ function renderSettings() {
             "div",
             {},
             h("p", { class: "title-medium", text: "Your calendar, connected" }),
-            h("p", { class: "body-small variant", text: syncMessage }),
+            h("p", {
+              id: "sync-message",
+              class: "body-small variant",
+              text: syncMessage,
+            }),
           ),
         ),
         h("p", { class: "body-medium", text: email || "" }),
-        usernameForm(),
+        usernameForm(
+          usernameDraft?.dirty ? usernameDraft.value : username || "",
+          !!usernameDraft?.dirty,
+        ),
         h("p", { class: "body-small variant", text: location.origin }),
-        lastSync > 0 &&
-          h("p", {
+        h("p", {
+            id: "last-sync",
+            hidden: lastSync <= 0,
             class: "body-small",
             text:
-              "Last synced " +
-              new Date(lastSync).toLocaleString(undefined, {
-                dateStyle: "short",
-                timeStyle: "short",
-              }),
+              lastSync > 0
+                ? "Last synced " +
+                  new Date(lastSync).toLocaleString(undefined, {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })
+                : "",
           }),
         h("p", {
           class: "body-small variant",
@@ -3685,6 +4116,7 @@ function renderSettings() {
           "div",
           { class: "actions" },
           h("button", {
+            id: "sync-now",
             type: "button",
             class: "filled",
             text: "Sync now",
@@ -3744,6 +4176,7 @@ function renderSettings() {
     ),
   );
   dialog.querySelector(".page-body").scrollTop = scrollTop;
+  restoreUsernameDraft(dialog, usernameDraft);
 }
 /** The color scheme row and theme gallery, as in ui/settings/ThemePicker.kt. */
 function themePicker() {
@@ -3872,24 +4305,34 @@ async function signOut() {
     ))
   )
     return;
+  const logoutToken = token;
+  const generation = invalidateSession();
+  token = null;
+  sessionStorage.removeItem("token");
   try {
-    await api("logout", {});
+    await api("logout", {}, logoutToken);
   } catch {}
+  if (generation !== sessionGeneration) return;
   token = null;
   records = [];
   cursor = 0;
+  quarantinedChanges = [];
+  lastSync = 0;
   sessionStorage.clear();
   photo = null;
   for (const d of document.querySelectorAll("dialog[open]")) d.close();
   signedIn();
 }
 async function openHistory() {
+  const generation = sessionGeneration;
   let history;
   try {
     ({ history } = await api("history"));
   } catch (e) {
+    if (e.stale) return;
     return snackbar(e.message);
   }
+  if (generation !== sessionGeneration) return;
   const dialog = $("history-page");
   dialog.replaceChildren(
     pageBar(I.back, "Back", () => dialog.close(), "Edit history"),
@@ -3923,11 +4366,12 @@ async function openHistory() {
               ),
               item.data &&
                 textButton("Restore", async () => {
+                  const restoreGeneration = sessionGeneration;
                   const current = records.find(
                     (r) => r.id === item.recordId && r.kind === item.kind,
                   );
                   if (
-                    await save([
+                    (await save([
                       change(
                         current || {
                           id: item.recordId,
@@ -3936,7 +4380,8 @@ async function openHistory() {
                         },
                         item.data,
                       ),
-                    ])
+                    ])) &&
+                    restoreGeneration === sessionGeneration
                   )
                     dialog.close();
                 }),
@@ -4115,11 +4560,21 @@ function openQuickAdd({ date } = {}) {
       importanceChoice === undefined
         ? calendar.data.defaultImportance
         : importanceChoice;
+    const dateValid =
+      result.ok &&
+      toStored(result.draft.start, result.draft.allDay) >=
+        MIN_EVENT_TIME &&
+      toStored(result.draft.start, result.draft.allDay) <
+        MAX_EVENT_TIME + 1 &&
+      toStored(result.draft.end, result.draft.allDay) >=
+        MIN_EVENT_TIME &&
+      toStored(result.draft.end, result.draft.allDay) <
+        MAX_EVENT_TIME + 1;
     const reason =
       calendarChoice == null && match && match.calendar.id === calendar.id
         ? match.reason
         : null;
-    return { text, isTask, result, calendar, importance, reason };
+    return { text, isTask, result, dateValid, calendar, importance, reason };
   };
   const row = (path, content, { emphasized = false, muted = false } = {}) => {
     const svg = icon(path);
@@ -4185,6 +4640,12 @@ function openQuickAdd({ date } = {}) {
     else if (!st.result.ok)
       preview.replaceChildren(
         row(I.info, h("span", { text: st.result.message }), { muted: true }),
+      );
+    else if (!st.dateValid)
+      preview.replaceChildren(
+        row(I.info, h("span", { text: "Dates must be between 1900 and 2200" }), {
+          muted: true,
+        }),
       );
     else {
       const d = st.result.draft;
@@ -4283,14 +4744,15 @@ function openQuickAdd({ date } = {}) {
         ].filter(Boolean),
       );
     }
-    saveButton.disabled = !st.result.ok || saving;
+    saveButton.disabled = !st.result.ok || !st.dateValid || saving;
     // The box grows with the text, up to four lines.
     input.style.height = "auto";
     input.style.height = Math.min(input.scrollHeight, 4 * 32) + "px";
   };
   const submit = async () => {
+    const generation = sessionGeneration;
     const st = state();
-    if (!st.result.ok || saving) return;
+    if (!st.result.ok || !st.dateValid || saving) return;
     const d = st.result.draft;
     saving = true;
     draw();
@@ -4315,6 +4777,7 @@ function openQuickAdd({ date } = {}) {
       }),
     ]);
     saving = false;
+    if (generation !== sessionGeneration) return;
     if (!ok) return draw();
     dialog.close();
     jumpTo(startOfDay(d.start));
@@ -4412,13 +4875,17 @@ function renderAvatar() {
   if ($("account").open) renderAccount();
 }
 async function loadProfile() {
+  const generation = sessionGeneration;
   renderAvatar();
   try {
-    ({ photo, username } = await api("profile"));
-  } catch {
+    const profile = await api("profile");
+    if (generation !== sessionGeneration) return;
+    ({ photo, username } = profile);
+  } catch (error) {
+    if (generation !== sessionGeneration || error.stale) return;
     photo = null;
   }
-  renderAvatar();
+  if (generation === sessionGeneration) renderAvatar();
 }
 function openAccount() {
   renderAccount();
@@ -4500,22 +4967,27 @@ function renderAccount() {
     }
   };
 }
-async function setPhoto(value) {
+async function setPhoto(value, generation = sessionGeneration) {
+  if (generation !== sessionGeneration) return;
   try {
-    ({ photo } = await api("profile", { photo: value }));
+    const profile = await api("profile", { photo: value });
+    if (generation !== sessionGeneration) return;
+    ({ photo } = profile);
     renderAvatar();
     snackbar(value ? "Profile photo updated" : "Profile photo removed");
   } catch (e) {
-    snackbar(e.message);
+    if (generation === sessionGeneration && !e.stale) snackbar(e.message);
   }
 }
 /** Crops the picked image to a 256-pixel square JPEG before uploading it. */
 $("photo-input").onchange = async () => {
+  const generation = sessionGeneration;
   const file = $("photo-input").files[0];
   $("photo-input").value = "";
   if (!file) return;
   try {
     const bitmap = await createImageBitmap(file);
+    if (generation !== sessionGeneration) return;
     const side = Math.min(bitmap.width, bitmap.height);
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = 256;
@@ -4536,9 +5008,10 @@ $("photo-input").onchange = async () => {
       data = canvas.toDataURL("image/jpeg", quality);
     while (data.length > 190000 && quality > 0.3)
       data = canvas.toDataURL("image/jpeg", (quality -= 0.15));
-    await setPhoto(data);
+    await setPhoto(data, generation);
   } catch {
-    snackbar("That image couldn't be read. Try a JPEG or PNG.");
+    if (generation === sessionGeneration)
+      snackbar("That image couldn't be read. Try a JPEG or PNG.");
   }
 };
 I.camera =

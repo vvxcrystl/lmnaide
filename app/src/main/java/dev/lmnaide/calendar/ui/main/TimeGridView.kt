@@ -46,6 +46,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -75,6 +76,8 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.temporal.TemporalAdjusters
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val GutterWidth = 52.dp
 private val HourHeight = 56.dp
@@ -119,7 +122,9 @@ fun TimeGridView(
     HorizontalPager(state = pagerState, key = { it }) { page ->
         val range = paging.rangeOf(page)
         val dates = remember(range) { (0 until days).map { range.start.plusDays(it.toLong()) } }
-        val occurrences = remember(index, range) { index.occurrences(range.start, range.endInclusive) }
+        val occurrences by produceState(emptyList<Occurrence>(), index, range) {
+            value = withContext(Dispatchers.Default) { index.occurrences(range.start, range.endInclusive) }
+        }
         TimeGridPage(
             dates = dates,
             occurrences = occurrences,

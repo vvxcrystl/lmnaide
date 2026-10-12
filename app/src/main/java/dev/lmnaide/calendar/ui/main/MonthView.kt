@@ -17,6 +17,8 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,6 +37,8 @@ import java.time.LocalDateTime
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
 import java.time.temporal.TemporalAdjusters
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private val DateHeaderHeight = 26.dp
 private val ChipHeight = 17.dp
@@ -92,9 +96,14 @@ private fun MonthPage(
 ) {
     val firstCell = month.atDay(1).with(TemporalAdjusters.previousOrSame(weekStart))
     val weeks = ((ChronoUnit.DAYS.between(firstCell, month.atEndOfMonth()) / 7) + 1).toInt()
-    val lanesByWeek = remember(index, month, weekStart) {
-        val all = index.occurrences(firstCell, firstCell.plusWeeks(weeks.toLong()).minusDays(1))
-        List(weeks) { week -> assignLanes(all, firstCell.plusWeeks(week.toLong()), 7) }
+    val lanesByWeek by produceState(
+        initialValue = List(weeks) { emptyList<LaneItem>() },
+        index, month, weekStart,
+    ) {
+        value = withContext(Dispatchers.Default) {
+            val all = index.occurrences(firstCell, firstCell.plusWeeks(weeks.toLong()).minusDays(1))
+            List(weeks) { week -> assignLanes(all, firstCell.plusWeeks(week.toLong()), 7) }
+        }
     }
     Column(Modifier.fillMaxSize()) {
         for (week in 0 until weeks) {

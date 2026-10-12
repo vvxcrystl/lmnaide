@@ -128,41 +128,46 @@ fun GridEventBlock(
     val (background, content) = chipColors(occurrence, now)
     val titleSize = if (compact) 11 else 13
     val lineHeight = titleSize + 3
-    Column(
+    Box(
         modifier
             .clip(RoundedCornerShape(if (compact) 6.dp else 8.dp))
             .background(background)
-            .clickable(onClick = onClick)
-            .padding(horizontal = if (compact) 4.dp else 8.dp, vertical = 3.dp),
+            .clickable(onClick = onClick),
     ) {
-        val showTime = height >= if (compact) 56.dp else 40.dp
-        val titleLines = ((height.value - 6 - if (showTime) lineHeight else 0) / lineHeight).toInt().coerceIn(1, 4)
-        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-            if (occurrence.isTask) {
-                TaskCheck(occurrence.completed, content, size = (titleSize + 1).dp)
+        Column(Modifier.padding(horizontal = if (compact) 4.dp else 8.dp, vertical = 3.dp)) {
+            val showTime = height >= if (compact) 56.dp else 40.dp
+            val titleLines = ((height.value - 6 - if (showTime) lineHeight else 0) / lineHeight).toInt().coerceIn(1, 4)
+            Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                if (occurrence.isTask) {
+                    TaskCheck(occurrence.completed, content, size = (titleSize + 1).dp)
+                }
+                Text(
+                    occurrence.titleText(),
+                    fontSize = titleSize.sp,
+                    lineHeight = lineHeight.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = content,
+                    textDecoration = occurrence.titleDecoration(),
+                    maxLines = titleLines,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (!compact) occurrence.event.importance?.let { ImportanceDot(it, Modifier.padding(top = 3.dp)) }
             }
-            Text(
-                occurrence.titleText(),
-                fontSize = titleSize.sp,
-                lineHeight = lineHeight.sp,
-                fontWeight = FontWeight.Medium,
-                color = content,
-                textDecoration = occurrence.titleDecoration(),
-                maxLines = titleLines,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            occurrence.event.importance?.let { ImportanceDot(it, Modifier.padding(top = 3.dp)) }
+            if (showTime) {
+                Text(
+                    timeText,
+                    fontSize = (titleSize - 1).sp,
+                    lineHeight = lineHeight.sp,
+                    color = content.copy(alpha = 0.85f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
-        if (showTime) {
-            Text(
-                timeText,
-                fontSize = (titleSize - 1).sp,
-                lineHeight = lineHeight.sp,
-                color = content.copy(alpha = 0.85f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        // Narrow blocks keep the whole width for the title and tuck the dot into the corner.
+        if (compact) occurrence.event.importance?.let {
+            ImportanceDot(it, Modifier.align(Alignment.TopEnd).padding(2.dp), size = 6.dp)
         }
     }
 }
@@ -196,7 +201,7 @@ fun EventBar(
                 color = content,
                 textDecoration = occurrence.titleDecoration(),
                 maxLines = 1,
-                overflow = TextOverflow.Clip,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }

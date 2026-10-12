@@ -8,6 +8,8 @@ import kotlinx.coroutines.CoroutineScope
 
 object CloudDatabase {
     fun install(db: SupportSQLiteDatabase) = Unit
+
+    suspend fun <T> withOperationGroup(db: dev.lmnaide.calendar.data.AppDatabase, block: suspend () -> T): T = block()
 }
 
 class CloudSync(context: Context, repository: CalendarRepository, scope: CoroutineScope) {

@@ -760,6 +760,14 @@ textarea::placeholder {
 .block .importance {
   margin-top: 3px;
 }
+.block .importance.corner {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 6px;
+  height: 6px;
+  margin: 0;
+}
 .block small {
   font-weight: 400;
 }
@@ -1072,8 +1080,11 @@ textarea::placeholder {
 /* Snackbar */
 #snackbar {
   position: fixed;
-  left: 50%;
-  bottom: 12px;
+  inset: auto auto 12px 50%;
+  height: auto;
+  margin: 0;
+  border: 0;
+  overflow: visible;
   z-index: 30;
   transform: translateX(-50%);
   width: max-content;

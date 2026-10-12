@@ -9,7 +9,6 @@ import dev.lmnaide.calendar.data.*
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
-import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.*
@@ -30,7 +29,22 @@ data class SyncState(
     val server: String = "",
     val message: String = "Connect your devices",
     val lastSync: Long = 0,
+    /** Set after a sign-in while this device has unsynced items, until the user decides. */
+    val importPrompt: ImportPrompt? = null,
 )
+
+/** Items made on this device while signed out, waiting for the user to choose whether to sync them. */
+data class ImportPrompt(val events: Int, val tasks: Int, val calendars: Int, val email: String) {
+    val single: Boolean
+        get() = events + tasks + calendars == 1
+
+    val summary: String
+        get() =
+            listOf(events to "event", tasks to "task", calendars to "calendar")
+                .filter { it.first > 0 }
+                .map { (n, noun) -> "$n $noun" + if (n == 1) "" else "s" }
+                .let { if (it.size > 1) it.dropLast(1).joinToString(", ") + " and " + it.last() else it.single() }
+}
 
 class CloudSync(
     private val context: Context,
@@ -50,6 +64,10 @@ class CloudSync(
     private val mutableState = MutableStateFlow(readState())
     val state = mutableState.asStateFlow()
     private var syncJob: Job? = null
+
+    /** A successful sign-in held in memory until the user answers the import prompt. */
+    private class HeldSignIn(val address: String, val result: JSONObject, val binding: String)
+    @Volatile private var held: HeldSignIn? = null
     private val deviceId by lazy {
         prefs.getString("deviceId", null)
             ?: UUID.randomUUID().toString().also { prefs.edit().putString("deviceId", it).commit() }
@@ -69,30 +87,30 @@ class CloudSync(
     suspend fun start() {
         // Stable IDs for the built-in seed stop fresh devices duplicating calendars and holidays.
         if (!prefs.getBoolean("seedMapped", false)) {
-            db.withTransaction {
-                for (name in listOf("Personal", "Work", "Holidays")) {
-                    sql.execSQL(
-                        "UPDATE sync_meta SET remoteId=? WHERE kind='calendar' AND version=0 AND localId=(SELECT id FROM calendars WHERE name=? ORDER BY id LIMIT 1)",
-                        arrayOf<Any>("seed:calendar:$name", name),
-                    )
-                }
-                sql.query(
-                        "SELECT e.id,e.title,e.start FROM events e JOIN calendars c ON e.calendarId=c.id WHERE c.name='Holidays'"
-                    )
-                    .use { rows ->
-                        while (rows.moveToNext()) {
-                            val digest =
-                                MessageDigest.getInstance("SHA-256")
-                                    .digest("${rows.getString(1)}:${rows.getLong(2)}".toByteArray())
-                                    .joinToString("") { "%02x".format(it) }
-                            sql.execSQL(
-                                "UPDATE sync_meta SET remoteId=? WHERE kind='event' AND localId=? AND version=0",
-                                arrayOf<Any>("seed:holiday:$digest", rows.getLong(0)),
-                            )
+            val mapped = runCatching {
+                db.withTransaction {
+                    for (name in listOf("Personal", "Work", "Holidays")) {
+                        sql.execSQL(
+                            "UPDATE sync_meta SET remoteId=? WHERE kind='calendar' AND version=0 AND localId=(SELECT id FROM calendars WHERE name=? ORDER BY id LIMIT 1)",
+                            arrayOf<Any>("seed:calendar:$name", name),
+                        )
+                    }
+                    val seeds = buildList {
+                        sql.query(
+                            "SELECT e.id,e.title,e.start FROM events e JOIN calendars c ON e.calendarId=c.id WHERE c.name='Holidays' ORDER BY e.id"
+                        ).use { rows ->
+                            while (rows.moveToNext()) add(HolidaySeedRow(rows.getLong(0), rows.getString(1), rows.getLong(2)))
                         }
                     }
-            }
-            prefs.edit().putBoolean("seedMapped", true).commit()
+                    for ((localId, remoteId) in canonicalHolidaySeedIds(seeds)) {
+                        sql.execSQL(
+                            "UPDATE sync_meta SET remoteId=? WHERE kind='event' AND localId=? AND version=0",
+                            arrayOf<Any>(remoteId, localId),
+                        )
+                    }
+                }
+            }.isSuccess
+            if (mapped) prefs.edit().putBoolean("seedMapped", true).commit()
         }
         ready.complete(Unit)
         schedule()
@@ -169,7 +187,7 @@ class CloudSync(
                         )
                     val binding = address + ":" + result.getString("userId")
                     val previous = prefs.getString("binding", null)
-                    if (previous != null && previous != binding) {
+                    if (boundToOtherAccount(previous, result.getString("userId"))) {
                         runCatching {
                             request(address, "logout", JSONObject(), result.getString("token"))
                         }
@@ -177,16 +195,13 @@ class CloudSync(
                             "This local calendar belongs to ${prefs.getString("email", "another account")}. Sign in to that account to keep data separate."
                         )
                     }
-                    prefs
-                        .edit()
-                        .putString("server", address)
-                        .putString("email", result.getString("email"))
-                        .putString("username", if (result.isNull("username")) "" else result.optString("username"))
-                        .putString("token", TokenVault.encrypt(result.getString("token")))
-                        .putString("binding", binding)
-                        .commit()
-                    mutableState.value = readState()
-                    schedule()
+                    val prompt = offlineItems(result.getString("email"))
+                    if (prompt == null) bind(address, result, binding)
+                    else {
+                        // Nothing is stored or uploaded until the user chooses in the prompt.
+                        held = HeldSignIn(address, result, binding)
+                        mutableState.value = readState().copy(importPrompt = prompt, message = "Choose whether to sync this device")
+                    }
                 } catch (e: Exception) {
                     if (e is CancellationException) {
                         mutableState.value = readState()
@@ -203,6 +218,57 @@ class CloudSync(
                 }
             }
             if (prefs.contains("token")) sync()
+        }
+
+    private fun bind(address: String, result: JSONObject, binding: String) {
+        prefs
+            .edit()
+            .putString("server", address)
+            .putString("email", result.getString("email"))
+            .putString("username", if (result.isNull("username")) "" else result.optString("username"))
+            .putString("token", TokenVault.encrypt(result.getString("token")))
+            .putString("binding", binding)
+            .commit()
+        mutableState.value = readState()
+        schedule()
+    }
+
+    /** Events, tasks and calendars made or changed while signed out; the built-in seed doesn't count. */
+    private suspend fun offlineItems(email: String): ImportPrompt? {
+        ready.await()
+        return db.withTransaction {
+            val local = mutableMapOf<String, MutableSet<Long>>()
+            sql.query(
+                    "SELECT kind,localId FROM sync_meta WHERE dirty=1 AND deleted=0 AND remoteId NOT LIKE 'seed:%'"
+                )
+                .use { while (it.moveToNext()) local.getOrPut(it.getString(0)) { mutableSetOf() } += it.getLong(1) }
+            val ids = local["event"].orEmpty()
+            val items = db.eventDao().getAll().filter { it.id in ids }
+            val tasks = items.count { it.kind == EventKind.TASK }
+            val calendars = db.calendarDao().getAll().count { it.id in local["calendar"].orEmpty() }
+            ImportPrompt(items.size - tasks, tasks, calendars, email)
+                .takeIf { items.isNotEmpty() || calendars > 0 }
+        }
+    }
+
+    /** Answers the import prompt: sync the held sign-in, or sign out and keep everything local. */
+    suspend fun finishSignIn(syncLocal: Boolean) =
+        withContext(Dispatchers.IO) {
+            val signedIn =
+                mutex.withLock {
+                    val sign = held ?: return@withLock false
+                    held = null
+                    if (syncLocal) bind(sign.address, sign.result, sign.binding)
+                    else {
+                        runCatching {
+                            request(sign.address, "logout", JSONObject(), sign.result.getString("token"))
+                        }
+                        mutableState.value =
+                            readState().copy(message = "Not signed in. Your events stay on this device.")
+                    }
+                    syncLocal
+                }
+            if (signedIn) sync()
         }
 
     suspend fun disconnect() =
@@ -306,6 +372,12 @@ class CloudSync(
                     prefs.edit().remove("token").commit()
                     schedule()
                 }
+                syncValidationFailure(
+                    code,
+                    path,
+                    result.optString("error", "Server returned $code"),
+                    result.optString("operationId"),
+                )?.let { throw it }
                 error(result.optString("error", "Server returned $code"))
             }
             return result
@@ -319,6 +391,7 @@ class CloudSync(
         val id: String,
         val localId: Long,
         val generation: Long,
+        val group: String?,
         val change: JSONObject,
     )
 
@@ -329,73 +402,84 @@ class CloudSync(
         sql.query("SELECT localId,remoteId FROM sync_meta WHERE kind='calendar'").use {
             while (it.moveToNext()) calendarIds[it.getLong(0)] = it.getString(1)
         }
-        val result = mutableListOf<Pending>()
-        var payloadBytes = 0
+        data class Row(
+            val kind: String,
+            val localId: Long,
+            val id: String,
+            val version: Long,
+            val generation: Long,
+            val deleted: Boolean,
+            val group: String?,
+        )
+        val groups = linkedMapOf<String, MutableList<Row>>()
         sql.query(
-                "SELECT kind,localId,remoteId,version,generation,deleted FROM sync_meta WHERE dirty=1 ORDER BY CASE kind WHEN 'calendar' THEN 0 ELSE 1 END,localId LIMIT 1000"
-            )
-            .use { rows ->
-                while (rows.moveToNext()) {
-                    val kind = rows.getString(0)
-                    val localId = rows.getLong(1)
-                    val id = rows.getString(2)
-                    val generation = rows.getLong(4)
-                    val deleted = rows.getInt(5) == 1
-                    val data =
-                        if (deleted) null
-                        else if (kind == "calendar")
-                            calendars[localId]?.let { c ->
-                                JSONObject()
-                                    .put("name", c.name)
-                                    .put("color", c.color)
-                                    .put("visible", c.visible)
-                                    .put("keywords", c.keywords)
-                                    .put(
-                                        "defaultImportance",
-                                        c.defaultImportance?.name ?: JSONObject.NULL,
-                                    )
-                            }
-                        else
-                            events[localId]?.let { e ->
-                                JSONObject()
-                                    .put("calendarId", calendarIds[e.calendarId])
-                                    .put("title", e.title)
-                                    .put("description", e.description)
-                                    .put("location", e.location)
-                                    .put("start", e.start)
-                                    .put("end", e.end)
-                                    .put("allDay", e.allDay)
-                                    .put("color", e.color ?: JSONObject.NULL)
-                                    .put("recurrence", e.recurrence.name)
-                                    .put("recurrenceUntil", e.recurrenceUntil ?: JSONObject.NULL)
-                                    .put("exceptions", JSONArray(e.exceptions))
-                                    .put("reminders", JSONArray(e.reminders))
-                                    .put("kind", e.kind.name)
-                                    .put("completions", JSONArray(e.completions))
-                                    .put("importance", e.importance?.name ?: JSONObject.NULL)
-                            }
-                    if (!deleted && data == null) continue
-                    val pending =
-                        Pending(
-                            kind,
-                            id,
-                            localId,
-                            generation,
-                            JSONObject()
-                                .put("kind", kind)
-                                .put("id", id)
-                                .put("baseVersion", rows.getLong(3))
-                                .put("operationId", "$deviceId:$id:$generation")
-                                .put("deleted", deleted)
-                                .put("data", data ?: JSONObject.NULL),
-                        )
-                    val bytes = pending.change.toString().toByteArray(Charsets.UTF_8).size
-                    if (result.isNotEmpty() && payloadBytes + bytes > 1_000_000) break
-                    payloadBytes += bytes
-                    result += pending
-                }
+            "SELECT kind,localId,remoteId,version,generation,deleted,opGroup FROM sync_meta WHERE dirty=1 ORDER BY CASE kind WHEN 'calendar' THEN 0 ELSE 1 END,localId"
+        ).use { rows ->
+            while (rows.moveToNext()) {
+                val kind = rows.getString(0)
+                val localId = rows.getLong(1)
+                val group = rows.getString(6)
+                val key = group?.let { "group:$it" } ?: "row:$kind:$localId"
+                groups.getOrPut(key) { mutableListOf() } += Row(
+                    kind = kind,
+                    localId = localId,
+                    id = rows.getString(2),
+                    version = rows.getLong(3),
+                    generation = rows.getLong(4),
+                    deleted = rows.getInt(5) == 1,
+                    group = group,
+                )
             }
-        result
+        }
+        val pendingGroups = mutableListOf<List<Pending>>()
+        for (group in groups.values) {
+            val changes = group.mapNotNull { row ->
+                val data =
+                    if (row.deleted) null
+                    else if (row.kind == "calendar")
+                        calendars[row.localId]?.let { c ->
+                            JSONObject()
+                                .put("name", c.name)
+                                .put("color", c.color)
+                                .put("visible", c.visible)
+                                .put("keywords", c.keywords)
+                                .put("defaultImportance", c.defaultImportance?.name ?: JSONObject.NULL)
+                        }
+                    else
+                        events[row.localId]?.let { e ->
+                            JSONObject()
+                                .put("calendarId", calendarIds[e.calendarId])
+                                .put("title", e.title)
+                                .put("description", e.description)
+                                .put("location", e.location)
+                                .put("start", e.start)
+                                .put("end", e.end)
+                                .put("allDay", e.allDay)
+                                .put("color", e.color ?: JSONObject.NULL)
+                                .put("recurrence", e.recurrence.name)
+                                .put("recurrenceUntil", e.recurrenceUntil ?: JSONObject.NULL)
+                                .put("exceptions", JSONArray(e.exceptions))
+                                .put("reminders", JSONArray(e.reminders))
+                                .put("kind", e.kind.name)
+                                .put("completions", JSONArray(e.completions))
+                                .put("importance", e.importance?.name ?: JSONObject.NULL)
+                        }
+                if (!row.deleted && data == null) return@mapNotNull null
+                val change = JSONObject()
+                    .put("kind", row.kind)
+                    .put("id", row.id)
+                    .put("baseVersion", row.version)
+                    .put("operationId", "$deviceId:${row.id}:${row.generation}")
+                    .put("deleted", row.deleted)
+                    .put("data", data ?: JSONObject.NULL)
+                row.group?.let { change.put("group", it) }
+                Pending(row.kind, row.id, row.localId, row.generation, row.group, change)
+            }
+            if (changes.isNotEmpty()) pendingGroups += changes
+        }
+        takeWholeGroups(pendingGroups, maxItems = 1000, maxBytes = 1_000_000) {
+            it.change.toString().toByteArray(Charsets.UTF_8).size
+        }
     }
 
     suspend fun sync(): Boolean =
@@ -408,36 +492,61 @@ class CloudSync(
                     val token = TokenVault.decrypt(prefs.getString("token", "").orEmpty())
                     var conflictCount = 0
                     var recoveredCount = 0
+                    val quarantined = mutableListOf<String>()
                     var rounds = 0
                     var again: Boolean
                     do {
                         rounds++
                         val sent = pending()
-                        val response =
-                            request(
-                                prefs.getString("server", "").orEmpty(),
-                                "sync",
-                                JSONObject()
-                                    .put("cursor", prefs.getLong("cursor", 0))
-                                    .put("changes", JSONArray(sent.map { it.change })),
-                                token,
+                        var recoveredNow = 0
+                        var validationFailure: SyncValidationFailure? = null
+                        try {
+                            visitSyncPages(
+                                initialCursor = prefs.getLong("cursor", 0),
+                                request = { cursor, includeChanges ->
+                                    request(
+                                        prefs.getString("server", "").orEmpty(),
+                                        "sync",
+                                        JSONObject()
+                                            .put("cursor", cursor)
+                                            .put("changes", JSONArray(if (includeChanges) sent.map { it.change } else emptyList<JSONObject>())),
+                                        token,
+                                    )
+                                },
+                                cursorOf = { it.getLong("cursor") },
+                                hasMore = { it.optBoolean("more", false) },
+                                applyPage = { response ->
+                                    conflictCount += response.optJSONArray("conflicts")?.length() ?: 0
+                                    recoveredNow += apply(response.getJSONArray("records"), sent)
+                                    prefs.edit()
+                                        .putLong("cursor", response.getLong("cursor"))
+                                        .putLong("lastSync", System.currentTimeMillis())
+                                        .commit()
+                                },
                             )
-                        conflictCount += response.getJSONArray("conflicts").length()
-                        val recoveredNow = apply(response.getJSONArray("records"), sent)
+                        } catch (e: SyncValidationFailure) {
+                            validationFailure = e
+                        }
                         recoveredCount += recoveredNow
-                        prefs
-                            .edit()
-                            .putLong("cursor", response.getLong("cursor"))
-                            .putLong("lastSync", System.currentTimeMillis())
-                            .commit()
+                        val failure = validationFailure
+                        if (failure != null) {
+                            val message = quarantine(failure, sent)
+                            if (message == null) throw failure
+                            quarantined += message
+                            again = hasPending() && rounds < 1000
+                            continue
+                        }
                         again =
-                            (sent.isNotEmpty() || recoveredNow > 0) && hasPending() && rounds < 10
+                            (sent.isNotEmpty() || recoveredNow > 0) && hasPending() && rounds < 1000
                     } while (again)
                     mutableState.value =
                         readState()
                             .copy(
                                 message =
-                                    if (recoveredCount > 0)
+                                    if (quarantined.isNotEmpty())
+                                        quarantined.first() +
+                                            if (quarantined.size > 1) " (${quarantined.size} changes skipped)" else ""
+                                    else if (recoveredCount > 0)
                                         "$recoveredCount unsent edit(s) saved in Recovered edits"
                                     else if (hasPending())
                                         "Changes queued. Sync will continue automatically."
@@ -484,6 +593,41 @@ class CloudSync(
 
     private fun hasPending(): Boolean =
         sql.query("SELECT 1 FROM sync_meta WHERE dirty=1 LIMIT 1").use { it.moveToFirst() }
+
+    private suspend fun quarantine(failure: SyncValidationFailure, sent: List<Pending>): String? {
+        val affected = failedChangeGroup(
+            failure.operationId,
+            sent,
+            operationIdOf = { it.change.optString("operationId") },
+            groupOf = { it.group },
+        ) ?: return null
+        val safelyMarked = db.withTransaction {
+            val unchanged = affected.all { pending ->
+                sql.query(
+                    "SELECT generation,dirty FROM sync_meta WHERE kind=? AND localId=?",
+                    arrayOf<Any>(pending.kind, pending.localId),
+                ).use { rows ->
+                    rows.moveToFirst() && rows.getLong(0) == pending.generation && rows.getInt(1) == 1
+                }
+            }
+            if (!unchanged) return@withTransaction false
+            for (pending in affected) {
+                sql.execSQL(
+                    "UPDATE sync_meta SET dirty=0,syncError=?,opGroup=NULL WHERE kind=? AND localId=? AND generation=?",
+                    arrayOf<Any>(failure.error, pending.kind, pending.localId, pending.generation),
+                )
+            }
+            true
+        }
+        if (!safelyMarked) return null
+        val name = affected.firstNotNullOfOrNull { pending ->
+            val table = if (pending.kind == "event") "events" else "calendars"
+            sql.query("SELECT ${if (pending.kind == "event") "title" else "name"} FROM $table WHERE id=?", arrayOf<Any>(pending.localId))
+                .use { if (it.moveToFirst()) it.getString(0) else null }
+        } ?: "local change"
+        val related = if (affected.size > 1) " and ${affected.size - 1} related change(s)" else ""
+        return "Could not sync ‘$name’$related: ${failure.error}. The local copy was kept."
+    }
 
     internal suspend fun apply(records: JSONArray, sent: List<Pending>): Int = db.withTransaction {
         var recovered = 0

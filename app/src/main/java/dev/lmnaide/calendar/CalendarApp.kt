@@ -44,7 +44,9 @@ class AppContainer(private val context: Context) {
             repository.ensureDefaults()
             repository.seedHolidays(settings)
             cloud.start()
-            // Keep the next reminder alarm in sync with every change to the events.
+        }
+        appScope.launch(Dispatchers.IO) {
+            // Reminder scheduling must start even if cloud seed mapping or sync startup fails.
             repository.events.collectLatest { reminders.reschedule() }
         }
     }

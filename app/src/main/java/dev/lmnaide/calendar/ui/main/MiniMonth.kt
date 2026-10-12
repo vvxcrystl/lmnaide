@@ -26,6 +26,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,6 +41,8 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.TemporalAdjusters
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Compact month picker shown under the top bar; dots mark days with events. */
 @Composable
@@ -97,7 +100,9 @@ private fun MonthGrid(
 ) {
     val firstCell = month.atDay(1).with(TemporalAdjusters.previousOrSame(weekStart))
     val lastCell = firstCell.plusWeeks(6).minusDays(1)
-    val eventDays = remember(index, firstCell) { index.byDay(firstCell, lastCell).keys }
+    val eventDays by produceState(emptySet<LocalDate>(), index, firstCell, lastCell) {
+        value = withContext(Dispatchers.Default) { index.byDay(firstCell, lastCell).keys }
+    }
     Column {
         for (week in 0L until 6L) {
             Row(Modifier.fillMaxWidth()) {

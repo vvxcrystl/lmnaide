@@ -30,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
@@ -46,6 +47,8 @@ import dev.lmnaide.calendar.ui.common.DayNumber
 import dev.lmnaide.calendar.ui.common.EventCard
 import dev.lmnaide.calendar.ui.common.Fmt
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -144,9 +147,16 @@ private fun ScheduleList(
     val end = maxOf(loadedEnd, YearMonth.from(target).plusMonths(1).atEndOfMonth())
     val currentEnd by rememberUpdatedState(end)
 
-    // Selection and week labels don't change the expanded event data.
-    val byDay = remember(index, start, end) { index.byDay(start, end) }
-    val rows = remember(byDay, start, end, today, anchor, target, weekStart) { buildRows(byDay, start, end, today, setOf(anchor, target), weekStart) }
+    // Keep the previous rows visible while recurrence expansion and sorting run off the UI thread.
+    val rows by produceState(
+        initialValue = emptyList<ScheduleRow>(),
+        index, start, end, today, anchor, target, weekStart,
+    ) {
+        value = withContext(Dispatchers.Default) {
+            val byDay = index.byDay(start, end)
+            buildRows(byDay, start, end, today, setOf(anchor, target), weekStart)
+        }
+    }
     val currentRows by rememberUpdatedState(rows)
     // A list rebuilt by a jump opens a few rows short of the target, on the side it came from.
     val listState = rememberLazyListState(
@@ -159,9 +169,9 @@ private fun ScheduleList(
         },
     )
     // Events load after the first frame; once they arrive, put the target date back at the top.
-    var positioned by remember(anchor) { mutableStateOf(index !== EventIndex.Empty) }
+    var positioned by remember(anchor) { mutableStateOf(false) }
     LaunchedEffect(rows) {
-        if (!positioned && index !== EventIndex.Empty) {
+        if (!positioned && rows.isNotEmpty()) {
             listState.scrollToItem(indexOf(rows, target))
             positioned = true
         }

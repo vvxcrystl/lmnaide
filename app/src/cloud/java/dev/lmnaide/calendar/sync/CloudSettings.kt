@@ -29,8 +29,9 @@ fun CloudSettings() {
     val scope = rememberCoroutineScope()
     var server by rememberSaveable { mutableStateOf(state.server) }
     var email by rememberSaveable { mutableStateOf(state.email) }
-    var username by rememberSaveable { mutableStateOf(state.username) }
-    LaunchedEffect(state.username) { username = state.username }
+    // The sign-in form's username is for new accounts, so it starts blank instead of reusing the last one.
+    var username by rememberSaveable { mutableStateOf(if (state.connected) state.username else "") }
+    LaunchedEffect(state.username, state.connected) { username = if (state.connected) state.username else "" }
     // Passwords are kept only in memory, never in saved state or preferences.
     var password by remember { mutableStateOf("") }
     var signingOut by remember { mutableStateOf(false) }
@@ -70,21 +71,24 @@ fun CloudSettings() {
                 if (state.busy) CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
             }
             if (state.connected) {
-                if (state.username.isNotBlank()) Text(state.username, style = MaterialTheme.typography.titleMedium)
                 Text(state.email, style = MaterialTheme.typography.bodyMedium)
-                OutlinedTextField(
-                    value = username,
-                    onValueChange = { username = it },
-                    label = { Text("Username") },
-                    supportingText = { Text("3–30 letters, numbers or underscores; leave blank to remove") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.busy,
-                )
-                TextButton(
-                    onClick = { scope.launch { cloud.updateUsername(username) } },
-                    enabled = !state.busy && username.trim() != state.username,
-                ) { Text("Save username") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = { username = it },
+                        label = { Text("Username") },
+                        supportingText = { Text("3–30 letters, numbers or underscores; leave blank to remove") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                        enabled = !state.busy,
+                    )
+                    // Lines up with the middle of the 56dp field.
+                    OutlinedButton(
+                        onClick = { scope.launch { cloud.updateUsername(username) } },
+                        enabled = !state.busy && username.trim() != state.username,
+                        modifier = Modifier.padding(top = 12.dp),
+                    ) { Text("Save") }
+                }
                 Text(
                     state.server,
                     style = MaterialTheme.typography.bodySmall,
@@ -160,7 +164,7 @@ fun CloudSettings() {
                         onClick = {
                             scope.launch {
                                 cloud.connect(server, email, password, false)
-                                if (cloud.state.value.connected) password = ""
+                                if (cloud.state.value.let { it.connected || it.importPrompt != null }) password = ""
                             }
                         },
                         enabled = ready,
@@ -171,7 +175,7 @@ fun CloudSettings() {
                         onClick = {
                             scope.launch {
                                 cloud.connect(server, email, password, true, username)
-                                if (cloud.state.value.connected) password = ""
+                                if (cloud.state.value.let { it.connected || it.importPrompt != null }) password = ""
                             }
                         },
                         enabled = ready,
@@ -187,6 +191,30 @@ fun CloudSettings() {
                     )
             }
         }
+    }
+    state.importPrompt?.let { prompt ->
+        // No outside-tap dismissal: the sign-in stays on hold until the user picks one.
+        AlertDialog(
+            onDismissRequest = {},
+            icon = { Icon(Icons.Default.CloudSync, contentDescription = null) },
+            title = { Text("Sync ${prompt.summary} from this device?") },
+            text = {
+                val (these, them) = if (prompt.single) "this" to "it" else "these" to "them"
+                Text(
+                    "You made or changed $these on this device while signed out. Syncing adds $them to ${prompt.email} and your other devices. Not now keeps you signed out, with $them on this device only."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { scope.launch { cloud.finishSignIn(syncLocal = true) } }) {
+                    Text("Sync")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { scope.launch { cloud.finishSignIn(syncLocal = false) } }) {
+                    Text("Not now")
+                }
+            },
+        )
     }
     if (signingOut)
         AlertDialog(

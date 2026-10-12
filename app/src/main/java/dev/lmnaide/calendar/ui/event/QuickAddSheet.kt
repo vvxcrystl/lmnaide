@@ -89,6 +89,7 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.lmnaide.calendar.data.Importance
+import dev.lmnaide.calendar.data.SyncLimits
 import dev.lmnaide.calendar.data.Recurrence
 import dev.lmnaide.calendar.domain.SmartEventDraft
 import dev.lmnaide.calendar.domain.SmartEventParser
@@ -141,6 +142,10 @@ fun QuickAddSheet(
         SmartEventParser.parse(input, today, settings.defaultDurationMinutes, task = isTask, defaultDate = defaultDate)
     }
     val draft = (result as? SmartEventResult.Success)?.event
+    val validDates = draft?.let {
+        SyncLimits.validDate(it.start.toLocalDate()) &&
+            SyncLimits.validDate(if (it.allDay) it.end.toLocalDate().minusDays(1) else it.end.toLocalDate())
+    } == true
     // Null until one is picked from the menu; until then keywords, past titles and names decide.
     var calendarChoice by rememberSaveable { mutableStateOf<Long?>(null) }
     val match = remember(draft?.title, input, calendars, history) {
@@ -158,7 +163,7 @@ fun QuickAddSheet(
         else -> Importance.entries[importanceChoice]
     }
     val reason = match?.reason?.takeIf { calendarChoice == null && calendar == match.calendar }
-    val canSave = draft != null && calendar != null && !viewModel.isSaving
+    val canSave = draft != null && validDates && calendar != null && !viewModel.isSaving
 
     fun closeThen(action: () -> Unit) {
         scope.launch { sheetState.hide() }.invokeOnCompletion { action() }
@@ -218,6 +223,13 @@ fun QuickAddSheet(
                 input.isBlank() -> Preview.Examples
                 draft != null -> Preview.Draft
                 else -> Preview.Problem
+            }
+            if (draft != null && !validDates) {
+                Text(
+                    "Dates must be between 1900 and 2200",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
             }
             AnimatedContent(
                 targetState = preview,

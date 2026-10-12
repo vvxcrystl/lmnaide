@@ -13,6 +13,7 @@ import dev.lmnaide.calendar.data.EventKind
 import dev.lmnaide.calendar.data.Importance
 import dev.lmnaide.calendar.data.Recurrence
 import dev.lmnaide.calendar.data.SettingsRepository
+import dev.lmnaide.calendar.data.SyncLimits
 import dev.lmnaide.calendar.domain.SmartEventDraft
 import dev.lmnaide.calendar.domain.SmartEventParser
 import dev.lmnaide.calendar.domain.SmartEventResult
@@ -64,7 +65,19 @@ data class EditorState(
             else -> LocalDateTime.of(endDate, endTime)
         }
 
-    val isValid: Boolean get() = isTask || if (allDay) endDate >= startDate else end >= start
+    val validationMessage: String?
+        get() = when {
+            title.length > SyncLimits.TITLE -> "Title must be 1,000 characters or fewer"
+            description.length > SyncLimits.DESCRIPTION -> "Notes must be 20,000 characters or fewer"
+            location.length > SyncLimits.LOCATION -> "Location must be 2,000 characters or fewer"
+            !SyncLimits.validReminders(reminders) -> "Use up to 100 reminders, each within one year"
+            !SyncLimits.validDate(startDate) || !SyncLimits.validDate(endDate) ||
+                recurrenceUntil?.let { !SyncLimits.validDate(it) } == true -> "Dates must be between 1900 and 2200"
+            !isTask && (if (allDay) endDate < startDate else end < start) -> "The event ends before it starts"
+            else -> null
+        }
+
+    val isValid: Boolean get() = validationMessage == null
 }
 
 class EventEditorViewModel(
@@ -101,9 +114,15 @@ class EventEditorViewModel(
 
     /** The stored event being edited, if any. */
     private var series: EventEntity? = null
+    /** Immutable local snapshot used to distinguish the draft from later sync updates. */
+    private var originalEvent: EventEntity? = null
 
     /** Start of the occurrence that was opened, when editing one instance of a series. */
     private var occurrenceStart: LocalDateTime? = null
+
+    var conflictMessage by mutableStateOf<String?>(null)
+        private set
+    private var pendingSave: Pair<EventEntity, EditScope?>? = null
 
     val isDirty: Boolean get() = state != null && state != initial
 
@@ -167,6 +186,7 @@ class EventEditorViewModel(
     private suspend fun existingEventState(): EditorState {
         val event = checkNotNull(repository.getEvent(eventId))
         series = event
+        originalEvent = event
         val baseStart = event.localStart()
         val length = Duration.between(baseStart, maxOf(event.localEnd(), baseStart))
         val start = if (event.recurrence != Recurrence.NONE && instanceId != Routes.NO_VALUE && instanceId != 0L) {
@@ -240,6 +260,7 @@ class EventEditorViewModel(
         viewModelScope.launch {
             try {
                 val existing = series
+                val original = originalEvent
                 val edited = EventEntity(
                     id = eventId,
                     calendarId = s.calendarId,
@@ -259,21 +280,90 @@ class EventEditorViewModel(
                     completions = existing?.completions.orEmpty(),
                     importance = s.importance,
                 )
-                val instance = s.start.toEpochSecond(ZoneOffset.UTC)
-                val opened = occurrenceStart
-                val id = when {
-                    existing == null || opened == null -> repository.saveEvent(edited)
-                    scope == EditScope.THIS -> repository.replaceOccurrence(
-                        existing,
-                        opened.toLocalDate(),
-                        edited.copy(recurrence = Recurrence.NONE, recurrenceUntil = null, exceptions = emptyList()),
-                    )
-                    scope == EditScope.FOLLOWING -> repository.replaceFollowing(existing, opened.toLocalDate(), edited)
-                    else -> repository.saveEvent(shiftSeries(existing, opened, s, edited))
+                val latest = if (existing == null) null else repository.getEvent(eventId)
+                val merged = if (original != null && latest != null && initial != null) {
+                    mergeEventDraft(original, latest, initial!!, s, edited)
+                } else null
+                if (merged?.conflicts?.isNotEmpty() == true) {
+                    pendingSave = merged.event to scope
+                    conflictMessage = "This event changed on another device in ${merged.conflicts.joinToString()}. Saving keeps your edits to those fields."
+                    return@launch
                 }
-                onSaved(EventLink(id, instance))
-            } finally { isSaving = false }
+                persist(merged?.event ?: edited, scope, s, onSaved)
+            } finally {
+                isSaving = false
+            }
         }
+    }
+
+    fun confirmConflict(onSaved: (EventLink) -> Unit) {
+        val pending = pendingSave ?: return
+        val s = state ?: return
+        pendingSave = null
+        conflictMessage = null
+        isSaving = true
+        viewModelScope.launch {
+            try {
+                persist(pending.first, pending.second, s, onSaved)
+            } finally {
+                isSaving = false
+            }
+        }
+    }
+
+    fun cancelConflict() {
+        pendingSave = null
+        conflictMessage = null
+    }
+
+    private suspend fun persist(
+        event: EventEntity,
+        scope: EditScope?,
+        s: EditorState,
+        onSaved: (EventLink) -> Unit,
+    ) {
+        val existing = series
+        val latest = if (existing == null) null else repository.getEvent(eventId)
+        val opened = occurrenceStart
+        val original = originalEvent
+        val baseline = initial
+        val occurrenceDraft = if (
+            latest != null && original != null && baseline != null && opened != null &&
+                scope in listOf(EditScope.THIS, EditScope.FOLLOWING)
+        ) alignOccurrence(original, latest, event, opened, baseline, s) else event
+        val id = when {
+            existing == null || latest == null || opened == null -> repository.saveEvent(event)
+            scope == EditScope.THIS -> repository.replaceOccurrence(
+                latest,
+                opened.toLocalDate(),
+                occurrenceDraft.copy(recurrence = Recurrence.NONE, recurrenceUntil = null, exceptions = emptyList()),
+            )
+            scope == EditScope.FOLLOWING -> repository.replaceFollowing(latest, opened.toLocalDate(), occurrenceDraft)
+            else -> repository.saveEvent(shiftSeries(latest, opened, s, event))
+        }
+        onSaved(EventLink(id, s.start.toEpochSecond(ZoneOffset.UTC)))
+    }
+
+    private fun alignOccurrence(
+        original: EventEntity,
+        latest: EventEntity,
+        draft: EventEntity,
+        opened: LocalDateTime,
+        baseline: EditorState,
+        current: EditorState,
+    ): EventEntity {
+        val startChanged = current.allDay != baseline.allDay || current.startDate != baseline.startDate || current.startTime != baseline.startTime
+        val endChanged = current.allDay != baseline.allDay || current.endDate != baseline.endDate || current.endTime != baseline.endTime
+        val originalStart = original.localStart()
+        val latestStart = latest.localStart()
+        val dayOffset = ChronoUnit.DAYS.between(originalStart.toLocalDate(), opened.toLocalDate())
+        val start = if (startChanged) draft.localStart() else latestStart.plusDays(dayOffset)
+        val latestDuration = Duration.between(latestStart, maxOf(latest.localEnd(), latestStart))
+        val end = if (endChanged) draft.localEnd() else start.plus(latestDuration)
+        return draft.copy(
+            start = EventEntity.toStored(start, draft.allDay),
+            end = EventEntity.toStored(end, draft.allDay),
+        )
     }
 
     /**
@@ -281,10 +371,16 @@ class EventEditorViewModel(
      * the same number of days the occurrence was moved, and takes the edited time and length.
      */
     private fun shiftSeries(series: EventEntity, opened: LocalDateTime, s: EditorState, edited: EventEntity): EventEntity {
+        val baseline = initial ?: return edited
+        val startChanged = s.allDay != baseline.allDay || s.startDate != baseline.startDate || s.startTime != baseline.startTime
+        val endChanged = s.allDay != baseline.allDay || s.endDate != baseline.endDate || s.endTime != baseline.endTime
+        if (!startChanged && !endChanged) return edited.copy(exceptions = series.exceptions)
         val shiftDays = ChronoUnit.DAYS.between(opened.toLocalDate(), s.startDate)
-        val seriesDate = series.localStart().toLocalDate().plusDays(shiftDays)
-        val start = LocalDateTime.of(seriesDate, s.start.toLocalTime())
-        val end = start.plus(Duration.between(s.start, s.end))
+        val latestStart = series.localStart()
+        val seriesDate = latestStart.toLocalDate().plusDays(shiftDays)
+        val start = LocalDateTime.of(seriesDate, if (startChanged) s.start.toLocalTime() else latestStart.toLocalTime())
+        val duration = if (endChanged) Duration.between(s.start, s.end) else Duration.between(latestStart, maxOf(series.localEnd(), latestStart))
+        val end = start.plus(duration)
         return edited.copy(
             start = EventEntity.toStored(start, s.allDay),
             end = EventEntity.toStored(end, s.allDay),
