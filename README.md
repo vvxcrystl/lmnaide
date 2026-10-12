@@ -48,6 +48,12 @@ Quick add picks a calendar in this order:
 
 Tap the calendar in the preview to change it before saving.
 
+### Add highlighted text
+
+Highlight a date or event sentence in another app, then choose **Add to calendar** from its text-selection menu (it may be under the overflow menu). A prefilled quick-add sheet lets you check the date, edit the title and pick a calendar before saving. A date on its own gets an editable “New event” title. Saving or dismissing returns to the source app without changing its text. This works in apps that support Android's standard text-selection actions.
+
+For apps with their own message-selection menus, you can also share the selected text to **Add to calendar**. In Google Messages, long-press a message, choose **More → Share**, then **Calendar — Add to calendar**.
+
 ### Events and tasks
 
 Events have a title, a start and end (timed, all-day or multi-day), a location that opens in your maps app, a description, a color and a calendar.
@@ -58,7 +64,7 @@ Events and tasks can repeat daily, every weekday, weekly, monthly or yearly, wit
 
 ### People
 
-Add device contacts to an event from quick add or the editor. In quick add, names after "with" are matched against your contacts. For example, "Movie night with Sam, Dario, Elon and I on the 10th at 7pm" adds Sam, Dario and Elon. If a name matches more than one contact, the app asks which one you mean. "I" is skipped. Tap a name in the event details to open that contact.
+Add device contacts to an event from quick add or the editor. In quick add, names after "with" are matched against your contacts. For example, "Movie night with Sam, Dario, Elon and I on the 10th at 7pm" adds Sam, Dario and Elon. You can use a first or last name: both "Sam" and "Altman" match a contact named "Sam Altman". If a name matches more than one contact, the app asks which one you mean. "I" is skipped. Tap a name in the event details to open that contact.
 
 People are stored on the device only. The app never sends invitations.
 

@@ -1,6 +1,14 @@
 package dev.lmnaide.calendar.ui.event
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -14,6 +22,7 @@ import dev.lmnaide.calendar.ui.common.contentColor
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -73,6 +82,8 @@ import dev.lmnaide.calendar.ui.common.ConfirmDialog
 import dev.lmnaide.calendar.ui.common.DatePickerModal
 import dev.lmnaide.calendar.ui.common.EventColors
 import dev.lmnaide.calendar.ui.common.Fmt
+import dev.lmnaide.calendar.ui.common.Motion
+import dev.lmnaide.calendar.ui.common.rememberLastNonNull
 import dev.lmnaide.calendar.ui.common.OptionsDialog
 import dev.lmnaide.calendar.ui.common.TimePickerModal
 import java.time.LocalDate
@@ -152,7 +163,7 @@ fun EventEditorScreen(
                 onDate = { dialog = EditorDialog.StartDate },
                 onTime = { dialog = EditorDialog.StartTime },
             )
-            if (!state.isTask) {
+            Reveal(!state.isTask) {
                 DateTimeRow(
                     date = Fmt.dayMedium(state.endDate, today),
                     time = Fmt.time(state.endTime, use24h).takeUnless { state.allDay },
@@ -161,7 +172,7 @@ fun EventEditorScreen(
                     error = !state.isValid,
                 )
             }
-            if (!state.isValid) {
+            Reveal(!state.isValid) {
                 Text(
                     "The event ends before it starts",
                     style = MaterialTheme.typography.bodySmall,
@@ -172,7 +183,7 @@ fun EventEditorScreen(
             EditorRow(icon = Icons.Outlined.Repeat, onClick = { dialog = EditorDialog.Repeat }) {
                 Text(Fmt.recurrence(state.recurrence, state.startDate), style = MaterialTheme.typography.bodyLarge)
             }
-            if (state.recurrence != Recurrence.NONE) {
+            Reveal(state.recurrence != Recurrence.NONE) {
                 EditorRow(icon = null, onClick = { dialog = EditorDialog.RepeatEnd }) {
                     Text(
                         state.recurrenceUntil?.let { "Ends on ${Fmt.dayShort(it)}" } ?: "Never ends",
@@ -194,19 +205,21 @@ fun EventEditorScreen(
             }
             Divider()
 
-            if (!state.isTask) {
-                EditorRow(icon = Icons.Outlined.LocationOn) {
-                    PlainTextField(
-                        value = state.location,
-                        onValueChange = { location -> viewModel.update { it.copy(location = location) } },
-                        placeholder = "Add location",
-                    )
+            Reveal(!state.isTask) {
+                Column {
+                    EditorRow(icon = Icons.Outlined.LocationOn) {
+                        PlainTextField(
+                            value = state.location,
+                            onValueChange = { location -> viewModel.update { it.copy(location = location) } },
+                            placeholder = "Add location",
+                        )
+                    }
+                    Divider()
                 }
-                Divider()
             }
 
             EditorRow(icon = Icons.Outlined.Notifications, alignTop = true) {
-                Column {
+                Column(Modifier.animateContentSize(Motion.move())) {
                     state.reminders.forEach { minutes ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
@@ -496,9 +509,15 @@ private fun DateTimeRow(
                 .clickable(onClick = onDate)
                 .padding(start = 62.dp, top = 12.dp, bottom = 12.dp),
         )
-        if (time != null) {
+        // The time slides away when the event becomes all-day, and back when it doesn't.
+        val lastTime = rememberLastNonNull(time)
+        AnimatedVisibility(
+            visible = time != null,
+            enter = fadeIn(Motion.enter()) + expandHorizontally(Motion.move(), expandFrom = Alignment.End),
+            exit = fadeOut(Motion.exit()) + shrinkHorizontally(Motion.move(), shrinkTowards = Alignment.End),
+        ) {
             Text(
-                time,
+                lastTime.orEmpty(),
                 style = MaterialTheme.typography.bodyLarge,
                 color = color,
                 modifier = Modifier
@@ -507,6 +526,16 @@ private fun DateTimeRow(
             )
         }
     }
+}
+
+/** Rows that depend on another field unfold into place and fold away again. */
+@Composable
+private fun ColumnScope.Reveal(visible: Boolean, content: @Composable () -> Unit) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(Motion.enter()) + expandVertically(Motion.move()),
+        exit = fadeOut(Motion.exit()) + shrinkVertically(Motion.move()),
+    ) { content() }
 }
 
 @Composable

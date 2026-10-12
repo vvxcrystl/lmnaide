@@ -48,6 +48,7 @@ import dev.lmnaide.calendar.domain.Occurrence
 import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.common.EventCard
 import dev.lmnaide.calendar.ui.common.Fmt
+import dev.lmnaide.calendar.ui.common.Motion
 import dev.lmnaide.calendar.ui.common.appViewModelFactory
 import dev.lmnaide.calendar.ui.common.rememberNow
 import kotlinx.coroutines.Dispatchers
@@ -169,12 +170,14 @@ fun SearchScreen(
                 .fillMaxSize(),
         ) {
             items(results, key = { it.key }) { occurrence ->
+                // Results slide into their new places as the query narrows or widens.
                 EventCard(
                     occurrence = occurrence,
                     time = "${Fmt.dayMedium(occurrence.startDate, now.toLocalDate())}, ${Fmt.occurrenceTime(occurrence, settings.use24Hour)}",
                     detail = occurrence.event.location,
                     now = now,
                     onClick = { onOpenEvent(EventLink(occurrence.event.id, occurrence.instanceId)) },
+                    modifier = Modifier.animateItem(fadeInSpec = Motion.enter(), placementSpec = Motion.move(), fadeOutSpec = Motion.exit()),
                 )
             }
         }

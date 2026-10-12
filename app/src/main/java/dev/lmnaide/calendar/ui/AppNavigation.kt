@@ -1,6 +1,15 @@
 package dev.lmnaide.calendar.ui
 
 import android.net.Uri
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -14,6 +23,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import dev.lmnaide.calendar.ui.calendars.ManageCalendarsScreen
+import dev.lmnaide.calendar.ui.common.Motion
 import dev.lmnaide.calendar.ui.event.EventDetailScreen
 import dev.lmnaide.calendar.ui.event.EventEditorScreen
 import dev.lmnaide.calendar.ui.main.MainScreen
@@ -54,6 +64,36 @@ object Routes {
 private fun NavController.popFrom(entry: NavBackStackEntry): Boolean =
     entry.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && popBackStack()
 
+/** Event details and the editor open like full-screen dialogs, rising over the screen they came from. */
+private fun NavBackStackEntry.rises() = destination.route == Routes.EVENT || destination.route == Routes.EDIT
+
+private fun riseIn() = slideInVertically(Motion.enter(Motion.LONG)) { it / 8 } + fadeIn(Motion.enter(Motion.MEDIUM))
+
+private fun sinkOut() = slideOutVertically(Motion.exit(Motion.MEDIUM)) { it / 8 } + fadeOut(Motion.exit(Motion.MEDIUM))
+
+/**
+ * Other screens slide in from the side they lead to, a tenth of the way. The old screen fades out
+ * before the new one fades in, so their text never overlaps.
+ */
+private fun slideIn(forward: Boolean) =
+    slideInHorizontally(Motion.enter(Motion.LONG)) { if (forward) it / 10 else -it / 10 } + fadeIn(Motion.enter(Motion.MEDIUM - 90, delay = 90))
+
+private fun slideOut(forward: Boolean) =
+    slideOutHorizontally(Motion.exit(Motion.MEDIUM)) { if (forward) -it / 10 else it / 10 } + fadeOut(Motion.exit(90))
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.enter(): EnterTransition =
+    if (targetState.rises()) riseIn() else slideIn(forward = true)
+
+// The screen underneath stays put while a dialog-style screen rises over it.
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.exit(): ExitTransition =
+    if (targetState.rises()) ExitTransition.KeepUntilTransitionsFinished else slideOut(forward = true)
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.popEnter(): EnterTransition =
+    if (initialState.rises()) EnterTransition.None else slideIn(forward = false)
+
+private fun AnimatedContentTransitionScope<NavBackStackEntry>.popExit(): ExitTransition =
+    if (initialState.rises()) sinkOut() else slideOut(forward = false)
+
 @Composable
 fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Unit, pendingEditor: StateFlow<String?>, onEditorHandled: () -> Unit) {
     val nav = rememberNavController()
@@ -72,7 +112,14 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
         }
     }
 
-    NavHost(navController = nav, startDestination = Routes.MAIN) {
+    NavHost(
+        navController = nav,
+        startDestination = Routes.MAIN,
+        enterTransition = { enter() },
+        exitTransition = { exit() },
+        popEnterTransition = { popEnter() },
+        popExitTransition = { popExit() },
+    ) {
         composable(Routes.MAIN) {
             MainScreen(
                 onOpenEvent = { nav.navigate(Routes.event(it)) },

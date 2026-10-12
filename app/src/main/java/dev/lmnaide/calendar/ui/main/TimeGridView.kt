@@ -1,5 +1,11 @@
 package dev.lmnaide.calendar.ui.main
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,7 +37,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,6 +52,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
@@ -54,6 +61,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.lmnaide.calendar.domain.EventIndex
 import dev.lmnaide.calendar.domain.Occurrence
@@ -61,6 +69,8 @@ import dev.lmnaide.calendar.ui.common.DayNumber
 import dev.lmnaide.calendar.ui.common.EventBar
 import dev.lmnaide.calendar.ui.common.Fmt
 import dev.lmnaide.calendar.ui.common.GridEventBlock
+import dev.lmnaide.calendar.ui.common.Motion
+import dev.lmnaide.calendar.ui.common.rememberLastNonNull
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -241,14 +251,18 @@ private fun AllDayLanes(
     val collapsible = laneCount > COLLAPSED_LANES + 1
     val collapsed = collapsible && !expanded
     val visibleLanes = if (collapsed) COLLAPSED_LANES + 1 else laneCount
+    // The lanes unroll and roll back up instead of pushing the grid down in one jump.
+    val height by animateDpAsState(LaneHeight * visibleLanes + 4.dp, Motion.move(), label = "all-day height")
+    val arrowRotation by animateFloatAsState(if (expanded) 180f else 0f, Motion.move(), label = "all-day arrow")
 
     Row(Modifier.fillMaxWidth()) {
         Box(Modifier.width(GutterWidth), contentAlignment = Alignment.TopCenter) {
             if (collapsible) {
                 IconButton(onClick = onToggle, modifier = Modifier.size(LaneHeight * 2)) {
                     Icon(
-                        if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                        Icons.Default.KeyboardArrowDown,
                         contentDescription = if (expanded) "Collapse all-day events" else "Expand all-day events",
+                        modifier = Modifier.rotate(arrowRotation),
                     )
                 }
             }
@@ -256,7 +270,8 @@ private fun AllDayLanes(
         BoxWithConstraints(
             Modifier
                 .weight(1f)
-                .height(LaneHeight * visibleLanes + 4.dp),
+                .height(height)
+                .clipToBounds(),
         ) {
             val columnWidth = maxWidth / dates.size
             items.filter { !collapsed || it.lane < COLLAPSED_LANES }.forEach { item ->
@@ -357,20 +372,34 @@ private fun DayColumn(
             )
         }
 
-        if (draftSlot != null) {
+        // A tapped hour pops in, glides to the next hour tapped, and fades once it's used or dismissed.
+        val lastSlot = rememberLastNonNull(draftSlot)
+        // Qualified because the enclosing row's scoped overload isn't allowed here.
+        androidx.compose.animation.AnimatedVisibility(
+            visible = draftSlot != null,
+            enter = fadeIn(Motion.enter(Motion.SHORT)),
+            exit = fadeOut(Motion.exit()),
+        ) {
+            val slot = lastSlot ?: return@AnimatedVisibility
+            // Read while placing, so gliding doesn't recompose the slot every frame.
+            val top = animateDpAsState(minutesToDp(slot.hour * 60), Motion.move(), label = "draft slot")
             val narrow = maxWidth < 96.dp
             Row(
                 verticalAlignment = Alignment.Top,
                 horizontalArrangement = if (narrow) Arrangement.Center else Arrangement.Start,
                 modifier = Modifier
-                    .offset(y = minutesToDp(draftSlot.hour * 60))
+                    .offset { IntOffset(0, top.value.roundToPx()) }
+                    .animateEnterExit(
+                        enter = scaleIn(Motion.enter(), initialScale = 0.9f),
+                        exit = scaleOut(Motion.exit(), targetScale = 0.95f),
+                    )
                     .fillMaxWidth()
                     .height(HourHeight)
                     .padding(horizontal = 2.dp, vertical = 1.dp)
                     .clip(RoundedCornerShape(6.dp))
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
                     .border(1.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
-                    .clickable { onCreateAt(draftSlot) }
+                    .clickable { onCreateAt(slot) }
                     .padding(4.dp),
             ) {
                 Icon(Icons.Default.Add, contentDescription = "New event", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))

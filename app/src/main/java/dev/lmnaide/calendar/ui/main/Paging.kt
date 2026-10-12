@@ -4,6 +4,7 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import dev.lmnaide.calendar.domain.EventIndex
@@ -55,18 +56,33 @@ internal fun PagerDateSync(
     val currentRangeOf by rememberUpdatedState(rangeOf)
     val currentOnSelect by rememberUpdatedState(onSelectDate)
     val currentOnVisible by rememberUpdatedState(onVisibleRange)
+    val jump = remember { JumpState() }
 
     LaunchedEffect(selectedDate) {
         val target = pageOf(selectedDate)
         val current = pagerState.currentPage
         when {
             target == current -> Unit
-            abs(target - current) == 1 -> pagerState.animateScrollToPage(target)
-            else -> pagerState.scrollToPage(target)
+            abs(target - current) <= JUMP_RUN_UP -> pagerState.animateScrollToPage(target)
+            // A long jump cuts to a couple of pages short and swipes the rest, so you see which way
+            // it went without paging through every period in between.
+            else -> {
+                try {
+                    jump.active = true
+                    pagerState.scrollToPage(if (target > current) target - JUMP_RUN_UP else target + JUMP_RUN_UP)
+                    pagerState.animateScrollToPage(target)
+                } finally {
+                    jump.active = false
+                }
+                currentOnVisible(currentRangeOf(target))
+            }
         }
     }
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.settledPage }.collect { page ->
+            // The run-up page briefly settles mid-jump. Reporting it would flash its month in the
+            // title, and moving the selection there would cancel the jump.
+            if (jump.active) return@collect
             val range = currentRangeOf(page)
             currentOnVisible(range)
             if (currentSelected !in range) {
@@ -75,6 +91,11 @@ internal fun PagerDateSync(
         }
     }
 }
+
+private const val JUMP_RUN_UP = 2
+
+/** Whether a long jump is under way. Read by the settled-page collector, so it needn't be state. */
+private class JumpState(var active: Boolean = false)
 
 /** An occurrence placed on a horizontal lane spanning columns [startCol]..[endCol]. */
 internal data class LaneItem(val occurrence: Occurrence, val startCol: Int, val endCol: Int, val lane: Int)

@@ -38,6 +38,26 @@
             android:theme="@style/Theme.Calendar.WidgetQuickAdd"
             android:windowSoftInputMode="adjustResize" />
 
+        <activity
+            android:name=".ui.event.SelectedTextActivity"
+            android:exported="true"
+            android:label="@string/add_to_calendar"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.Calendar.WidgetQuickAdd"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <receiver
             android:name=".reminders.ReminderReceiver"
             android:exported="false">

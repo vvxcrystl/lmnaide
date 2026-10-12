@@ -6,8 +6,22 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -63,6 +77,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -81,6 +96,7 @@ import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.event.QuickAddSheet
 import dev.lmnaide.calendar.ui.event.QuickAddViewModel
 import dev.lmnaide.calendar.ui.common.Fmt
+import dev.lmnaide.calendar.ui.common.Motion
 import dev.lmnaide.calendar.ui.common.rememberNow
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -176,7 +192,20 @@ fun MainScreen(
                                     .clickable { pickerOpen = !pickerOpen }
                                     .padding(start = 4.dp, end = 2.dp),
                             ) {
-                                Text(rangeTitle(visibleRange, today), maxLines = 1)
+                                // The month name rolls up when moving forward in time and down when going back.
+                                AnimatedContent(
+                                    targetState = visibleRange,
+                                    contentKey = { rangeTitle(it, today) },
+                                    transitionSpec = {
+                                        val forward = targetState.start > initialState.start
+                                        (slideInVertically(Motion.enter()) { if (forward) it / 2 else -it / 2 } + fadeIn(Motion.enter()))
+                                            .togetherWith(slideOutVertically(Motion.exit()) { if (forward) -it / 2 else it / 2 } + fadeOut(Motion.exit()))
+                                            .using(SizeTransform(clip = false))
+                                    },
+                                    label = "title",
+                                ) { range ->
+                                    Text(rangeTitle(range, today), maxLines = 1)
+                                }
                                 Icon(
                                     Icons.Default.ArrowDropDown,
                                     contentDescription = if (pickerOpen) "Hide month picker" else "Show month picker",
@@ -188,8 +217,9 @@ fun MainScreen(
                             IconButton(onClick = onSearch) {
                                 Icon(Icons.Outlined.Search, contentDescription = "Search")
                             }
-                            IconButton(onClick = { jumpTo(today) }) {
-                                TodayIcon(today)
+                            var todayTaps by remember { mutableIntStateOf(0) }
+                            IconButton(onClick = { todayTaps++; jumpTo(today) }) {
+                                TodayIcon(today, todayTaps)
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -223,49 +253,59 @@ fun MainScreen(
                         }
                     }
                     Box(Modifier.weight(1f)) {
-                        when (val view = settings.view) {
-                            CalendarView.SCHEDULE -> ScheduleView(
-                                selectedDate = selectedDate,
-                                jumpCount = jumpCount,
-                                index = index,
-                                weekStart = settings.weekStart,
-                                use24h = settings.use24Hour,
-                                now = now,
-                                onVisibleRange = { visibleRange = it },
-                                onOpenEvent = openEvent,
-                                onOpenDay = openDay,
-                                onToggleTask = { viewModel.setTaskCompleted(it, !it.completed) },
-                            )
-                            CalendarView.MONTH -> Box(Modifier.padding(bottom = navInset)) {
-                                MonthView(
+                        AnimatedContent(
+                            targetState = settings.view,
+                            transitionSpec = { viewTransition() },
+                            label = "view",
+                        ) { view ->
+                            // Only the view being switched to reports dates; the one leaving stays quiet while it fades.
+                            val active = { settings.view == view }
+                            val onVisibleRange: (ClosedRange<LocalDate>) -> Unit = { if (active()) visibleRange = it }
+                            val onSelectDate: (LocalDate) -> Unit = { if (active()) viewModel.selectDate(it) }
+                            when (view) {
+                                CalendarView.SCHEDULE -> ScheduleView(
                                     selectedDate = selectedDate,
-                                    weekStart = settings.weekStart,
+                                    jumpCount = jumpCount,
                                     index = index,
-                                    now = now,
-                                    onSelectDate = viewModel::selectDate,
-                                    onVisibleRange = { visibleRange = it },
-                                    onOpenDay = openDay,
-                                )
-                            }
-                            // Paging depends on the period length and week start, so start fresh when they change.
-                            else -> key(view, settings.weekStart) {
-                                TimeGridView(
-                                    days = when (view) {
-                                        CalendarView.DAY -> 1
-                                        CalendarView.THREE_DAY -> 3
-                                        else -> 7
-                                    },
-                                    selectedDate = selectedDate,
                                     weekStart = settings.weekStart,
-                                    index = index,
                                     use24h = settings.use24Hour,
                                     now = now,
-                                    onSelectDate = viewModel::selectDate,
-                                    onVisibleRange = { visibleRange = it },
+                                    onVisibleRange = onVisibleRange,
                                     onOpenEvent = openEvent,
                                     onOpenDay = openDay,
-                                    onCreateAt = { onCreateEvent(it.toLocalDate(), it.hour * 60 + it.minute, false, false) },
+                                    onToggleTask = { viewModel.setTaskCompleted(it, !it.completed) },
                                 )
+                                CalendarView.MONTH -> Box(Modifier.padding(bottom = navInset)) {
+                                    MonthView(
+                                        selectedDate = selectedDate,
+                                        weekStart = settings.weekStart,
+                                        index = index,
+                                        now = now,
+                                        onSelectDate = onSelectDate,
+                                        onVisibleRange = onVisibleRange,
+                                        onOpenDay = openDay,
+                                    )
+                                }
+                                // Paging depends on the period length and week start, so start fresh when they change.
+                                else -> key(view, settings.weekStart) {
+                                    TimeGridView(
+                                        days = when (view) {
+                                            CalendarView.DAY -> 1
+                                            CalendarView.THREE_DAY -> 3
+                                            else -> 7
+                                        },
+                                        selectedDate = selectedDate,
+                                        weekStart = settings.weekStart,
+                                        index = index,
+                                        use24h = settings.use24Hour,
+                                        now = now,
+                                        onSelectDate = onSelectDate,
+                                        onVisibleRange = onVisibleRange,
+                                        onOpenEvent = openEvent,
+                                        onOpenDay = openDay,
+                                        onCreateAt = { onCreateEvent(it.toLocalDate(), it.hour * 60 + it.minute, false, false) },
+                                    )
+                                }
                             }
                         }
                         Box(
@@ -306,6 +346,34 @@ fun MainScreen(
     }
 }
 
+/** How much time a view shows, from a single day up to a month. Schedule isn't on this scale. */
+private val CalendarView.span: Int?
+    get() = when (this) {
+        CalendarView.DAY -> 0
+        CalendarView.THREE_DAY -> 1
+        CalendarView.WEEK -> 2
+        CalendarView.MONTH -> 3
+        CalendarView.SCHEDULE -> null
+    }
+
+/**
+ * Moving to a view that shows less time zooms in, so both views grow; moving to one that shows more
+ * zooms out, so both shrink. Switching to or from the schedule fades through without zooming.
+ */
+private fun AnimatedContentTransitionScope<CalendarView>.viewTransition(): ContentTransform {
+    val from = initialState.span
+    val to = targetState.span
+    val scale = when {
+        from == null || to == null -> 1f
+        to < from -> 1.06f
+        else -> 0.94f
+    }
+    // The old view is gone before the new one shows, so two grids never overlap.
+    return (fadeIn(Motion.enter(Motion.MEDIUM, delay = 90)) + scaleIn(Motion.enter(Motion.LONG), initialScale = 2f - scale))
+        .togetherWith(fadeOut(Motion.exit(90)) + scaleOut(Motion.exit(Motion.MEDIUM), targetScale = scale))
+        .using(null)
+}
+
 /** "October", "September – October", or with years when outside the current one. */
 private fun rangeTitle(range: ClosedRange<LocalDate>, today: LocalDate): String {
     val first = YearMonth.from(range.start)
@@ -344,12 +412,22 @@ private fun GooglePlus(modifier: Modifier = Modifier) {
     }
 }
 
-/** A small calendar glyph showing today's date, like the "jump to today" button in most calendars. */
+/**
+ * A small calendar glyph showing today's date, like the "jump to today" button in most calendars.
+ * Each tap ([taps] going up) gives it a little squeeze and spring back.
+ */
 @Composable
-private fun TodayIcon(today: LocalDate) {
+private fun TodayIcon(today: LocalDate, taps: Int) {
     val color = MaterialTheme.colorScheme.onSurfaceVariant
+    val scale = remember { Animatable(1f) }
+    LaunchedEffect(taps) {
+        if (taps == 0) return@LaunchedEffect
+        scale.snapTo(0.75f)
+        scale.animateTo(1f, spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium))
+    }
     Box(
         Modifier
+            .graphicsLayer { scaleX = scale.value; scaleY = scale.value }
             .size(22.dp)
             .border(1.75.dp, color, RoundedCornerShape(5.dp)),
         contentAlignment = Alignment.Center,

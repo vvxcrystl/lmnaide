@@ -1,6 +1,12 @@
 package dev.lmnaide.calendar.ui.event
 
 import android.content.Intent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Flag
@@ -71,6 +77,7 @@ import dev.lmnaide.calendar.ui.common.HolidayBanner
 import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.common.ConfirmDialog
 import dev.lmnaide.calendar.ui.common.Fmt
+import dev.lmnaide.calendar.ui.common.Motion
 import dev.lmnaide.calendar.ui.common.OptionsDialog
 import java.time.LocalDate
 
@@ -262,7 +269,7 @@ fun EventDetailScreen(
                                     .clickable { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(person.lookupUri))) } }
                                     .padding(vertical = 8.dp),
                             ) {
-                                PersonAvatar(person.name, Modifier.size(32.dp))
+                                PersonAvatar(person, Modifier.size(32.dp))
                                 Text(person.name, style = MaterialTheme.typography.bodyLarge)
                             }
                         }
@@ -282,13 +289,27 @@ fun EventDetailScreen(
                     onClick = { viewModel.setCompleted(occurrence, !done) },
                     modifier = Modifier.padding(start = 62.dp, top = 16.dp),
                 ) {
-                    Icon(
-                        if (done) Icons.AutoMirrored.Outlined.Undo else Icons.Outlined.Check,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (done) "Mark uncompleted" else "Mark completed")
+                    // The label crossfades and the button resizes to fit, so the change is noticed.
+                    AnimatedContent(
+                        targetState = done,
+                        transitionSpec = {
+                            // The old label is gone before the new one appears, so the two never overlap.
+                            (fadeIn(Motion.enter(delay = 90)) + scaleIn(Motion.enter(delay = 90), initialScale = 0.9f))
+                                .togetherWith(fadeOut(Motion.exit(90)))
+                                .using(SizeTransform(clip = false) { _, _ -> Motion.move() })
+                        },
+                        label = "complete button",
+                    ) { shownDone ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (shownDone) Icons.AutoMirrored.Outlined.Undo else Icons.Outlined.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(if (shownDone) "Mark uncompleted" else "Mark completed")
+                        }
+                    }
                 }
             }
         }

@@ -85,15 +85,48 @@ fun ScheduleView(
     onOpenDay: (LocalDate) -> Unit,
     onToggleTask: (Occurrence) -> Unit,
 ) {
-    // Jumping to another date rebuilds the list around it.
-    key(selectedDate, jumpCount) {
-        ScheduleList(selectedDate, index, weekStart, use24h, now, onVisibleRange, onOpenEvent, onOpenDay, onToggleTask)
+    // The list only rebuilds when a jump lands outside the dates it has loaded. Otherwise, as when
+    // the date button takes you back to today, it scrolls there.
+    val list = remember { ListAnchor(selectedDate) }
+    val rebuilt = selectedDate < listStart(list.anchor) || selectedDate > listLimit(list.anchor)
+    if (rebuilt) {
+        list.arrivingFrom = list.shown
+        list.anchor = selectedDate
+    }
+    key(list.anchor) {
+        ScheduleList(
+            list.anchor, selectedDate, jumpCount, list.arrivingFrom, index, weekStart, use24h, now,
+            onVisibleRange = { range ->
+                list.shown = range.start
+                onVisibleRange(range)
+            },
+            onOpenEvent, onOpenDay, onToggleTask,
+        )
     }
 }
+
+/**
+ * The date the list was built around, the first date in view, and, when the list was rebuilt by a
+ * jump, the date that was in view before it, so the new list can scroll in from that side.
+ */
+private class ListAnchor(var anchor: LocalDate) {
+    var shown: LocalDate = anchor
+    var arrivingFrom: LocalDate? = null
+}
+
+private fun listStart(anchor: LocalDate): LocalDate = YearMonth.from(anchor).minusMonths(1).atDay(1)
+
+private fun listLimit(anchor: LocalDate): LocalDate = anchor.plusYears(5)
+
+/** How many rows short of the target a long jump starts, so it scrolls the last stretch. */
+private const val JUMP_RUN_UP = 6
 
 @Composable
 private fun ScheduleList(
     anchor: LocalDate,
+    target: LocalDate,
+    jumpCount: Int,
+    arrivingFrom: LocalDate?,
     index: EventIndex,
     weekStart: DayOfWeek,
     use24h: Boolean,
@@ -104,21 +137,45 @@ private fun ScheduleList(
     onToggleTask: (Occurrence) -> Unit,
 ) {
     val today = now.toLocalDate()
-    val start = remember(anchor) { YearMonth.from(anchor).minusMonths(1).atDay(1) }
-    var end by remember(anchor) { mutableStateOf(YearMonth.from(anchor).plusMonths(6).atEndOfMonth()) }
-    val limit = remember(anchor) { anchor.plusYears(5) }
+    val start = remember(anchor) { listStart(anchor) }
+    var loadedEnd by remember(anchor) { mutableStateOf(YearMonth.from(anchor).plusMonths(6).atEndOfMonth()) }
+    val limit = remember(anchor) { listLimit(anchor) }
+    // A jump past what's loaded loads up to it.
+    val end = maxOf(loadedEnd, YearMonth.from(target).plusMonths(1).atEndOfMonth())
+    val currentEnd by rememberUpdatedState(end)
 
-    val rows = remember(index, start, end, today, anchor, weekStart) { buildRows(index, start, end, today, anchor, weekStart) }
-    val listState = rememberLazyListState(initialFirstVisibleItemIndex = indexOf(rows, anchor))
-    // Events load after the first frame; once they arrive, put the anchor date back at the top.
-    var positioned by remember(anchor) { mutableStateOf(false) }
+    val rows = remember(index, start, end, today, anchor, target, weekStart) { buildRows(index, start, end, today, setOf(anchor, target), weekStart) }
+    val currentRows by rememberUpdatedState(rows)
+    // A list rebuilt by a jump opens a few rows short of the target, on the side it came from.
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = indexOf(rows, target).let { to ->
+            when {
+                arrivingFrom == null -> to
+                arrivingFrom > target -> to + JUMP_RUN_UP
+                else -> (to - JUMP_RUN_UP).coerceAtLeast(0)
+            }
+        },
+    )
+    // Events load after the first frame; once they arrive, put the target date back at the top.
+    var positioned by remember(anchor) { mutableStateOf(index !== EventIndex.Empty) }
     LaunchedEffect(rows) {
         if (!positioned && index !== EventIndex.Empty) {
-            listState.scrollToItem(indexOf(rows, anchor))
+            listState.scrollToItem(indexOf(rows, target))
             positioned = true
         }
     }
-    val currentRows by rememberUpdatedState(rows)
+    // Jumps scroll to their date. A long one cuts to a few rows short and scrolls the rest, so you
+    // see which way it went without scrolling through every week in between.
+    val handled = remember(anchor) { HandledJump(if (arrivingFrom == null) target to jumpCount else null) }
+    LaunchedEffect(target, jumpCount) {
+        if (handled.jump == target to jumpCount) return@LaunchedEffect
+        handled.jump = target to jumpCount
+        val to = indexOf(currentRows, target)
+        val from = listState.firstVisibleItemIndex
+        if (from - to > JUMP_RUN_UP) listState.scrollToItem(to + JUMP_RUN_UP)
+        if (to - from > JUMP_RUN_UP) listState.scrollToItem(to - JUMP_RUN_UP)
+        listState.animateScrollToItem(to)
+    }
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex }
@@ -128,7 +185,7 @@ private fun ScheduleList(
     LaunchedEffect(listState) {
         snapshotFlow { (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0) >= currentRows.size - 8 }
             .distinctUntilChanged()
-            .collect { nearEnd -> if (nearEnd && end < limit) end = end.plusMonths(6) }
+            .collect { nearEnd -> if (nearEnd && loadedEnd < limit) loadedEnd = maxOf(loadedEnd, currentEnd).plusMonths(6) }
     }
 
     LazyColumn(
@@ -159,6 +216,9 @@ private fun ScheduleList(
     }
 }
 
+/** The last jump scrolled to, so the one a list opens with isn't run again. */
+private class HandledJump(var jump: Pair<LocalDate, Int>?)
+
 /** The row for [date], or the month banner and week label sitting directly above it. */
 private fun indexOf(rows: List<ScheduleRow>, date: LocalDate): Int {
     var i = rows.indexOfFirst { it is ScheduleRow.Day && it.date >= date }.coerceAtLeast(0)
@@ -176,7 +236,7 @@ private fun buildRows(
     start: LocalDate,
     end: LocalDate,
     today: LocalDate,
-    anchor: LocalDate,
+    alwaysShown: Set<LocalDate>,
     weekStart: DayOfWeek,
 ): List<ScheduleRow> {
     val byDay = index.byDay(start, end)
@@ -192,7 +252,7 @@ private fun buildRows(
             labelledWeek = null
         }
         val occurrences = byDay[day].orEmpty()
-        if (occurrences.isNotEmpty() || day == today || day == anchor) {
+        if (occurrences.isNotEmpty() || day == today || day in alwaysShown) {
             val week = day.with(TemporalAdjusters.previousOrSame(weekStart))
             if (week != labelledWeek) {
                 labelledWeek = week
@@ -291,14 +351,17 @@ private fun DayRow(
                     row.date == occurrence.lastDate -> "Until ${Fmt.time(occurrence.end.toLocalTime(), use24h)}"
                     else -> "All day"
                 }
-                EventCard(
-                    occurrence,
-                    time,
-                    occurrence.event.location,
-                    now,
-                    onClick = { onOpenEvent(occurrence) },
-                    onToggleTask = { onToggleTask(occurrence) },
-                )
+                // Keyed so a card's animated state stays with its event when others are added or removed.
+                key(occurrence.key) {
+                    EventCard(
+                        occurrence,
+                        time,
+                        occurrence.event.location,
+                        now,
+                        onClick = { onOpenEvent(occurrence) },
+                        onToggleTask = { onToggleTask(occurrence) },
+                    )
+                }
             }
             if (nowAt == row.occurrences.size) NowLine()
         }

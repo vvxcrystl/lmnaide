@@ -1,5 +1,11 @@
 package dev.lmnaide.calendar.ui.main
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -29,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import dev.lmnaide.calendar.domain.EventIndex
 import dev.lmnaide.calendar.ui.common.DayNumber
 import dev.lmnaide.calendar.ui.common.Fmt
+import dev.lmnaide.calendar.ui.common.Motion
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -45,9 +52,6 @@ fun MiniMonth(
     modifier: Modifier = Modifier,
 ) {
     var month by remember(selectedDate) { mutableStateOf(YearMonth.from(selectedDate)) }
-    val firstCell = month.atDay(1).with(TemporalAdjusters.previousOrSame(weekStart))
-    val lastCell = firstCell.plusWeeks(6).minusDays(1)
-    val eventDays = remember(index, firstCell) { index.byDay(firstCell, lastCell).keys }
 
     Column(modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -66,6 +70,35 @@ fun MiniMonth(
             }
         }
         WeekdayHeader(weekStart)
+        // The days slide in from the side of the arrow that was tapped. The old month fades out
+        // before the new one fades in, so the two grids of numbers never overlap.
+        AnimatedContent(
+            targetState = month,
+            transitionSpec = {
+                val forward = targetState > initialState
+                (slideInHorizontally(Motion.enter()) { if (forward) it / 5 else -it / 5 } + fadeIn(Motion.enter(Motion.MEDIUM - 90, delay = 90)))
+                    .togetherWith(slideOutHorizontally(Motion.exit()) { if (forward) -it / 5 else it / 5 } + fadeOut(Motion.exit(90)))
+            },
+            label = "mini month",
+        ) { shown ->
+            MonthGrid(shown, selectedDate, today, weekStart, index, onSelect)
+        }
+    }
+}
+
+@Composable
+private fun MonthGrid(
+    month: YearMonth,
+    selectedDate: LocalDate,
+    today: LocalDate,
+    weekStart: DayOfWeek,
+    index: EventIndex,
+    onSelect: (LocalDate) -> Unit,
+) {
+    val firstCell = month.atDay(1).with(TemporalAdjusters.previousOrSame(weekStart))
+    val lastCell = firstCell.plusWeeks(6).minusDays(1)
+    val eventDays = remember(index, firstCell) { index.byDay(firstCell, lastCell).keys }
+    Column {
         for (week in 0L until 6L) {
             Row(Modifier.fillMaxWidth()) {
                 for (d in 0L until 7L) {

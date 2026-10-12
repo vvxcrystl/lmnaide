@@ -205,11 +205,19 @@ A RemoteViews agenda that matches the app without Compose:
 
 ## Motion
 
-Motion only answers a person's action:
+Motion only answers a person's action, and each animation shows where something went or what changed:
 - Drawer and sheet slides, and the mini month expanding under the title (with the arrow rotating 180°).
-- The create menu fading and expanding from the FAB.
-- Pager swipes between periods, animated only for adjacent periods. Long jumps cut straight to the target.
+- Pager swipes between periods. A jump of one or two periods swipes there. A longer jump, such as tapping the date button to go back to today, cuts to two periods short and swipes the rest, so you see which way it went. The title waits and changes once, when the jump lands. Schedule does the same with rows: it cuts to a few rows short of the date and scrolls the rest, up when going back in time and down when going forward. The date button squeezes and springs back when tapped.
+- The month name in the top bar rolls up when moving forward in time and down when going back. The mini month's days slide in from the side of the arrow you tapped.
+- Switching views zooms. A view that shows less time (Month to Day) zooms in, a view that shows more zooms out, and Schedule fades through without zooming.
+- Event details and the editor rise from the bottom like full-screen dialogs and sink back when closed. Search, Settings and Manage calendars slide in from the right.
+- Ticking a task pops its check circle and fades the card to its done color. An event that ends while on screen fades the same way.
+- A tapped empty hour pops in, glides to the next hour you tap, and fades when used or dismissed.
+- Rows that depend on another field unfold and fold away: the end time when switching between event and task, "Ends on" when a repeat is set, the time when toggling all-day, the people row in quick add, and the all-day lanes when expanded.
+- Search results slide into their new places as the query changes.
 - Quick-add preview states crossfade.
+
+Transitions between two full layouts (views, screens, months) fade through: the old one is gone in 90 ms before the new one fades in, so two grids of text never overlap. Durations and easing come from `ui/common/Motion.kt` and stay at 400 ms or less. Compose follows the system animation scale, so turning animations off in developer or accessibility settings turns these off too.
 
 There are no entrance animations, no scroll-triggered effects and no looping motion.
 

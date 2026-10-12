@@ -1,8 +1,11 @@
 package dev.lmnaide.calendar.ui.event
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
@@ -93,6 +96,8 @@ import dev.lmnaide.calendar.domain.SmartEventResult
 import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.common.ColorDot
 import dev.lmnaide.calendar.ui.common.Fmt
+import dev.lmnaide.calendar.ui.common.Motion
+import dev.lmnaide.calendar.ui.common.rememberLastNonNull
 import dev.lmnaide.calendar.ui.common.rememberNow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -107,6 +112,7 @@ private val TaskExamples = listOf("Pay rent by Friday", "Call the dentist by 5pm
  * the keyboard's Done key adds it straight to the calendar; More options opens the full editor.
  *
  * [defaultDate] is used when the text names a time but no day.
+ * [initialText] prefills the sheet when adding selected or shared text from another app.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -116,6 +122,7 @@ fun QuickAddSheet(
     onSaved: (link: EventLink, message: String, date: LocalDate) -> Unit,
     onMoreOptions: (text: String, task: Boolean, calendarId: Long?, people: String) -> Unit,
     viewModel: QuickAddViewModel,
+    initialText: String = "",
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -126,7 +133,7 @@ fun QuickAddSheet(
 
     var peopleJson by rememberSaveable { mutableStateOf("[]") }
     val people = remember(peopleJson) { Converters().stringToPeople(peopleJson) }
-    var input by rememberSaveable { mutableStateOf("") }
+    var input by rememberSaveable { mutableStateOf(initialText) }
     // Null until a chip is tapped; until then the wording decides.
     var taskChoice by rememberSaveable { mutableStateOf<Boolean?>(null) }
     val isTask = taskChoice ?: SmartEventParser.looksLikeTask(input)
@@ -255,10 +262,16 @@ fun QuickAddSheet(
             }
 
             // Only shown once the title mentions someone ("with Sam and Dario") or people were added.
-            if (draft != null && hasPeople(draft.title, people)) {
+            // It unfolds as the name is typed, and keeps the last title while folding away.
+            val peopleTitle = rememberLastNonNull(draft?.title?.takeIf { hasPeople(it, people) })
+            AnimatedVisibility(
+                visible = draft != null && hasPeople(draft.title, people),
+                enter = fadeIn(Motion.enter()) + expandVertically(Motion.move()),
+                exit = fadeOut(Motion.exit()) + shrinkVertically(Motion.move()),
+            ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Icon(Icons.Outlined.Group, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
-                    PeopleEditor(draft.title, people) { peopleJson = Converters().peopleToString(it) }
+                    PeopleEditor(peopleTitle.orEmpty(), people) { peopleJson = Converters().peopleToString(it) }
                 }
             }
 

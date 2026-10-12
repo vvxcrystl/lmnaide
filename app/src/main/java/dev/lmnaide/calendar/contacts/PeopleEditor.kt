@@ -2,10 +2,13 @@ package dev.lmnaide.calendar.contacts
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.provider.ContactsContract
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -25,11 +28,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -95,7 +102,7 @@ fun PeopleEditor(title: String, people: List<EventPerson>, autoMatch: Boolean = 
                         onChange(people.filterNot { it.lookupUri == person.lookupUri })
                     },
                     label = { Text(person.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    avatar = { PersonAvatar(person.name, Modifier.size(InputChipDefaults.AvatarSize)) },
+                    avatar = { PersonAvatar(person, Modifier.size(InputChipDefaults.AvatarSize)) },
                     trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove ${person.name}", Modifier.size(InputChipDefaults.IconSize)) },
                     shape = CircleShape,
                 )
@@ -167,7 +174,7 @@ fun PeopleEditor(title: String, people: List<EventPerson>, autoMatch: Boolean = 
                                 }
                                 .padding(horizontal = 8.dp, vertical = 10.dp),
                         ) {
-                            PersonAvatar(person.name, Modifier.size(36.dp))
+                            PersonAvatar(person, Modifier.size(36.dp))
                             Text(person.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             if (selected) Icon(Icons.Default.Check, contentDescription = "Added", tint = MaterialTheme.colorScheme.primary)
                         }
@@ -184,15 +191,35 @@ fun hasPeople(title: String, people: List<EventPerson>) = people.isNotEmpty() ||
 
 private val AvatarColors = listOf(0xFFE8A0BF, 0xFF9AC5F4, 0xFFA8E6CF, 0xFFFFD3A5, 0xFFC3B1E1, 0xFFF7C5A8, 0xFF99DDCC, 0xFFFDE2A0)
 
-/** A colored circle with the person's initials; the color is stable per name. */
+/** Current device contact photo, with stable colored initials when unavailable. */
 @Composable
-fun PersonAvatar(name: String, modifier: Modifier = Modifier) {
+fun PersonAvatar(person: EventPerson, modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    var photoVersion by remember { mutableIntStateOf(0) }
+    // Refresh after returning from the device's contact editor or permission settings.
+    LifecycleResumeEffect(person.lookupUri) {
+        photoVersion++
+        onPauseOrDispose { }
+    }
+    val photo by produceState<ImageBitmap?>(null, person.lookupUri, context, photoVersion) {
+        value = null
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                ContactsContract.Contacts.openContactPhotoInputStream(context.contentResolver, Uri.parse(person.lookupUri))
+                    ?.use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
+            }.getOrNull()
+        }
+    }
+    val name = person.name
     val initials = name.split(Regex("\\s+")).filter { it.isNotEmpty() }.take(2).joinToString("") { it.first().uppercase() }
     Box(
         modifier.clip(CircleShape).background(Color(AvatarColors[Math.floorMod(name.lowercase().hashCode(), AvatarColors.size)])),
         contentAlignment = Alignment.Center,
     ) {
-        BoxWithConstraints(contentAlignment = Alignment.Center) {
+        val image = photo
+        if (image != null) {
+            Image(image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        } else BoxWithConstraints(contentAlignment = Alignment.Center) {
             val size = with(LocalDensity.current) { (maxWidth * if (initials.length > 1) 0.38f else 0.46f).toSp() }
             Text(initials, color = Color(0xFF1F1A1C), fontSize = size, fontWeight = FontWeight.SemiBold, maxLines = 1)
         }

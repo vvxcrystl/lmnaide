@@ -1,5 +1,7 @@
 package dev.lmnaide.calendar.contacts
 
+import java.util.Locale
+
 /** A name snapshot survives renames/deletions; lookupUri opens the current device contact. */
 data class EventPerson(val name: String, val lookupUri: String)
 
@@ -11,8 +13,20 @@ object ContactMatcher {
     }
 
     fun matches(name: String, contacts: List<EventPerson>): List<EventPerson> {
-        val exact = contacts.filter { it.name.equals(name, ignoreCase = true) }
+        val parts = nameParts(name)
+        if (parts.isEmpty()) return emptyList()
+        val candidates = contacts.map { it to nameParts(it.name) }
+        val exact = candidates.filter { (_, words) -> words == parts }.map { it.first }
         if (exact.isNotEmpty()) return exact
-        return contacts.filter { person -> person.name.split(Regex("\\s+")).any { it.equals(name, ignoreCase = true) } }
+        // Match complete name parts, including first/last names and shorter multi-part names.
+        // Return every candidate so shared names require a choice instead of guessing.
+        return candidates.filter { (_, words) ->
+            words.windowed(parts.size).any { it == parts }
+        }.map { it.first }
     }
+
+    private fun nameParts(name: String): List<String> =
+        Regex("[\\p{L}\\p{M}\\p{N}]+(?:['’\\-][\\p{L}\\p{M}\\p{N}]+)*")
+            .findAll(name.lowercase(Locale.ROOT).replace('’', '\''))
+            .map { it.value }.toList()
 }

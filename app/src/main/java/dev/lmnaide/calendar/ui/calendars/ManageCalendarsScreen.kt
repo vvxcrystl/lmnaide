@@ -1,5 +1,12 @@
 package dev.lmnaide.calendar.ui.calendars
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import dev.lmnaide.calendar.ui.common.Motion
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -223,7 +230,12 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
                             contentAlignment = Alignment.Center,
                         ) {
                             ColorDot(option.color, size = 28.dp)
-                            if (selected) {
+                            // Qualified because the enclosing row's scoped overload isn't allowed here.
+                            androidx.compose.animation.AnimatedVisibility(
+                                visible = selected,
+                                enter = fadeIn(Motion.enter(Motion.SHORT)) + scaleIn(spring(Spring.DampingRatioMediumBouncy, Spring.StiffnessMedium), initialScale = 0.4f),
+                                exit = fadeOut(Motion.exit()) + scaleOut(Motion.exit(), targetScale = 0.6f),
+                            ) {
                                 Icon(
                                     Icons.Default.Check,
                                     contentDescription = option.label,

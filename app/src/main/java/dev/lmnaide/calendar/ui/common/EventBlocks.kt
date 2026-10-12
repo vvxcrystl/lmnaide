@@ -1,5 +1,9 @@
 package dev.lmnaide.calendar.ui.common
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -19,9 +23,15 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.contentDescription
@@ -57,6 +67,25 @@ fun TaskCheck(completed: Boolean, tint: Color, size: Dp) {
         tint = tint,
         modifier = Modifier.size(size),
     )
+}
+
+/**
+ * A [TaskCheck] that pops when it's ticked or unticked here. It only animates on a change, never on
+ * first appearance, so scrolling a list of tasks stays still.
+ */
+@Composable
+private fun AnimatedTaskCheck(completed: Boolean, tint: Color, size: Dp) {
+    val scale = remember { Animatable(1f) }
+    var shown by remember { mutableStateOf(completed) }
+    LaunchedEffect(completed) {
+        if (completed == shown) return@LaunchedEffect
+        shown = completed
+        scale.snapTo(if (completed) 0.6f else 0.85f)
+        scale.animateTo(1f, spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium))
+    }
+    Box(Modifier.graphicsLayer { scaleX = scale.value; scaleY = scale.value }) {
+        TaskCheck(completed, tint, size)
+    }
 }
 
 /** A solid colored dot marking importance. */
@@ -184,7 +213,10 @@ fun EventCard(
     modifier: Modifier = Modifier,
     onToggleTask: (() -> Unit)? = null,
 ) {
-    val (background, content) = chipColors(occurrence, now)
+    // Ticking a task off, or an event ending, fades the card rather than snapping it.
+    val (targetBackground, targetContent) = chipColors(occurrence, now)
+    val background by animateColorAsState(targetBackground, Motion.move(), label = "card background")
+    val content by animateColorAsState(targetContent, Motion.move(), label = "card content")
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
@@ -196,7 +228,7 @@ fun EventCard(
     ) {
         if (occurrence.isTask) {
             IconButton(onClick = { onToggleTask?.invoke() }, enabled = onToggleTask != null, modifier = Modifier.size(40.dp)) {
-                TaskCheck(occurrence.completed, content, size = 22.dp)
+                AnimatedTaskCheck(occurrence.completed, content, size = 22.dp)
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
