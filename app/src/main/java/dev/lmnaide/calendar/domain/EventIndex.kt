@@ -53,8 +53,8 @@ class EventIndex(
         val calendar = calendarsById[event.calendarId] ?: return null
         val color = event.color ?: calendar.color
         val first = event.localStart().toLocalDate()
-        return RecurrenceExpander.expand(event, color, calendar.name, today, today.plusYears(5)).firstOrNull()
-            ?: RecurrenceExpander.expand(event, color, calendar.name, first, first.plusDays(1)).firstOrNull()
+        return RecurrenceExpander.first(event, color, calendar.name, today, today.plusYears(5))
+            ?: RecurrenceExpander.first(event, color, calendar.name, first, first.plusDays(1))
     }
 
     companion object {

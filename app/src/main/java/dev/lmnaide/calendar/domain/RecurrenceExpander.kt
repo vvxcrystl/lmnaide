@@ -19,13 +19,32 @@ object RecurrenceExpander {
         from: LocalDate,
         to: LocalDate,
         zone: ZoneId = ZoneId.systemDefault(),
-    ): List<Occurrence> {
+    ): List<Occurrence> = occurrences(event, color, calendarName, from, to, zone).toList()
+
+    /** Stops as soon as a matching occurrence is found, without materializing the whole range. */
+    fun first(
+        event: EventEntity,
+        color: Int,
+        calendarName: String,
+        from: LocalDate,
+        to: LocalDate,
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): Occurrence? = occurrences(event, color, calendarName, from, to, zone).firstOrNull()
+
+    private fun occurrences(
+        event: EventEntity,
+        color: Int,
+        calendarName: String,
+        from: LocalDate,
+        to: LocalDate,
+        zone: ZoneId,
+    ): Sequence<Occurrence> {
         val baseStart = event.localStart(zone)
         val baseEnd = maxOf(event.localEnd(zone), baseStart)
         val base = Occurrence(event, baseStart, baseEnd, color, calendarName)
 
         if (event.recurrence == Recurrence.NONE) {
-            return if (base.lastDate >= from && base.startDate <= to) listOf(base) else emptyList()
+            return if (base.lastDate >= from && base.startDate <= to) sequenceOf(base) else emptySequence()
         }
 
         val length = Duration.between(baseStart, baseEnd)
@@ -40,7 +59,6 @@ object RecurrenceExpander {
                 val start = LocalDateTime.of(date, baseStart.toLocalTime())
                 Occurrence(event, start, start.plus(length), color, calendarName)
             }
-            .toList()
     }
 
     /** Start dates of a series beginning on [base], restricted to [from]..[to]. */
