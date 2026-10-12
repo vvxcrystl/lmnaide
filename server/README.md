@@ -112,7 +112,7 @@ Contact names and device contact lookup URIs stay local. Appearance, display pre
 
 ## Sync protocol
 
-Client authors use `POST /api/sync` with a cursor and up to 1,000 changes. A change may include a `group` string of 1–250 characters. Changes with the same group in one request are atomic: if any has a stale base version that is not already identical, or an event targets a missing/deleted calendar, none of that group's changes in the request are applied. Each is saved to history as a conflict and its record ID is returned in `conflicts`. Changes without a group keep per-change conflict handling. Operation IDs remain idempotent per change; replaying an applied group is a no-op, the group is part of each operation fingerprint, and clients must keep a group in one request.
+Client authors use `POST /api/v1/sync` with a cursor and up to 1,000 changes. A change may include a `group` string of 1–250 characters. Changes with the same group in one request are atomic: if any has a stale base version that is not already identical, or an event targets a missing/deleted calendar, none of that group's changes in the request are applied. Each is saved to history as a conflict and its record ID is returned in `conflicts`. Changes without a group keep per-change conflict handling. Operation IDs remain idempotent per change; replaying an applied group is a no-op, the group is part of each operation fingerprint, and clients must keep a group in one request.
 
 Responses include `more`. The server returns up to 500 records and at most 1 MiB of JSON, ordered by version. When `more` is true, sync again with the returned cursor and no changes if needed; continue until it is false. A page cursor advances to the highest version it contains. If no page records are returned, the cursor keeps the server's current high-water mark. Submitted records may also be echoed when space permits so clients can resolve writes and conflicts.
 
@@ -172,6 +172,6 @@ Two-emulator sharing checks: run `tools/cloud/event-share-test.sh` with `CLOUD_T
 
 The browser has colored themes, a desktop calendar layout, Material date/time pickers and smart quick add using the Android parser’s rules. New accounts start with Personal, Work and Holidays calendars; their stable IDs match Android’s defaults so devices share the same records.
 
-Use the top-bar account button to add, change or remove a profile photo. Photos are stored privately per account via authenticated `/api/profile`, accept JPEG/PNG/WebP data URLs up to 200,000 characters, and do not appear on shared event pages.
+Use the top-bar account button to add, change or remove a profile photo. Photos are stored privately per account via authenticated `/api/v1/profile`, accept JPEG/PNG/WebP data URLs up to 200,000 characters, and do not appear on shared event pages.
 
 Accounts can have an optional unique username (3–30 letters, numbers or underscores, case-insensitive uniqueness). Set it when creating an account, or add, change or remove it from the browser account card or Android Cloud sync settings. Email remains the sign-in address. Existing accounts and sessions are preserved when the server adds username storage.

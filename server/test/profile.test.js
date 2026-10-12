@@ -8,7 +8,7 @@ test("profile photos are private to each account and validated", async (t) => {
   t.after(() => app.close());
   const base = "http://127.0.0.1:" + app.server.address().port;
   const api = async (path, body, token, method) => {
-    const res = await fetch(base + "/api/" + path, {
+    const res = await fetch(base + "/api/v1/" + path, {
       method: method ?? (body ? "POST" : "GET"),
       headers: {
         "Content-Type": "application/json",

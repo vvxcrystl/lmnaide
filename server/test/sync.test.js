@@ -44,7 +44,7 @@ async function harness(t, options = {}) {
   t.after(() => app.close());
   const base = "http://127.0.0.1:" + app.server.address().port;
   const api = async (path, body, token) => {
-    const res = await fetch(base + "/api/" + path, {
+    const res = await fetch(base + "/api/v1/" + path, {
       method: body ? "POST" : "GET",
       headers: {
         "Content-Type": "application/json",
@@ -290,7 +290,7 @@ test("database and sessions survive server restart", async (t) => {
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
   let base = "http://127.0.0.1:" + app.server.address().port;
   const auth = await (
-    await fetch(base + "/api/register", {
+    await fetch(base + "/api/v1/register", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -299,7 +299,7 @@ test("database and sessions survive server restart", async (t) => {
       }),
     })
   ).json();
-  await fetch(base + "/api/sync", {
+  await fetch(base + "/api/v1/sync", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -314,7 +314,7 @@ test("database and sessions survive server restart", async (t) => {
     }),
   });
   const link = await (
-    await fetch(base + "/api/share", {
+    await fetch(base + "/api/v1/share", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -329,7 +329,7 @@ test("database and sessions survive server restart", async (t) => {
   t.after(() => app.close());
   base = "http://127.0.0.1:" + app.server.address().port;
   const pull = await (
-    await fetch(base + "/api/sync", {
+    await fetch(base + "/api/v1/sync", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -340,7 +340,7 @@ test("database and sessions survive server restart", async (t) => {
   ).json();
   assert.equal(pull.records[0].data.name, "Personal");
   const shared = await (
-    await fetch(base + "/api/shared/" + link.path.split("/").pop())
+    await fetch(base + "/api/v1/shared/" + link.path.split("/").pop())
   ).json();
   assert.equal(shared.event.title, event.title);
 });
@@ -357,7 +357,7 @@ test("custom domain share links use the public HTTPS host behind a proxy", async
       change("event", "item", event),
     ],
   }, token)).status, 200);
-  const response = await fetch(base + "/api/share", {
+  const response = await fetch(base + "/api/v1/share", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

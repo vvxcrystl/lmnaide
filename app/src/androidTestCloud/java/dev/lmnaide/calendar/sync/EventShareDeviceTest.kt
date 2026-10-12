@@ -40,7 +40,7 @@ class EventShareDeviceTest {
         assertTrue(app.cloud.state.value.message, app.cloud.sync())
         fun read(url: String): Pair<Int, JSONObject> {
             val connection =
-                URL(url.replace("/s/", "/api/shared/")).openConnection() as HttpURLConnection
+                URL(url.replace("/s/", "/api/v1/shared/")).openConnection() as HttpURLConnection
             try {
                 connection.connectTimeout = 10000
                 connection.readTimeout = 10000

@@ -502,7 +502,7 @@ async function api(path, body, authToken = token) {
   const requestToken = authToken;
   let res, data;
   try {
-    res = await fetch("/api/" + path, {
+    res = await fetch("/api/v1/" + path, {
       method: body ? "POST" : "GET",
       headers: {
         "Content-Type": "application/json",

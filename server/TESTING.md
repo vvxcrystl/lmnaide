@@ -52,7 +52,7 @@ The feature was tested against the local server; public hosting/DNS remains a de
 
 - **19 Node tests passed** after integrating `6fdc02d`, including profile validation/account isolation, the ported Android smart-parser cases, and every event-sharing regression.
 - A new regression test sends all 369 web starter records (3 calendars and 366 holidays), then simulates a fresh phone sending identical records with new operation IDs and a different JSON property order. The server returns the existing versions with no conflicts, duplicate records or history entries. A later actual calendar edit remains protected from an older phone’s seed data.
-- The local server restarted on port 3000 with `/api/profile` available. The collaborative preview timed out repeatedly, so a fresh visual UI spot-check could not be completed in this handoff.
+- The local server restarted on port 3000 with `/api/v1/profile` available. The collaborative preview timed out repeatedly, so a fresh visual UI spot-check could not be completed in this handoff.
 
 ## Main app identity and merge preparation — October 11, 2026
 
