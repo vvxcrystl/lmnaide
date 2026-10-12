@@ -2646,12 +2646,11 @@ input.time-field.on {
 }
 
 .account-username {
+  --field-bg: var(--container-low);
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding-bottom: 16px;
-  text-align: left;
 }
 .account-username .field {
   flex: 1;

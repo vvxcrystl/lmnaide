@@ -528,7 +528,6 @@ async function authenticate(register) {
     const result = await api(register ? "register" : "login", {
       email: $("email").value,
       password: $("password").value,
-      ...(register ? { username: $("username").value.trim() } : {}),
     });
     token = result.token;
     email = result.email;
@@ -3597,6 +3596,31 @@ function renderResults() {
   );
 }
 
+function usernameForm() {
+  const usernameInput = h("input", {
+    type: "text", value: username || "", minlength: "3", maxlength: "30",
+    pattern: "[A-Za-z0-9_]{3,30}", autocomplete: "off",
+    placeholder: "3 to 30 letters, numbers or underscores",
+  });
+  const form = h("form", {
+    class: "account-username",
+    onsubmit: async (e) => {
+      e.preventDefault();
+      const button = form.querySelector("button");
+      button.disabled = true;
+      try {
+        ({ username } = await api("profile", { username: usernameInput.value.trim() }));
+        renderAvatar();
+        snackbar("Username updated");
+      } catch (error) {
+        snackbar(error.message);
+      } finally { button.disabled = false; }
+    },
+  }, h("label", { class: "field" }, h("span", { text: "Username" }), usernameInput),
+    h("button", { type: "submit", class: "outlined", text: "Save" }));
+  return form;
+}
+
 /* Settings page: the parts of the app's settings that apply to this browser */
 function openSettings() {
   renderSettings();
@@ -3641,6 +3665,7 @@ function renderSettings() {
           ),
         ),
         h("p", { class: "body-medium", text: email || "" }),
+        usernameForm(),
         h("p", { class: "body-small variant", text: location.origin }),
         lastSync > 0 &&
           h("p", {
@@ -4401,27 +4426,6 @@ function openAccount() {
 }
 function renderAccount() {
   const dialog = $("account");
-  const usernameInput = h("input", {
-    type: "text", value: username || "", minlength: "3", maxlength: "30",
-    pattern: "[A-Za-z0-9_]{3,30}", autocomplete: "off",
-    placeholder: "3 to 30 letters, numbers or underscores",
-  });
-  const usernameForm = h("form", {
-    class: "account-username",
-    onsubmit: async (e) => {
-      e.preventDefault();
-      const button = usernameForm.querySelector("button");
-      button.disabled = true;
-      try {
-        ({ username } = await api("profile", { username: usernameInput.value.trim() }));
-        renderAvatar();
-        snackbar("Username updated");
-      } catch (error) {
-        snackbar(error.message);
-      } finally { button.disabled = false; }
-    },
-  }, h("label", { class: "field" }, h("span", { text: "Username" }), usernameInput),
-    h("button", { type: "submit", class: "outlined", text: "Save" }));
   dialog.replaceChildren(
     iconButton(I.close, "Close", () => dialog.close(), {
       class: "icon account-close",
@@ -4443,7 +4447,6 @@ function renderAccount() {
       class: "account-hello title-large",
       text: "Hi, " + (username || (email || "").split("@")[0]) + "!",
     }),
-    usernameForm,
     h(
       "div",
       { class: "account-actions" },
