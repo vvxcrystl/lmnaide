@@ -1,6 +1,15 @@
 // The web client mirrors the Android app's screens (ui/main, ui/event, ui/calendars). Sizes,
 // colors, wording and behavior follow the Compose code so both look and work the same.
 import { expandOccurrences } from "./recurrence.js";
+import {
+  THEMES,
+  schemeFor,
+  isDarkTheme,
+  applyScheme,
+  css as hexColor,
+} from "./themes.js";
+import { parse as parseSmart, looksLikeTask, matchCalendar } from "./smart.js";
+import { defaultRecords } from "./holidays.js";
 
 const $ = (id) => document.getElementById(id);
 const DAY = 86400000;
@@ -8,12 +17,15 @@ const SVG = "http://www.w3.org/2000/svg";
 
 /* ---------- Icons ---------- */
 const I = {
-  share: "M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a3.3 3.3 0 0 0 0-1.4l7.05-4.11A3 3 0 1 0 15 5c0 .24.03.47.09.7L8.04 9.81a3 3 0 1 0 0 4.38l7.12 4.16A3 3 0 1 0 18 16.08Z",
+  share:
+    "M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7a3.3 3.3 0 0 0 0-1.4l7.05-4.11A3 3 0 1 0 15 5c0 .24.03.47.09.7L8.04 9.81a3 3 0 1 0 0 4.38l7.12 4.16A3 3 0 1 0 18 16.08Z",
   close:
     "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z",
   back: "M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2Z",
   add: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2Z",
   edit: "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25ZM5.92 19H5v-.92l9.06-9.06.92.92L5.92 19ZM20.71 5.63l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83a1 1 0 0 0 0-1.41Z",
+  keyboard:
+    "M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2Zm0 12H4V7h16v10Zm-9-9h2v2h-2V8Zm0 3h2v2h-2v-2ZM8 8h2v2H8V8Zm0 3h2v2H8v-2Zm-3 0h2v2H5v-2Zm0-3h2v2H5V8Zm3 6h8v2H8v-2Zm6-3h2v2h-2v-2Zm0-3h2v2h-2V8Zm3 3h2v2h-2v-2Zm0-3h2v2h-2V8Z",
   more: "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2Zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2Zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2Z",
   delete:
     "M16 9v10H8V9h8m-1.5-6h-5l-1 1H5v2h14V4h-3.5l-1-1ZM18 7H6v12c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7Z",
@@ -75,7 +87,8 @@ function h(tag, props = {}, ...children) {
     if (k === "class") el.className = v;
     else if (k === "text") el.textContent = v;
     else if (k === "style")
-      for (const [s, value] of Object.entries(v)) el.style.setProperty(s, value);
+      for (const [s, value] of Object.entries(v))
+        el.style.setProperty(s, value);
     else if (k.startsWith("on")) el[k] = v;
     else el.setAttribute(k, v === true ? "" : v);
   }
@@ -85,7 +98,14 @@ function h(tag, props = {}, ...children) {
 const iconButton = (path, label, onclick, extra = {}) =>
   h(
     "button",
-    { type: "button", class: "icon", "aria-label": label, title: label, onclick, ...extra },
+    {
+      type: "button",
+      class: "icon",
+      "aria-label": label,
+      title: label,
+      onclick,
+      ...extra,
+    },
     icon(path),
   );
 
@@ -103,17 +123,27 @@ const prefs = {
   showTasks: true,
   use24h: false,
   weekStart: localeWeekStart(),
+  // Light, dark or following the system, and the named color theme.
   theme: "system",
+  appTheme: "MATERIAL_YOU",
   ...JSON.parse(localStorage.getItem("lmnaide.prefs") || "{}"),
 };
 function savePrefs() {
   localStorage.setItem("lmnaide.prefs", JSON.stringify(prefs));
 }
+const systemDark = matchMedia("(prefers-color-scheme: dark)");
+const themeIsDark = () =>
+  isDarkTheme(prefs.appTheme, prefs.theme, systemDark.matches);
 function applyTheme() {
-  if (prefs.theme === "system") delete document.documentElement.dataset.theme;
-  else document.documentElement.dataset.theme = prefs.theme;
+  const dark = themeIsDark();
+  applyScheme(schemeFor(prefs.appTheme, dark), dark);
 }
 applyTheme();
+systemDark.addEventListener("change", () => {
+  applyTheme();
+  if (token) render();
+  if ($("settings-page")?.open) renderSettings();
+});
 
 /* ---------- Dates ---------- */
 const pad = (n) => String(n).padStart(2, "0");
@@ -267,8 +297,7 @@ const IMPORTANCE_HINTS = {
 const colorLabel = (argb) =>
   EVENT_COLORS.find((c) => c.argb === argb)?.label ?? "Custom";
 const rgbOf = (argb) => [(argb >> 16) & 255, (argb >> 8) & 255, argb & 255];
-const hexRgb = (hex) =>
-  [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+const hexRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const css = (argb) => `rgb(${rgbOf(argb)})`;
 function luminance(c) {
   const f = (v) => {
@@ -451,11 +480,28 @@ async function api(path, body) {
   return data;
 }
 let snackTimer;
-function snackbar(text) {
+/** A message along the bottom, with an optional action like "View". */
+function snackbar(text, action) {
   clearTimeout(snackTimer);
-  $("snackbar").textContent = text || "";
+  const bar = $("snackbar");
+  bar.replaceChildren(
+    ...(text ? [h("span", { text })] : []),
+    ...(text && action
+      ? [
+          h("button", {
+            type: "button",
+            class: "text",
+            text: action.label,
+            onclick: () => {
+              bar.replaceChildren();
+              action.run();
+            },
+          }),
+        ]
+      : []),
+  );
   if (text)
-    snackTimer = setTimeout(() => ($("snackbar").textContent = ""), 4000);
+    snackTimer = setTimeout(() => bar.replaceChildren(), action ? 6000 : 4000);
 }
 function signedIn() {
   $("auth").hidden = !!token;
@@ -476,7 +522,9 @@ async function authenticate(register) {
     $("password").value = "";
     records = [];
     cursor = 0;
+    seedTried = false;
     signedIn();
+    loadProfile();
     await sync();
   } catch (e) {
     snackbar(e.message);
@@ -509,6 +557,7 @@ async function performSync(changes) {
     cursor = data.cursor;
     lastSync = Date.now();
     syncMessage = "Up to date";
+    seedNewAccount();
     refresh();
     if (data.conflicts.length)
       snackbar(
@@ -522,6 +571,16 @@ async function performSync(changes) {
   } finally {
     busy = false;
   }
+}
+/**
+ * A brand-new account starts with the same calendars as the app: Personal, Work and Holidays.
+ * They share the Android seed's record IDs, so a phone joining later doesn't add them twice.
+ */
+let seedTried = false;
+function seedNewAccount() {
+  if (seedTried || records.some((r) => r.kind === "calendar")) return;
+  seedTried = true;
+  sync(defaultRecords().map((r) => change(r, r.data))).catch(() => {});
 }
 const change = (record, data, deleted = false) => ({
   kind: record.kind,
@@ -588,13 +647,17 @@ function refresh() {
   if ($("search-page").open) renderResults();
   if ($("settings-page").open) renderSettings();
 }
+/** Wide screens get Google Calendar's web layout: a sidebar, and paging in the top bar. */
+const wide = matchMedia("(min-width: 1000px)");
 function render({ jump = false, slide = 0 } = {}) {
   if (!token) return;
   renderDrawer();
   $("today-date").textContent = new Date().getDate();
+  $("view-label").textContent = VIEWS.find(([id]) => id === prefs.view)[1];
   $("period").setAttribute("aria-expanded", pickerOpen);
-  $("mini").hidden = !pickerOpen;
-  if (pickerOpen) renderMini();
+  $("mini").hidden = !pickerOpen || wide.matches;
+  if (wide.matches) renderMini(0, $("side-mini"));
+  else if (pickerOpen) renderMini();
   if (prefs.view === "SCHEDULE") renderSchedule(jump);
   else if (prefs.view === "MONTH") renderMonth(slide);
   else renderGrid(slide);
@@ -616,7 +679,7 @@ function renderDrawer() {
           "aria-current": prefs.view === id ? "page" : null,
           onclick: () => {
             returnView = null;
-            setDrawer(false);
+            closeDrawer();
             setView(id);
           },
         },
@@ -635,7 +698,11 @@ function renderDrawer() {
         "aria-checked": checked,
         onclick,
       },
-      h("span", { class: "checkbox", style: { "--box": color } }, icon(I.check)),
+      h(
+        "span",
+        { class: "checkbox", style: { "--box": color } },
+        icon(I.check),
+      ),
       h("span", { class: "title-small", text: name }),
     );
   $("visibility").replaceChildren(
@@ -651,30 +718,78 @@ function renderDrawer() {
     }),
   );
 }
+/** On phones the drawer slides over the calendar; on wide screens it's a sidebar that folds away. */
+let sidebarHidden = localStorage.getItem("lmnaide.sidebar") === "hidden";
 function setDrawer(open) {
+  if (wide.matches) {
+    sidebarHidden = !open;
+    localStorage.setItem("lmnaide.sidebar", open ? "shown" : "hidden");
+    $("calendar").classList.toggle("collapsed", !open);
+    $("drawer").classList.remove("open");
+    $("drawer").inert = !open;
+    $("scrim").hidden = true;
+    $("menu").setAttribute("aria-expanded", open);
+    // The calendar takes the freed width.
+    setTimeout(() => render(), 260);
+    return;
+  }
+  $("calendar").classList.remove("collapsed");
   $("drawer").classList.toggle("open", open);
   $("drawer").inert = !open;
   $("scrim").hidden = !open;
   $("menu").setAttribute("aria-expanded", open);
   if (open) $("drawer").querySelector(".nav-item")?.focus();
 }
-$("menu").onclick = () => setDrawer(true);
+const closeDrawer = () => !wide.matches && setDrawer(false);
+$("menu").onclick = () =>
+  setDrawer(
+    wide.matches ? sidebarHidden : !$("drawer").classList.contains("open"),
+  );
 $("scrim").onclick = () => setDrawer(false);
+wide.addEventListener("change", () => {
+  pickerOpen = false;
+  setDrawer(wide.matches ? !sidebarHidden : false);
+});
 $("manage").onclick = () => {
-  setDrawer(false);
+  closeDrawer();
   openCalendars();
 };
 $("settings").onclick = () => {
-  setDrawer(false);
+  closeDrawer();
   openSettings();
 };
 
 /* ---------- Top bar, as in ui/main/MainScreen.kt ---------- */
 $("period").onclick = () => {
+  if (wide.matches) return;
   pickerOpen = !pickerOpen;
   miniMonth = startOfMonth(selected);
   render();
 };
+$("today-pill").onclick = () => jumpTo(today());
+$("prev").onclick = () => page(-1);
+$("next").onclick = () => page(1);
+/** The top bar arrows: a period back or forward, or a month in the schedule. */
+function page(dir) {
+  if (prefs.view !== "SCHEDULE") return shiftPeriod(dir);
+  jumpTo(addMonths(visible[0], dir));
+}
+$("view-menu").onclick = () =>
+  popupMenu(
+    $("view-menu"),
+    VIEWS.map(([id, label, path]) => ({
+      label,
+      icon: path,
+      checked: prefs.view === id,
+      action: () => {
+        returnView = null;
+        setView(id);
+      },
+    })),
+    { alignEnd: true },
+  );
+$("create").onclick = () => openQuickAdd();
+$("avatar").onclick = openAccount;
 $("today").onclick = () => {
   const box = $("today-date");
   box.classList.remove("pop");
@@ -682,7 +797,8 @@ $("today").onclick = () => {
   box.classList.add("pop");
   jumpTo(today());
 };
-$("add").onclick = () => openEditor({ date: maxDate(selected, today()) });
+// Like the app, the create button opens quick add, which can lead on to the full editor.
+$("add").onclick = () => openQuickAdd();
 $("search").onclick = openSearch;
 
 /** A day-of-month number, circled when it's today. */
@@ -709,11 +825,12 @@ function weekdayHeader() {
     ),
   );
 }
-const slideClass = (n) =>
-  n > 0 ? " slide-next" : n < 0 ? " slide-prev" : "";
+const slideClass = (n) => (n > 0 ? " slide-next" : n < 0 ? " slide-prev" : "");
 
 /* ---------- Mini month, as in ui/main/MiniMonth.kt ---------- */
-function renderMini(slide = 0) {
+function renderMini(slide = 0, target = $("mini")) {
+  // The sidebar's copy on wide screens is smaller, like Google Calendar's.
+  const compact = target !== $("mini");
   const first = weekStartOf(miniMonth);
   const last = addDays(first, 41);
   const eventDays = byDay(occurrences(first, last), first, last);
@@ -721,8 +838,12 @@ function renderMini(slide = 0) {
     const date = addDays(first, i);
     return h(
       "button",
-      { type: "button", "aria-label": dayLong(date), onclick: () => jumpTo(date) },
-      dayNumber(date, 32, 13, {
+      {
+        type: "button",
+        "aria-label": dayLong(date),
+        onclick: () => jumpTo(date),
+      },
+      dayNumber(date, compact ? 24 : 32, compact ? 10 : 13, {
         dim: !sameMonth(date, miniMonth),
         chosen: sameDay(date, selected),
       }),
@@ -731,9 +852,9 @@ function renderMini(slide = 0) {
   });
   const move = (n) => {
     miniMonth = addMonths(miniMonth, n);
-    renderMini(n);
+    renderMini(n, target);
   };
-  $("mini").replaceChildren(
+  target.replaceChildren(
     h(
       "div",
       { class: "mini-head" },
@@ -893,10 +1014,17 @@ function renderSchedule(jump) {
   if (old && !jump && !rebuilt) {
     const top = firstVisibleRow(old);
     if (top)
-      keep = [top.dataset.kind + top.dataset.date, top.offsetTop - old.scrollTop];
+      keep = [
+        top.dataset.kind + top.dataset.date,
+        top.offsetTop - old.scrollTop,
+      ];
   }
   const from = old && !rebuilt ? firstVisibleRow(old)?.dataset.date : null;
-  const list = h("div", { class: "schedule", onscroll: onScheduleScroll }, rows);
+  const list = h(
+    "div",
+    { class: "schedule", onscroll: onScheduleScroll },
+    rows,
+  );
   view.replaceChildren(list);
   drawBanners(list);
   if (keep) {
@@ -906,7 +1034,8 @@ function renderSchedule(jump) {
     if (row) list.scrollTop = row.offsetTop - keep[1];
   } else {
     const to = scheduleIndex(list, target)?.offsetTop ?? 0;
-    const prev = from && [...list.children].find((r) => r.dataset.date === from);
+    const prev =
+      from && [...list.children].find((r) => r.dataset.date === from);
     if (prev) {
       // Scroll over from where the list was, so you see which way it went.
       list.scrollTop = prev.offsetTop;
@@ -1189,15 +1318,29 @@ function renderMonth(slide) {
   const first = weekStartOf(month);
   const weeks = Math.floor(daysBetween(first, endOfMonth(month)) / 7) + 1;
   const all = occurrences(first, addDays(first, weeks * 7 - 1));
+  // Wide screens follow Google Calendar on the web: weekday names in the first row of cells,
+  // timed events as a dot and a time, and roomier chips.
+  const web = wide.matches;
+  const header = web ? 26 : DATE_HEADER,
+    chip = web ? 22 : CHIP,
+    gap = web ? 2 : CHIP_GAP;
   const page = h("div", { class: "month-page" + slideClass(slide) });
-  $("view").replaceChildren(h("div", { class: "month" }, weekdayHeader(), page));
-  const weekHeight = page.clientHeight / weeks;
-  const maxLanes = Math.max(
-    1,
-    Math.floor((weekHeight - DATE_HEADER) / (CHIP + CHIP_GAP)),
+  $("view").replaceChildren(
+    h(
+      "div",
+      { class: "month" + (web ? " web" : "") },
+      !web && weekdayHeader(),
+      page,
+    ),
   );
+  const weekHeight = page.clientHeight / weeks;
   for (let wk = 0; wk < weeks; wk++) {
     const firstDay = addDays(first, wk * 7);
+    const top = web && wk === 0 ? header + 18 : header;
+    const maxLanes = Math.max(
+      1,
+      Math.floor((weekHeight - top - 4) / (chip + gap)),
+    );
     const items = assignLanes(all, firstDay, 7);
     const laneCount = items.reduce((n, i) => Math.max(n, i.lane + 1), 0);
     // When everything doesn't fit, the last visible lane becomes a "+N" summary.
@@ -1210,26 +1353,58 @@ function renderMonth(slide) {
         { class: "month-days" },
         [...Array(7)].map((_, d) => {
           const date = addDays(firstDay, d);
+          const number = dayNumber(date, web ? 24 : 22, 12, {
+            dim: !sameMonth(date, month),
+          });
+          if (!web)
+            return h(
+              "button",
+              {
+                type: "button",
+                "aria-label": dayLong(date),
+                onclick: () => openDay(date),
+              },
+              number,
+            );
+          // On the web an empty part of a day starts a new event there; the date opens the day.
           return h(
-            "button",
+            "div",
             {
-              type: "button",
-              "aria-label": dayLong(date),
-              onclick: () => openDay(date),
+              class: "month-cell",
+              onclick: (e) =>
+                e.target === e.currentTarget && openQuickAdd({ date }),
             },
-            dayNumber(date, 22, 12, { dim: !sameMonth(date, month) }),
+            wk === 0 &&
+              h("span", {
+                class: "month-weekday",
+                text: weekdayShort(date).toUpperCase(),
+              }),
+            h(
+              "button",
+              {
+                type: "button",
+                class: "month-date",
+                "aria-label": dayLong(date),
+                onclick: () => openDay(date),
+              },
+              number,
+            ),
           );
         }),
       ),
     );
     for (const item of items.filter((i) => i.lane < shown)) {
-      const bar = eventBar(item.o, 10);
+      const o = item.o;
+      const bar =
+        web && !o.inAllDayLane
+          ? timedChip(o)
+          : eventBar(o, web ? 12 : 10, web ? () => openDetail(o) : null);
       Object.assign(bar.style, {
-        left: `calc(${(item.start * 100) / 7}% + 1.5px)`,
-        width: `calc(${((item.end - item.start + 1) * 100) / 7}% - 3px)`,
-        top: DATE_HEADER + (CHIP + CHIP_GAP) * item.lane + "px",
-        height: CHIP + "px",
-        pointerEvents: "none",
+        left: `calc(${(item.start * 100) / 7}% + ${web ? 4 : 1.5}px)`,
+        width: `calc(${((item.end - item.start + 1) * 100) / 7}% - ${web ? 8 : 3}px)`,
+        top: top + (chip + gap) * item.lane + "px",
+        height: chip + "px",
+        pointerEvents: web ? "" : "none",
       });
       week.append(bar);
     }
@@ -1238,21 +1413,47 @@ function renderMonth(slide) {
         const hidden = items.filter(
           (i) => i.lane >= shown && col >= i.start && col <= i.end,
         ).length;
-        if (hidden)
-          week.append(
-            h("span", {
-              class: "more",
-              text: "+" + hidden,
-              style: {
-                left: (col * 100) / 7 + "%",
-                width: 100 / 7 + "%",
-                top: DATE_HEADER + (CHIP + CHIP_GAP) * shown + "px",
-              },
-            }),
-          );
+        if (!hidden) continue;
+        const date = addDays(firstDay, col);
+        week.append(
+          h(web ? "button" : "span", {
+            type: web ? "button" : null,
+            class: "more",
+            text: web ? `${hidden} more` : "+" + hidden,
+            onclick: web ? () => openDay(date) : null,
+            style: {
+              left: `calc(${(col * 100) / 7}% + ${web ? 4 : 0}px)`,
+              width: web ? `calc(${100 / 7}% - 8px)` : 100 / 7 + "%",
+              top: top + (chip + gap) * shown + "px",
+            },
+          }),
+        );
       }
     page.append(week);
   }
+}
+/** A timed event in the web month grid: a colored dot, its start time and title. */
+function timedChip(o) {
+  return h(
+    "button",
+    {
+      type: "button",
+      class:
+        "timed-chip" +
+        (isPast(o) ? " past" : "") +
+        (o.completed ? " done" : ""),
+      onclick: () => openDetail(o),
+    },
+    o.isTask
+      ? (() => {
+          const svg = icon(o.completed ? I.checkCircle : I.circle);
+          svg.style.color = css(o.color);
+          return svg;
+        })()
+      : h("span", { class: "dot", style: { background: css(o.color) } }),
+    !o.allDay && h("span", { class: "chip-time", text: time(o.start) }),
+    h("span", { class: "bar-title", text: o.event.title || "(No title)" }),
+  );
 }
 
 /* ---------- Day, 3-day and week grids, as in ui/main/TimeGridView.kt ---------- */
@@ -1675,8 +1876,9 @@ addEventListener("resize", () => {
 /* ---------- Alert dialogs, as in ui/common/Dialogs.kt ---------- */
 let alertDone = null;
 /** Shows the alert dialog and resolves with whatever [finish] is called with. */
-function showAlert(title, body, buttons, { form = false } = {}) {
+function showAlert(title, body, buttons, { form = false, cls = "" } = {}) {
   const dialog = $("alert");
+  dialog.className = "alert" + (cls ? " " + cls : "");
   alertDone?.(undefined);
   let finish;
   const promise = new Promise((resolve) => {
@@ -1687,7 +1889,7 @@ function showAlert(title, body, buttons, { form = false } = {}) {
     };
   });
   dialog.replaceChildren(
-    title && h("h2", { class: "headline-small", text: title }),
+    ...(title ? [h("h2", { class: "headline-small", text: title })] : []),
     h(
       "div",
       { class: "alert-body body-medium" + (form ? " form" : "") },
@@ -1711,11 +1913,388 @@ function showAlert(title, body, buttons, { form = false } = {}) {
     )
       finish(undefined);
   };
-  dialog.showModal();
+  showModal(dialog);
   return promise;
 }
+/**
+ * Opens a dialog with focus on the dialog itself, so the first control doesn't show a focus ring
+ * after a tap. Keyboard users tab in from there.
+ */
+function showModal(dialog) {
+  if (!dialog.open) dialog.showModal();
+  dialog.tabIndex = -1;
+  dialog.focus({ preventScroll: true });
+}
+
+/* ---------- Date and time pickers, as Material 3's DatePickerDialog and TimePicker ---------- */
+/** Resolves with the picked date, or undefined when cancelled. */
+function datePicker(initial, title = "Select date") {
+  let picked = startOfDay(initial);
+  let month = startOfMonth(picked);
+  let choosingYear = false;
+  const body = h("div", { class: "date-picker" });
+  const draw = (slide = 0) => {
+    const first = weekStartOf(month);
+    const weeks = Math.floor(daysBetween(first, endOfMonth(month)) / 7) + 1;
+    const headline = fmt(picked, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+    const grid = choosingYear
+      ? h(
+          "div",
+          { class: "years" },
+          [...Array(201)].map((_, i) => {
+            const year = 1900 + i;
+            return h("button", {
+              type: "button",
+              class: year === month.getFullYear() ? "selected" : null,
+              text: year,
+              onclick: () => {
+                month = new Date(year, month.getMonth(), 1);
+                choosingYear = false;
+                draw();
+              },
+            });
+          }),
+        )
+      : h(
+          "div",
+          { class: "days" + slideClass(slide) },
+          weekdayHeader(),
+          h(
+            "div",
+            { class: "day-grid" },
+            [...Array(weeks * 7)].map((_, i) => {
+              const date = addDays(first, i);
+              if (!sameMonth(date, month)) return h("span");
+              const isToday = sameDay(date, today());
+              const chosen = sameDay(date, picked);
+              return h("button", {
+                type: "button",
+                class: (chosen ? "chosen" : "") + (isToday ? " today" : ""),
+                "aria-label": dayLong(date),
+                "aria-pressed": chosen,
+                text: date.getDate(),
+                onclick: () => {
+                  picked = date;
+                  draw();
+                },
+              });
+            }),
+          ),
+        );
+    body.replaceChildren(
+      h("p", { class: "picker-label label-large", text: title }),
+      h("p", { class: "picker-headline", text: headline }),
+      h("hr"),
+      h(
+        "div",
+        { class: "month-row" },
+        h(
+          "button",
+          {
+            type: "button",
+            class: "year-toggle",
+            "aria-expanded": choosingYear,
+            onclick: () => {
+              choosingYear = !choosingYear;
+              draw();
+            },
+          },
+          monthYearFull(month),
+          icon(I.down),
+        ),
+        !choosingYear &&
+          h(
+            "span",
+            {},
+            iconButton(I.left, "Previous month", () => {
+              month = addMonths(month, -1);
+              draw(-1);
+            }),
+            iconButton(I.right, "Next month", () => {
+              month = addMonths(month, 1);
+              draw(1);
+            }),
+          ),
+      ),
+      grid,
+    );
+    if (choosingYear)
+      body
+        .querySelector(".years .selected")
+        ?.scrollIntoView({ block: "center" });
+  };
+  draw();
+  return showAlert(
+    null,
+    body,
+    (finish) => [
+      textButton("Cancel", () => finish(undefined)),
+      textButton("OK", () => finish(picked)),
+    ],
+    { cls: "picker" },
+  );
+}
+
+/** Resolves with the picked minutes after midnight, or undefined when cancelled. */
+function timePicker(initialMinutes) {
+  let hour = Math.floor(initialMinutes / 60),
+    minute = initialMinutes % 60,
+    mode = "hour",
+    keyboard = false;
+  const use24h = prefs.use24h;
+  const body = h("div", { class: "time-picker" });
+  const shownHour = () => (use24h ? hour : hour % 12 || 12);
+  const setPm = (pm) => {
+    if (pm && hour < 12) hour += 12;
+    if (!pm && hour >= 12) hour -= 12;
+    draw();
+  };
+  // The dial: 12 outer positions, plus an inner ring for 24-hour time.
+  const SIZE = 256,
+    C = SIZE / 2,
+    OUTER = 100,
+    INNER = 64;
+  const position = (index, radius) => {
+    const angle = (index / 12) * 2 * Math.PI - Math.PI / 2;
+    return [C + radius * Math.cos(angle), C + radius * Math.sin(angle)];
+  };
+  const fromPointer = (e, dial) => {
+    const r = dial.getBoundingClientRect();
+    const x = e.clientX - r.left - C,
+      y = e.clientY - r.top - C;
+    const angle =
+      (Math.atan2(y, x) + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI);
+    if (mode === "minute") {
+      minute = Math.round((angle / (2 * Math.PI)) * 60) % 60;
+      return;
+    }
+    const slot = Math.round((angle / (2 * Math.PI)) * 12) % 12;
+    const inner = use24h && Math.hypot(x, y) < (OUTER + INNER) / 2;
+    if (use24h)
+      hour = inner ? (slot === 0 ? 0 : slot + 12) : slot === 0 ? 12 : slot;
+    else hour = (slot === 0 ? 0 : slot) + (hour >= 12 ? 12 : 0);
+  };
+  /** Draws the hand and numbers into [el], which keeps its pointer handlers while dragging. */
+  const paintDial = (el) => {
+    const labels = [];
+    let hand;
+    if (mode === "minute") {
+      for (let i = 0; i < 12; i++)
+        labels.push({
+          text: pad(i * 5),
+          at: position(i, OUTER),
+          on: minute === i * 5,
+        });
+      hand = { at: position(minute / 5, OUTER), label: minute % 5 === 0 };
+    } else {
+      for (let i = 0; i < 12; i++) {
+        const value = use24h ? (i === 0 ? 12 : i) : i === 0 ? 12 : i;
+        labels.push({
+          text: String(value),
+          at: position(i, OUTER),
+          on: use24h ? hour === (i === 0 ? 12 : i) : shownHour() === value,
+        });
+        if (use24h)
+          labels.push({
+            text: i === 0 ? "00" : String(i + 12),
+            at: position(i, INNER),
+            on: hour === (i === 0 ? 0 : i + 12),
+            inner: true,
+          });
+      }
+      const inner = use24h && (hour === 0 || hour > 12);
+      hand = { at: position(hour % 12, inner ? INNER : OUTER), label: true };
+    }
+    const svg = document.createElementNS(SVG, "svg");
+    svg.setAttribute("viewBox", `0 0 ${SIZE} ${SIZE}`);
+    svg.classList.add("dial-hand");
+    const line = document.createElementNS(SVG, "line");
+    Object.entries({ x1: C, y1: C, x2: hand.at[0], y2: hand.at[1] }).forEach(
+      ([k, v]) => line.setAttribute(k, v),
+    );
+    const dot = document.createElementNS(SVG, "circle");
+    Object.entries({ cx: C, cy: C, r: 4 }).forEach(([k, v]) =>
+      dot.setAttribute(k, v),
+    );
+    const knob = document.createElementNS(SVG, "circle");
+    Object.entries({ cx: hand.at[0], cy: hand.at[1], r: 24 }).forEach(
+      ([k, v]) => knob.setAttribute(k, v),
+    );
+    svg.append(line, dot, knob);
+    if (!hand.label) {
+      const center = document.createElementNS(SVG, "circle");
+      Object.entries({
+        cx: hand.at[0],
+        cy: hand.at[1],
+        r: 2,
+        class: "knob-dot",
+      }).forEach(([k, v]) => center.setAttribute(k, v));
+      svg.append(center);
+    }
+    el.replaceChildren(
+      svg,
+      ...labels.map((l) =>
+        h("span", {
+          class: (l.on ? "on" : "") + (l.inner ? " inner" : ""),
+          text: l.text,
+          style: { left: l.at[0] + "px", top: l.at[1] + "px" },
+        }),
+      ),
+    );
+  };
+  const dial = () => {
+    const el = h("div", { class: "dial", "aria-hidden": "true" });
+    paintDial(el);
+    let dragging = false;
+    el.onpointerdown = (e) => {
+      dragging = true;
+      el.setPointerCapture(e.pointerId);
+      fromPointer(e, el);
+      draw(true);
+    };
+    el.onpointermove = (e) => {
+      if (!dragging) return;
+      fromPointer(e, el);
+      draw(true);
+    };
+    el.onpointerup = () => {
+      if (!dragging) return;
+      dragging = false;
+      // Picking the hour moves on to the minutes, as on Android.
+      if (mode === "hour") mode = "minute";
+      draw();
+    };
+    return el;
+  };
+  const field = (which) => {
+    const value = which === "hour" ? pad(shownHour()) : pad(minute);
+    if (!keyboard)
+      return h("button", {
+        type: "button",
+        class: "time-field" + (mode === which ? " on" : ""),
+        "aria-label": which === "hour" ? "Hour" : "Minute",
+        text: which === "hour" && !use24h ? String(shownHour()) : value,
+        onclick: () => {
+          mode = which;
+          draw();
+        },
+      });
+    const input = h("input", {
+      class: "time-field" + (mode === which ? " on" : ""),
+      inputmode: "numeric",
+      maxlength: 2,
+      "aria-label": which === "hour" ? "Hour" : "Minute",
+    });
+    input.value = value;
+    input.onfocus = () => {
+      mode = which;
+      input.select();
+      body
+        .querySelectorAll(".time-field")
+        .forEach((f) => f.classList.toggle("on", f === input));
+    };
+    input.oninput = () => {
+      const n = parseInt(input.value, 10);
+      if (Number.isNaN(n)) return;
+      if (which === "minute") minute = Math.min(59, n);
+      else if (use24h) hour = Math.min(23, n);
+      else hour = (Math.min(12, Math.max(1, n)) % 12) + (hour >= 12 ? 12 : 0);
+    };
+    return input;
+  };
+  const draw = (quiet = false) => {
+    if (quiet) {
+      // While dragging, only the numbers and hand move.
+      paintDial(body.querySelector(".dial"));
+      body.querySelectorAll(".time-field").forEach((f, i) => {
+        f.textContent =
+          i === 0
+            ? use24h
+              ? pad(shownHour())
+              : String(shownHour())
+            : pad(minute);
+      });
+      return;
+    }
+    body.replaceChildren(
+      h("p", {
+        class: "picker-label label-medium",
+        text: keyboard ? "Enter time" : "Select time",
+      }),
+      h(
+        "div",
+        { class: "time-row" },
+        field("hour"),
+        h("span", { class: "time-colon", text: ":" }),
+        field("minute"),
+        !use24h &&
+          h(
+            "div",
+            { class: "ampm" },
+            h("button", {
+              type: "button",
+              "aria-pressed": hour < 12,
+              text: "AM",
+              onclick: () => setPm(false),
+            }),
+            h("button", {
+              type: "button",
+              "aria-pressed": hour >= 12,
+              text: "PM",
+              onclick: () => setPm(true),
+            }),
+          ),
+      ),
+      keyboard
+        ? h(
+            "div",
+            { class: "time-hints body-small variant" },
+            h("span", { text: "Hour" }),
+            h("span", { text: "Minute" }),
+          )
+        : dial(),
+    );
+  };
+  draw();
+  const toggle = iconButton(
+    I.keyboard,
+    "Use keyboard",
+    () => {
+      keyboard = !keyboard;
+      toggle.replaceChildren(icon(keyboard ? I.clock : I.keyboard));
+      toggle.title = toggle.ariaLabel = keyboard ? "Use clock" : "Use keyboard";
+      draw();
+      if (keyboard) body.querySelector("input")?.focus();
+    },
+    { class: "icon leading-action" },
+  );
+  return showAlert(
+    null,
+    body,
+    (finish) => [
+      toggle,
+      textButton("Cancel", () => finish(undefined)),
+      textButton("OK", () => {
+        // A typed value that hasn't been applied yet still counts.
+        body.querySelectorAll("input").forEach((input) => input.oninput());
+        finish(hour * 60 + minute);
+      }),
+    ],
+    { cls: "picker time" },
+  );
+}
 const textButton = (label, onclick, disabled = false) =>
-  h("button", { type: "button", class: "text", text: label, onclick, disabled });
+  h("button", {
+    type: "button",
+    class: "text",
+    text: label,
+    onclick,
+    disabled,
+  });
 /** A single-choice list that closes as soon as an option is picked. */
 function choose(title, options, selectedValue) {
   return showAlert(
@@ -1903,11 +2482,17 @@ function renderDetail() {
           [...d.reminders]
             .sort((a, b) => a - b)
             .map((m) =>
-              h("span", { class: "body-large", text: reminderText(m, d.allDay) }),
+              h("span", {
+                class: "body-large",
+                text: reminderText(m, d.allDay),
+              }),
             ),
           { gap: true },
         ),
-      row(I.event, h("span", { class: "body-large", text: o.calendar.data.name })),
+      row(
+        I.event,
+        h("span", { class: "body-large", text: o.calendar.data.name }),
+      ),
       d.description.trim() &&
         row(I.notes, h("span", { class: "body-large", text: d.description })),
       o.isTask &&
@@ -1951,8 +2536,13 @@ function showShare(o, share) {
       }),
       o.event.recurrence !== "NONE" &&
         h("p", { text: "This link shares the recurring series." }),
-      url && h("label", { class: "field share-link" },
-        h("span", { text: "Event link" }), input),
+      url &&
+        h(
+          "label",
+          { class: "field share-link" },
+          h("span", { text: "Event link" }),
+          input,
+        ),
     ],
     (finish) => {
       const action = (label, callback) =>
@@ -2047,7 +2637,8 @@ async function deleteOccurrence(o) {
   const day = epochDay(o.startDate);
   const seriesDay = epochDay(wall(d.start, d.allDay));
   let ch;
-  if (scope === "THIS") ch = change(r, { ...d, exceptions: [...d.exceptions, day] });
+  if (scope === "THIS")
+    ch = change(r, { ...d, exceptions: [...d.exceptions, day] });
   // Ends the series before this day, deleting it entirely if nothing remains.
   else if (scope === "FOLLOWING" && day > seriesDay)
     ch = change(r, { ...d, recurrenceUntil: day - 1 });
@@ -2067,7 +2658,19 @@ const edValid = (s = ed.state) =>
   s.kind === "TASK" ||
   (s.allDay ? s.endDate >= s.startDate : edEnd(s) >= edStart(s));
 const edCanSave = () => edValid() && !!ed.state.title.trim() && !ed.saving;
-function openEditor({ occurrence, date, minute }) {
+/**
+ * Opens the full editor on an occurrence, or for a new item on [date] at [minute]. Quick add's
+ * More options passes what it understood: [title], [task], [calendarId] and a parsed [draft].
+ */
+function openEditor({
+  occurrence,
+  date,
+  minute,
+  title = "",
+  task = false,
+  calendarId,
+  draft,
+}) {
   const cals = calendars();
   if (!cals.length) {
     snackbar("Add a calendar first");
@@ -2117,10 +2720,10 @@ function openEditor({ occurrence, date, minute }) {
           ? atMinute(day, (now.getHours() + 1) * 60)
           : atMinute(day, 540);
     const end = new Date(start.getTime() + 3600000);
-    const calendar = cals[0];
+    const calendar = cals.find((c) => c.id === calendarId) ?? cals[0];
     state = {
-      title: "",
-      kind: "EVENT",
+      title,
+      kind: task ? "TASK" : "EVENT",
       allDay: false,
       startDate: startOfDay(start),
       startTime: minutesOf(start),
@@ -2130,11 +2733,25 @@ function openEditor({ occurrence, date, minute }) {
       until: null,
       importance: calendar.data.defaultImportance,
       location: "",
-      reminders: [30],
+      // Tasks remind when they're due; events use the default notification.
+      reminders: task ? [0] : [30],
       calendarId: calendar.id,
       color: null,
       description: "",
     };
+    // Keep whatever quick add understood.
+    if (draft)
+      Object.assign(state, {
+        title: draft.title,
+        allDay: draft.allDay,
+        startDate: startOfDay(draft.start),
+        startTime: minutesOf(draft.start),
+        endDate: draft.allDay
+          ? addDays(startOfDay(draft.end), -1)
+          : startOfDay(draft.end),
+        endTime: minutesOf(draft.end),
+        recurrence: draft.recurrence,
+      });
   }
   ed = { state, initial: JSON.stringify(state), series, opened, saving: false };
   renderEditor();
@@ -2150,9 +2767,15 @@ function setStart(date, minute) {
   updateEditor((s) => {
     if (s.allDay) {
       const days = daysBetween(s.startDate, s.endDate);
-      Object.assign(s, { startDate: date, startTime: minute, endDate: addDays(date, days) });
+      Object.assign(s, {
+        startDate: date,
+        startTime: minute,
+        endDate: addDays(date, days),
+      });
     } else {
-      const end = new Date(atMinute(date, minute).getTime() + (edEnd(s) - edStart(s)));
+      const end = new Date(
+        atMinute(date, minute).getTime() + (edEnd(s) - edStart(s)),
+      );
       Object.assign(s, {
         startDate: date,
         startTime: minute,
@@ -2177,20 +2800,6 @@ $("editor").oncancel = (e) => {
   e.preventDefault();
   if (!$("alert").open) closeEditor();
 };
-/** A native date or time picker opened from a text button, standing in for Android's pickers. */
-function pickerInput(type, value, onchange) {
-  const input = h("input", { type, tabindex: -1, "aria-hidden": "true", class: "picker" });
-  input.value = value;
-  input.onchange = () => input.value && onchange(input.value);
-  return input;
-}
-function openPicker(input) {
-  try {
-    input.showPicker();
-  } catch {
-    input.focus();
-  }
-}
 function renderEditor() {
   const s = ed.state;
   const dialog = $("editor");
@@ -2198,38 +2807,32 @@ function renderEditor() {
   const color = s.color ?? calendar?.data.color;
   const isTask = s.kind === "TASK";
   const valid = edValid();
-  const dateTimeRow = (date, minute, onDate, onTime, error) => {
-    const dateInput = pickerInput("date", dayKey(date), (v) => onDate(fromDayKey(v)));
-    const timeInput = pickerInput(
-      "time",
-      pad(Math.floor(minute / 60)) + ":" + pad(minute % 60),
-      (v) => {
-        const [hh, mm] = v.split(":").map(Number);
-        onTime(hh * 60 + mm);
-      },
-    );
-    return h(
+  const dateTimeRow = (date, minute, onDate, onTime, error) =>
+    h(
       "div",
       { class: "datetime" + (error ? " error" : "") },
       h(
         "span",
         { class: "grow" },
-        h("button", { type: "button", text: dayMedium(date), onclick: () => openPicker(dateInput) }),
-        dateInput,
+        h("button", {
+          type: "button",
+          text: dayMedium(date),
+          onclick: async () => {
+            const picked = await datePicker(date);
+            if (picked) onDate(picked);
+          },
+        }),
       ),
       !s.allDay &&
-        h(
-          "span",
-          {},
-          h("button", {
-            type: "button",
-            text: time(atMinute(date, minute)),
-            onclick: () => openPicker(timeInput),
-          }),
-          timeInput,
-        ),
+        h("button", {
+          type: "button",
+          text: time(atMinute(date, minute)),
+          onclick: async () => {
+            const picked = await timePicker(minute);
+            if (picked != null) onTime(picked);
+          },
+        }),
     );
-  };
   const row = (path, content, { onclick, top, indent } = {}) =>
     h(
       onclick ? "button" : "div",
@@ -2252,11 +2855,6 @@ function renderEditor() {
     el.oninput = () => oninput(el.value);
     return el;
   };
-  const untilInput = pickerInput(
-    "date",
-    dayKey(s.until ?? addMonths(s.startDate, 1)),
-    (v) => updateEditor((x) => (x.until = maxDate(fromDayKey(v), x.startDate))),
-  );
   const saveButton = h("button", {
     type: "button",
     class: "filled",
@@ -2331,7 +2929,10 @@ function renderEditor() {
           !valid,
         ),
       !valid &&
-        h("p", { class: "editor-error", text: "The event ends before it starts" }),
+        h("p", {
+          class: "editor-error",
+          text: "The event ends before it starts",
+        }),
       row(I.repeat, recurrenceText(s.recurrence, s.startDate), {
         onclick: async () => {
           const rule = await choose(
@@ -2360,10 +2961,16 @@ function renderEditor() {
                 s.until ? "date" : "never",
               );
               if (ends === "never") updateEditor((x) => (x.until = null));
-              else if (ends === "date") openPicker(untilInput);
+              else if (ends === "date") {
+                const until = await datePicker(
+                  s.until ?? addMonths(s.startDate, 1),
+                  "Ends on",
+                );
+                if (until)
+                  updateEditor((x) => (x.until = maxDate(until, x.startDate)));
+              }
             },
           }),
-          untilInput,
         ),
       h("hr"),
       row(
@@ -2388,7 +2995,10 @@ function renderEditor() {
       ),
       h("hr"),
       !isTask &&
-        row(I.place, plain("input", s.location, "Add location", (v) => (s.location = v))),
+        row(
+          I.place,
+          plain("input", s.location, "Add location", (v) => (s.location = v)),
+        ),
       !isTask && h("hr"),
       row(
         I.bell,
@@ -2401,7 +3011,9 @@ function renderEditor() {
               { class: "reminder body-large" },
               h("span", { text: reminderText(m, s.allDay) }),
               iconButton(I.close, "Remove notification", () =>
-                updateEditor((x) => (x.reminders = x.reminders.filter((r) => r !== m))),
+                updateEditor(
+                  (x) => (x.reminders = x.reminders.filter((r) => r !== m)),
+                ),
               ),
             ),
           ),
@@ -2410,16 +3022,22 @@ function renderEditor() {
             class: "add-reminder",
             text: "Add notification",
             onclick: async () => {
-              const options = (s.allDay ? ALL_DAY_REMINDERS : TIMED_REMINDERS).filter(
-                (m) => !s.reminders.includes(m),
-              );
+              const options = (
+                s.allDay ? ALL_DAY_REMINDERS : TIMED_REMINDERS
+              ).filter((m) => !s.reminders.includes(m));
               const m = await choose(
                 "Notification",
-                options.map((v) => ({ value: v, label: reminderText(v, s.allDay) })),
+                options.map((v) => ({
+                  value: v,
+                  label: reminderText(v, s.allDay),
+                })),
                 null,
               );
               if (m != null)
-                updateEditor((x) => (x.reminders = [...x.reminders, m].sort((a, b) => a - b)));
+                updateEditor(
+                  (x) =>
+                    (x.reminders = [...x.reminders, m].sort((a, b) => a - b)),
+                );
             },
           }),
         ),
@@ -2429,21 +3047,32 @@ function renderEditor() {
       row(
         I.event,
         [
-          calendar && h("span", { class: "dot", style: { background: css(calendar.data.color) } }),
+          calendar &&
+            h("span", {
+              class: "dot",
+              style: { background: css(calendar.data.color) },
+            }),
           calendar?.data.name ?? "",
         ],
         {
           onclick: async () => {
             const id = await choose(
               "Calendar",
-              calendars().map((c) => ({ value: c.id, label: c.data.name, dot: css(c.data.color) })),
+              calendars().map((c) => ({
+                value: c.id,
+                label: c.data.name,
+                dot: css(c.data.color),
+              })),
               s.calendarId,
             );
             if (!id) return;
             updateEditor((x) => {
               // A new item follows its calendar's default importance, unless it was set by hand.
               const old = calendarById(x.calendarId);
-              if (!ed.series && x.importance === (old?.data.defaultImportance ?? null))
+              if (
+                !ed.series &&
+                x.importance === (old?.data.defaultImportance ?? null)
+              )
                 x.importance = calendarById(id).data.defaultImportance;
               x.calendarId = id;
             });
@@ -2453,7 +3082,8 @@ function renderEditor() {
       row(
         I.palette,
         [
-          color != null && h("span", { class: "dot", style: { background: css(color) } }),
+          color != null &&
+            h("span", { class: "dot", style: { background: css(color) } }),
           s.color == null ? "Calendar color" : colorLabel(s.color),
         ],
         {
@@ -2461,20 +3091,39 @@ function renderEditor() {
             const picked = await choose(
               "Event color",
               [
-                { value: "calendar", label: "Calendar color", dot: css(calendar?.data.color ?? 0) },
-                ...EVENT_COLORS.map((c) => ({ value: c.argb, label: c.label, dot: css(c.argb) })),
+                {
+                  value: "calendar",
+                  label: "Calendar color",
+                  dot: css(calendar?.data.color ?? 0),
+                },
+                ...EVENT_COLORS.map((c) => ({
+                  value: c.argb,
+                  label: c.label,
+                  dot: css(c.argb),
+                })),
               ],
               s.color == null ? "calendar" : s.color,
             );
             if (picked !== undefined)
-              updateEditor((x) => (x.color = picked === "calendar" ? null : picked));
+              updateEditor(
+                (x) => (x.color = picked === "calendar" ? null : picked),
+              );
           },
         },
       ),
       h("hr"),
-      row(I.notes, plain("textarea", s.description, "Add description", (v) => (s.description = v)), {
-        top: true,
-      }),
+      row(
+        I.notes,
+        plain(
+          "textarea",
+          s.description,
+          "Add description",
+          (v) => (s.description = v),
+        ),
+        {
+          top: true,
+        },
+      ),
     ),
   );
   dialog.querySelector(".page-body").scrollTop = scrollTop;
@@ -2493,10 +3142,13 @@ function importanceChips(value, onSelect) {
           class: "chip soft",
           "aria-pressed": pressed,
           onclick: () => onSelect(option),
-          style: option ? { "--chip": color, "--chip-ink": contentColor(hexRgb(color)) } : {},
+          style: option
+            ? { "--chip": color, "--chip-ink": contentColor(hexRgb(color)) }
+            : {},
         },
         pressed && icon(I.check),
-        option && h("span", { class: "importance", style: { background: color } }),
+        option &&
+          h("span", { class: "importance", style: { background: color } }),
         option ? IMPORTANCE[option].label : "None",
       );
     }),
@@ -2510,7 +3162,8 @@ async function saveEditor() {
   // Editing one instance of a series asks which instances the change applies to.
   // "This event" makes no sense once the repeat rule itself is changed.
   if (series && opened) {
-    const options = s.recurrence !== series.data.recurrence ? SCOPES.slice(1) : SCOPES;
+    const options =
+      s.recurrence !== series.data.recurrence ? SCOPES.slice(1) : SCOPES;
     scope = await choose("Save recurring event", options, null);
     if (!scope) return;
   }
@@ -2535,7 +3188,8 @@ async function saveEditor() {
     allDay: s.allDay,
     color: s.color,
     recurrence: s.recurrence,
-    recurrenceUntil: s.until && s.recurrence !== "NONE" ? epochDay(s.until) : null,
+    recurrenceUntil:
+      s.until && s.recurrence !== "NONE" ? epochDay(s.until) : null,
     exceptions: series?.data.exceptions ?? [],
     reminders: [...new Set(s.reminders)].sort((a, b) => a - b),
     kind: s.kind,
@@ -2550,7 +3204,9 @@ async function saveEditor() {
     const openedDay = epochDay(opened);
     const seriesDay = epochDay(wall(d.start, d.allDay));
     if (scope === "THIS") {
-      changes.push(change(series, { ...d, exceptions: [...d.exceptions, openedDay] }));
+      changes.push(
+        change(series, { ...d, exceptions: [...d.exceptions, openedDay] }),
+      );
       target = newRecord("event");
       changes.push(
         change(target, {
@@ -2571,7 +3227,10 @@ async function saveEditor() {
       // The series start moves by as many days as this occurrence was moved.
       const shift = daysBetween(startOfDay(opened), s.startDate);
       const seriesDate = addDays(fromEpochDay(seriesDay), shift);
-      const newStart = toStored(s.allDay ? seriesDate : atMinute(seriesDate, s.startTime), s.allDay);
+      const newStart = toStored(
+        s.allDay ? seriesDate : atMinute(seriesDate, s.startTime),
+        s.allDay,
+      );
       changes.push(
         change(series, {
           ...edited,
@@ -2615,7 +3274,9 @@ function renderCalendars() {
       () => dialog.close(),
       "Calendars",
       iconButton(I.add, "Add calendar", () => {
-        const unused = EVENT_COLORS.find((c) => !cals.some((x) => x.data.color === c.argb));
+        const unused = EVENT_COLORS.find(
+          (c) => !cals.some((x) => x.data.color === c.argb),
+        );
         editCalendar(null, {
           name: "",
           color: (unused ?? EVENT_COLORS[6]).argb,
@@ -2640,18 +3301,29 @@ function renderCalendars() {
               h(
                 "button",
                 { type: "button", onclick: () => editCalendar(c, c.data) },
-                h("span", { class: "dot", style: { background: css(c.data.color) } }),
+                h("span", {
+                  class: "dot",
+                  style: { background: css(c.data.color) },
+                }),
                 h(
                   "span",
                   { class: "names" },
                   h("span", { class: "body-large", text: c.data.name }),
                   keywords.length > 0 &&
-                    h("span", { class: "body-small variant", text: keywords.join(", ") }),
+                    h("span", {
+                      class: "body-small variant",
+                      text: keywords.join(", "),
+                    }),
                 ),
               ),
-              iconButton(I.delete, "Delete " + c.data.name, () => deleteCalendar(c), {
-                disabled: cals.length <= 1,
-              }),
+              iconButton(
+                I.delete,
+                "Delete " + c.data.name,
+                () => deleteCalendar(c),
+                {
+                  disabled: cals.length <= 1,
+                },
+              ),
             );
           }),
         ),
@@ -2669,13 +3341,18 @@ function editCalendar(record, data) {
   const field = (label, value, extra = {}) => {
     const input = h("input", { "aria-label": label, ...extra });
     input.value = value;
-    return [input, h("label", { class: "field" }, h("span", { text: label }), input)];
+    return [
+      input,
+      h("label", { class: "field" }, h("span", { text: label }), input),
+    ];
   };
   const [name, nameField] = field("Name", state.name, { maxlength: 200 });
   const [keywords, keywordField] = field("Keywords", state.keywords, {
     placeholder: "produce, shift",
   });
-  keywordField.append(h("small", { text: "Quick add sends matching items here" }));
+  keywordField.append(
+    h("small", { text: "Quick add sends matching items here" }),
+  );
   const importance = h("div");
   const swatches = h("div", { class: "swatches" });
   const draw = () => {
@@ -2747,7 +3424,10 @@ async function deleteCalendar(c) {
   const events = records.filter(
     (r) => r.kind === "event" && !r.deleted && r.data.calendarId === c.id,
   );
-  await save([...events.map((r) => change(r, null, true)), change(c, null, true)]);
+  await save([
+    ...events.map((r) => change(r, null, true)),
+    change(c, null, true),
+  ]);
 }
 
 /* Search page, as in ui/search/SearchScreen.kt */
@@ -2774,7 +3454,13 @@ function openSearch() {
     renderResults();
   };
   dialog.replaceChildren(
-    h("header", { class: "page-bar" }, iconButton(I.back, "Back", () => dialog.close()), input, clear),
+    h(
+      "header",
+      { class: "page-bar" },
+      iconButton(I.back, "Back", () => dialog.close()),
+      input,
+      clear,
+    ),
     h("hr"),
     h("div", { class: "page-body", id: "results" }),
   );
@@ -2806,7 +3492,11 @@ function renderResults() {
           "div",
           { class: "results" },
           results.map((o) =>
-            eventCard(o, `${dayMedium(o.startDate)}, ${occurrenceTime(o)}`, o.event.location),
+            eventCard(
+              o,
+              `${dayMedium(o.startDate)}, ${occurrenceTime(o)}`,
+              o.event.location,
+            ),
           ),
         )
       : h("p", {
@@ -2840,11 +3530,6 @@ function renderSettings() {
     value: d,
     label: fmt(new Date(2023, 0, 1 + d), { weekday: "long" }),
   }));
-  const themes = [
-    { value: "system", label: "System default" },
-    { value: "light", label: "Light" },
-    { value: "dark", label: "Dark" },
-  ];
   const scrollTop = dialog.querySelector(".page-body")?.scrollTop ?? 0;
   dialog.replaceChildren(
     pageBar(I.back, "Back", () => dialog.close(), "Settings"),
@@ -2873,7 +3558,10 @@ function renderSettings() {
             class: "body-small",
             text:
               "Last synced " +
-              new Date(lastSync).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" }),
+              new Date(lastSync).toLocaleString(undefined, {
+                dateStyle: "short",
+                timeStyle: "short",
+              }),
           }),
         h("p", {
           class: "body-small variant",
@@ -2893,19 +3581,7 @@ function renderSettings() {
         ),
       ),
       h("p", { class: "settings-label label-large", text: "Appearance" }),
-      h(
-        "div",
-        { class: "group" },
-        setting("Theme", themes.find((t) => t.value === prefs.theme)?.label, async () => {
-          const theme = await choose("Theme", themes, prefs.theme);
-          if (!theme) return;
-          prefs.theme = theme;
-          savePrefs();
-          applyTheme();
-          renderSettings();
-          render();
-        }),
-      ),
+      themePicker(),
       h("p", { class: "settings-label label-large", text: "General" }),
       h(
         "div",
@@ -2914,7 +3590,11 @@ function renderSettings() {
           "Start of the week",
           weekdays.find((w) => w.value === prefs.weekStart)?.label,
           async () => {
-            const day = await choose("Start of the week", weekdays, prefs.weekStart);
+            const day = await choose(
+              "Start of the week",
+              weekdays,
+              prefs.weekStart,
+            );
             if (day == null) return;
             prefs.weekStart = day;
             savePrefs();
@@ -2951,6 +3631,124 @@ function renderSettings() {
   );
   dialog.querySelector(".page-body").scrollTop = scrollTop;
 }
+/** The color scheme row and theme gallery, as in ui/settings/ThemePicker.kt. */
+function themePicker() {
+  const pick = (change) => {
+    Object.assign(prefs, change);
+    savePrefs();
+    applyTheme();
+    renderSettings();
+    render();
+  };
+  const card = (selected, label, preview, onclick, cls = "") =>
+    h(
+      "button",
+      {
+        type: "button",
+        class: "theme-card " + cls,
+        "aria-pressed": selected,
+        disabled: selected,
+        onclick,
+      },
+      preview,
+      h("span", { class: "label-large", text: label }),
+    );
+  const light = schemeFor(prefs.appTheme, false),
+    dark = schemeFor(prefs.appTheme, true);
+  return h(
+    "div",
+    { class: "theme-picker" },
+    h("p", { class: "title-small variant", text: "Color scheme" }),
+    h(
+      "div",
+      { class: "scheme-row" },
+      [
+        ["system", "System"],
+        ["light", "Light"],
+        ["dark", "Dark"],
+      ].map(([mode, label]) =>
+        card(
+          prefs.theme === mode,
+          label,
+          schemePreview(mode, light, dark),
+          () => pick({ theme: mode }),
+          "scheme",
+        ),
+      ),
+    ),
+    h("p", { class: "title-small variant", text: "Themes" }),
+    h(
+      "div",
+      { class: "theme-grid" },
+      THEMES.map((theme) => {
+        const scheme = schemeFor(theme.id, themeIsDark());
+        const orb = h("span", {
+          class: "orb",
+          style: {
+            "--bg": hexColor(scheme.surface),
+            "--accent": hexColor(scheme.primary),
+            "--soft": hexColor(scheme.primaryContainer),
+          },
+        });
+        return card(
+          prefs.appTheme === theme.id,
+          theme.label,
+          orb,
+          () => pick({ appTheme: theme.id }),
+          "theme",
+        );
+      }),
+    ),
+  );
+}
+/** A tiny schedule in the theme's colors. System splits it light and dark. */
+function schemePreview(mode, light, dark) {
+  const canvas = h("canvas", {
+    width: 216,
+    height: 160,
+    "aria-hidden": "true",
+  });
+  const g = canvas.getContext("2d");
+  const w = 216,
+    hgt = 160;
+  const [left, right] =
+    mode === "light"
+      ? [light, light]
+      : mode === "dark"
+        ? [dark, dark]
+        : [light, dark];
+  g.fillStyle = hexColor(left.surface);
+  g.fillRect(0, 0, w / 2, hgt);
+  g.fillStyle = hexColor(right.surface);
+  g.fillRect(w / 2, 0, w / 2, hgt);
+  // Shades step toward the other mode's accent, so they stay solid.
+  const mix = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t);
+  const shade = (scheme, t) =>
+    mix(scheme.primary, scheme === light ? dark.primary : light.primary, t);
+  const accent = (t) => {
+    const gradient = g.createLinearGradient(0, 0, w, 0);
+    gradient.addColorStop(0.42, hexColor(shade(left, t)));
+    gradient.addColorStop(0.58, hexColor(shade(right, t)));
+    return gradient;
+  };
+  g.fillStyle = accent(0);
+  g.beginPath();
+  g.arc(w * 0.17, hgt * 0.27, hgt * 0.1, 0, Math.PI * 2);
+  g.fill();
+  [0, 0.4, 0.8].forEach((t, i) => {
+    g.fillStyle = accent(t);
+    g.beginPath();
+    g.roundRect(
+      w * 0.34,
+      hgt * (0.17 + i * 0.24),
+      w * 0.56,
+      hgt * 0.18,
+      hgt * 0.06,
+    );
+    g.fill();
+  });
+  return canvas;
+}
 async function signOut() {
   if (
     !(await confirmAlert(
@@ -2967,6 +3765,7 @@ async function signOut() {
   records = [];
   cursor = 0;
   sessionStorage.clear();
+  photo = null;
   for (const d of document.querySelectorAll("dialog[open]")) d.close();
   signedIn();
 }
@@ -3002,7 +3801,10 @@ async function openHistory() {
                 h("br"),
                 h("span", {
                   class: "body-small variant",
-                  text: item.reason + " · " + new Date(item.created).toLocaleString(),
+                  text:
+                    item.reason +
+                    " · " +
+                    new Date(item.created).toLocaleString(),
                 }),
               ),
               item.data &&
@@ -3012,27 +3814,644 @@ async function openHistory() {
                   );
                   if (
                     await save([
-                      change(current || { id: item.recordId, kind: item.kind, version: 0 }, item.data),
+                      change(
+                        current || {
+                          id: item.recordId,
+                          kind: item.kind,
+                          version: 0,
+                        },
+                        item.data,
+                      ),
                     ])
                   )
                     dialog.close();
                 }),
             ),
           )
-        : h("p", { class: "empty body-medium", text: "No previous edits yet." }),
+        : h("p", {
+            class: "empty body-medium",
+            text: "No previous edits yet.",
+          }),
     ),
   );
   openPage(dialog);
 }
 
+/* ---------- Popup menus ---------- */
+let closeOpenMenu = null;
+/**
+ * A Material menu under (or above) [anchor]. Items are { label, icon?, dot?, checked?, action }.
+ * Inside a dialog it opens in that dialog, so it stays above it.
+ */
+function popupMenu(anchor, items, { alignEnd = false, above = false } = {}) {
+  closeOpenMenu?.();
+  const host = anchor.closest("dialog") ?? document.body;
+  const rect = anchor.getBoundingClientRect();
+  const hostRect =
+    host === document.body ? { left: 0, top: 0 } : host.getBoundingClientRect();
+  const menu = h(
+    "div",
+    { class: "menu popup", role: "menu" },
+    items.map((item) =>
+      h(
+        "button",
+        {
+          type: "button",
+          role: "menuitemradio",
+          "aria-checked": !!item.checked,
+          onclick: () => {
+            close();
+            item.action();
+          },
+        },
+        item.dot
+          ? h("span", { class: "menu-dot", style: { background: item.dot } })
+          : item.icon && icon(item.icon),
+        h("span", { class: "menu-label", text: item.label }),
+        item.checked && icon(I.check),
+      ),
+    ),
+  );
+  menu.style.position = host === document.body ? "fixed" : "absolute";
+  host.append(menu);
+  const width = menu.offsetWidth,
+    height = menu.offsetHeight;
+  const left = alignEnd ? rect.right - width : rect.left;
+  menu.style.left =
+    Math.max(8, Math.min(left, innerWidth - width - 8)) - hostRect.left + "px";
+  menu.style.top =
+    (above
+      ? Math.max(8, rect.top - height)
+      : Math.min(rect.bottom + 4, innerHeight - height - 8)) -
+    hostRect.top +
+    "px";
+  const outside = (e) => {
+    if (!menu.contains(e.target) && !anchor.contains(e.target)) close();
+  };
+  const key = (e) => {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      e.preventDefault();
+      close();
+      anchor.focus();
+    }
+  };
+  function close() {
+    menu.remove();
+    removeEventListener("pointerdown", outside, true);
+    removeEventListener("keydown", key, true);
+    if (closeOpenMenu === close) closeOpenMenu = null;
+  }
+  addEventListener("pointerdown", outside, true);
+  addEventListener("keydown", key, true);
+  closeOpenMenu = close;
+  menu.querySelector("[aria-checked=true]")?.focus({ preventScroll: true });
+}
+
+/* ---------- Quick add, as in ui/event/QuickAddSheet.kt ---------- */
+const EVENT_EXAMPLES = [
+  "Lunch with Sam tomorrow at noon",
+  "Gym every Monday at 6pm",
+  "Work from 9 to 5 on Friday",
+];
+const TASK_EXAMPLES = [
+  "Pay rent by Friday",
+  "Call the dentist by 5pm",
+  "Take vitamins every day at 8am",
+];
+I.taskAlt =
+  "M22 5.18 10.59 16.6l-4.24-4.24 1.41-1.41 2.83 2.83 10-10L22 5.18Zm-2.21 5.04c.13.57.21 1.17.21 1.78 0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8c1.58 0 3.04.46 4.28 1.25l1.44-1.44A9.9 9.9 0 0 0 12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10c0-1.19-.22-2.33-.6-3.39l-1.61 1.61Z";
+I.info =
+  "M11 7h2v2h-2V7Zm0 4h2v6h-2v-6Zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2Zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8Z";
+I.dropDown = "m7 10 5 5 5-5H7Z";
+
+/** "Tomorrow · 3 – 5 PM", "Due Fri, Oct 9 by 9 PM", or "Today · All day". */
+function whenLabel(d, task) {
+  const now = today();
+  const day = (date) =>
+    sameDay(date, now)
+      ? "Today"
+      : sameDay(date, addDays(now, 1))
+        ? "Tomorrow"
+        : dayMedium(date);
+  const relative = (text) =>
+    text === "Today" || text === "Tomorrow" ? text.toLowerCase() : text;
+  const startDay = day(startOfDay(d.start));
+  const lastDay = addDays(startOfDay(d.end), -1);
+  if (task && d.allDay) return `Due ${relative(startDay)}`;
+  if (task) return `Due ${relative(startDay)} by ${time(d.start)}`;
+  if (d.allDay && !sameDay(lastDay, startOfDay(d.start)))
+    return `${startDay} – ${day(lastDay)} · All day`;
+  if (d.allDay) return `${startDay} · All day`;
+  if (!sameDay(d.start, d.end))
+    return `${startDay}, ${time(d.start)} – ${day(startOfDay(d.end))}, ${time(d.end)}`;
+  return `${startDay} · ${timeRange(d.start, d.end)}`;
+}
+
+/** Google-style quick add: one sentence in, an event or task out. */
+function openQuickAdd({ date } = {}) {
+  closeDrawer();
+  if (!calendars().length) {
+    snackbar("Add a calendar first");
+    return openCalendars();
+  }
+  const dialog = $("quick");
+  // A time without a day goes on the day being viewed, unless that day is already past.
+  const defaultDate = date ?? maxDate(selected, today());
+  let taskChoice = null,
+    calendarChoice = null,
+    importanceChoice; // undefined until picked; null means none
+  let saving = false;
+  const input = h("textarea", {
+    class: "quick-input",
+    rows: 1,
+    maxlength: 500,
+    "aria-label": "What, and when?",
+  });
+  const preview = h("div", { class: "quick-preview" });
+  const kinds = h("div", { class: "chips" });
+  const saveButton = h("button", {
+    type: "button",
+    class: "filled",
+    text: "Save",
+  });
+  const state = () => {
+    const text = input.value;
+    const isTask = taskChoice ?? looksLikeTask(text);
+    const result = parseSmart(text, today(), { task: isTask, defaultDate });
+    const cals = calendars();
+    const history = records
+      .filter((r) => r.kind === "event" && !r.deleted)
+      .map((r) => r.data)
+      .reverse();
+    const match = matchCalendar(
+      result.ok ? result.draft.title : text,
+      cals.map((c) => ({
+        id: c.id,
+        name: c.data.name,
+        keywords: c.data.keywords,
+      })),
+      history,
+    );
+    const calendar =
+      cals.find((c) => c.id === calendarChoice) ??
+      (match && cals.find((c) => c.id === match.calendar.id)) ??
+      cals[0];
+    const importance =
+      importanceChoice === undefined
+        ? calendar.data.defaultImportance
+        : importanceChoice;
+    const reason =
+      calendarChoice == null && match && match.calendar.id === calendar.id
+        ? match.reason
+        : null;
+    return { text, isTask, result, calendar, importance, reason };
+  };
+  const row = (path, content, { emphasized = false, muted = false } = {}) => {
+    const svg = icon(path);
+    if (emphasized) svg.style.color = "var(--primary)";
+    return h(
+      "div",
+      {
+        class:
+          "quick-row" +
+          (muted ? " muted" : "") +
+          (emphasized ? " emphasized" : ""),
+      },
+      svg,
+      content,
+    );
+  };
+  const draw = () => {
+    const st = state();
+    kinds.replaceChildren(
+      ...[
+        ["Event", I.event, false],
+        ["Task", I.taskAlt, true],
+      ].map(([label, path, task]) =>
+        h(
+          "button",
+          {
+            type: "button",
+            class: "chip kind",
+            "aria-pressed": st.isTask === task,
+            onclick: () => {
+              taskChoice = task;
+              draw();
+              input.focus();
+            },
+          },
+          icon(path),
+          label,
+        ),
+      ),
+    );
+    input.placeholder = st.isTask
+      ? "What needs doing, and by when?"
+      : "What, and when?";
+    if (!st.text.trim())
+      preview.replaceChildren(
+        h(
+          "div",
+          { class: "examples" },
+          (st.isTask ? TASK_EXAMPLES : EVENT_EXAMPLES).map((example) =>
+            h("button", {
+              type: "button",
+              class: "suggestion",
+              text: example,
+              onclick: () => {
+                input.value = example;
+                draw();
+                input.focus();
+              },
+            }),
+          ),
+        ),
+      );
+    else if (!st.result.ok)
+      preview.replaceChildren(
+        row(I.info, h("span", { text: st.result.message }), { muted: true }),
+      );
+    else {
+      const d = st.result.draft;
+      const calendarButton = h(
+        "button",
+        {
+          type: "button",
+          class: "quick-calendar",
+          "aria-label": "Change calendar",
+          onclick: () =>
+            popupMenu(
+              calendarButton,
+              calendars().map((c) => ({
+                label: c.data.name,
+                dot: css(c.data.color),
+                checked: c.id === st.calendar.id,
+                action: () => {
+                  calendarChoice = c.id;
+                  draw();
+                },
+              })),
+              { above: true },
+            ),
+        },
+        h(
+          "span",
+          { class: "dot-box" },
+          h("span", {
+            class: "dot",
+            style: { background: css(st.calendar.data.color) },
+          }),
+        ),
+        h(
+          "span",
+          { class: "names" },
+          h("span", { class: "body-large", text: st.calendar.data.name }),
+          st.reason &&
+            h("span", { class: "body-small variant", text: st.reason }),
+        ),
+        icon(I.dropDown),
+      );
+      const importanceButton = h(
+        "button",
+        {
+          type: "button",
+          class: "quick-importance",
+          "aria-label": "Change importance",
+          onclick: () =>
+            popupMenu(
+              importanceButton,
+              [null, "LOW", "MEDIUM", "HIGH"].map((option) => ({
+                label: option ? IMPORTANCE[option].label : "None",
+                dot: option && IMPORTANCE[option].color,
+                icon: option ? null : I.flag,
+                checked: option === st.importance,
+                action: () => {
+                  importanceChoice = option;
+                  draw();
+                },
+              })),
+              { above: true, alignEnd: true },
+            ),
+        },
+        st.importance
+          ? h("span", {
+              class: "dot",
+              style: { background: IMPORTANCE[st.importance].color },
+            })
+          : icon(I.flag),
+        h("span", {
+          text: st.importance ? IMPORTANCE[st.importance].label : "No priority",
+        }),
+        icon(I.dropDown),
+      );
+      preview.replaceChildren(
+        ...[
+          row(
+            st.isTask ? I.taskAlt : I.event,
+            h("span", { class: "title-medium", text: d.title }),
+            { emphasized: true },
+          ),
+          row(I.clock, h("span", { text: whenLabel(d, st.isTask) })),
+          d.recurrence !== "NONE" &&
+            row(
+              I.repeat,
+              h("span", {
+                text: recurrenceText(d.recurrence, startOfDay(d.start)),
+              }),
+            ),
+          h(
+            "div",
+            { class: "quick-calendar-row" },
+            calendarButton,
+            importanceButton,
+          ),
+        ].filter(Boolean),
+      );
+    }
+    saveButton.disabled = !st.result.ok || saving;
+    // The box grows with the text, up to four lines.
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 4 * 32) + "px";
+  };
+  const submit = async () => {
+    const st = state();
+    if (!st.result.ok || saving) return;
+    const d = st.result.draft;
+    saving = true;
+    draw();
+    const record = newRecord("event");
+    const ok = await save([
+      change(record, {
+        calendarId: st.calendar.id,
+        title: d.title,
+        description: "",
+        location: "",
+        start: toStored(d.start, d.allDay),
+        end: toStored(d.end, d.allDay),
+        allDay: d.allDay,
+        color: null,
+        recurrence: d.recurrence,
+        recurrenceUntil: null,
+        exceptions: [],
+        reminders: st.isTask ? [0] : [30],
+        kind: st.isTask ? "TASK" : "EVENT",
+        completions: [],
+        importance: st.importance,
+      }),
+    ]);
+    saving = false;
+    if (!ok) return draw();
+    dialog.close();
+    jumpTo(startOfDay(d.start));
+    snackbar(
+      `${st.isTask ? "Task" : "Event"} added · ${whenLabel(d, st.isTask)}`,
+      {
+        label: "View",
+        run: () => openDetail({ record, start: d.start }),
+      },
+    );
+  };
+  saveButton.onclick = submit;
+  input.oninput = draw;
+  input.onkeydown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
+  };
+  dialog.replaceChildren(
+    h("div", { class: "sheet-handle", "aria-hidden": "true" }),
+    kinds,
+    input,
+    preview,
+    h(
+      "div",
+      { class: "quick-actions" },
+      textButton("More options", () => {
+        const st = state();
+        dialog.close();
+        openEditor({
+          date: defaultDate,
+          title: st.text.trim(),
+          task: st.isTask,
+          calendarId: st.calendar.id,
+          draft: st.result.ok ? st.result.draft : null,
+        });
+      }),
+      saveButton,
+    ),
+  );
+  dialog.oncancel = () => closeOpenMenu?.();
+  dialog.onclick = (e) => {
+    if (e.target === dialog) {
+      const r = dialog.getBoundingClientRect();
+      if (
+        e.clientY < r.top ||
+        e.clientY > r.bottom ||
+        e.clientX < r.left ||
+        e.clientX > r.right
+      )
+        dialog.close();
+    }
+  };
+  draw();
+  showModal(dialog);
+  input.focus();
+}
+
+/* ---------- Profile photo and account card ---------- */
+let photo = null;
+const initial = () => (email || "?").trim().charAt(0).toUpperCase();
+/** A stable color for the letter avatar, picked from the event colors by the email address. */
+function avatarColor() {
+  let hash = 0;
+  for (const ch of email || "") hash = (hash * 31 + ch.charCodeAt(0)) | 0;
+  return EVENT_COLORS[Math.abs(hash) % EVENT_COLORS.length].argb;
+}
+function avatar(size) {
+  if (photo)
+    return h("img", {
+      class: "avatar-img",
+      src: photo,
+      alt: "",
+      width: size,
+      height: size,
+    });
+  const color = avatarColor();
+  return h("span", {
+    class: "avatar-letter",
+    text: initial(),
+    style: {
+      background: css(color),
+      color: contentColor(rgbOf(color)),
+      width: size + "px",
+      height: size + "px",
+      "font-size": Math.round(size * 0.45) + "px",
+    },
+  });
+}
+function renderAvatar() {
+  $("avatar").replaceChildren(avatar(32));
+  $("avatar").title = email || "Account";
+  if ($("account").open) renderAccount();
+}
+async function loadProfile() {
+  renderAvatar();
+  try {
+    ({ photo } = await api("profile"));
+  } catch {
+    photo = null;
+  }
+  renderAvatar();
+}
+function openAccount() {
+  renderAccount();
+  showModal($("account"));
+}
+function renderAccount() {
+  const dialog = $("account");
+  dialog.replaceChildren(
+    iconButton(I.close, "Close", () => dialog.close(), {
+      class: "icon account-close",
+    }),
+    h("p", { class: "account-email body-medium", text: email || "" }),
+    h(
+      "button",
+      {
+        type: "button",
+        class: "account-photo",
+        "aria-label": photo ? "Change profile photo" : "Add profile photo",
+        title: photo ? "Change profile photo" : "Add profile photo",
+        onclick: () => $("photo-input").click(),
+      },
+      avatar(80),
+      h("span", { class: "camera" }, icon(I.camera)),
+    ),
+    h("p", {
+      class: "account-hello title-large",
+      text: "Hi, " + (email || "").split("@")[0] + "!",
+    }),
+    h(
+      "div",
+      { class: "account-actions" },
+      h("button", {
+        type: "button",
+        class: "outlined",
+        text: photo ? "Change photo" : "Add photo",
+        onclick: () => $("photo-input").click(),
+      }),
+      photo &&
+        h("button", {
+          type: "button",
+          class: "outlined",
+          text: "Remove photo",
+          onclick: () => setPhoto(null),
+        }),
+    ),
+    h(
+      "div",
+      { class: "account-links" },
+      h(
+        "button",
+        {
+          type: "button",
+          onclick: () => {
+            dialog.close();
+            openSettings();
+          },
+        },
+        icon(I.settings),
+        "Settings",
+      ),
+      h(
+        "button",
+        { type: "button", onclick: signOut },
+        icon(I.logout),
+        "Sign out",
+      ),
+    ),
+  );
+  dialog.onclick = (e) => {
+    if (e.target === dialog) {
+      const r = dialog.getBoundingClientRect();
+      if (
+        e.clientY < r.top ||
+        e.clientY > r.bottom ||
+        e.clientX < r.left ||
+        e.clientX > r.right
+      )
+        dialog.close();
+    }
+  };
+}
+async function setPhoto(value) {
+  try {
+    ({ photo } = await api("profile", { photo: value }));
+    renderAvatar();
+    snackbar(value ? "Profile photo updated" : "Profile photo removed");
+  } catch (e) {
+    snackbar(e.message);
+  }
+}
+/** Crops the picked image to a 256-pixel square JPEG before uploading it. */
+$("photo-input").onchange = async () => {
+  const file = $("photo-input").files[0];
+  $("photo-input").value = "";
+  if (!file) return;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const side = Math.min(bitmap.width, bitmap.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 256;
+    canvas
+      .getContext("2d")
+      .drawImage(
+        bitmap,
+        (bitmap.width - side) / 2,
+        (bitmap.height - side) / 2,
+        side,
+        side,
+        0,
+        0,
+        256,
+        256,
+      );
+    let quality = 0.9,
+      data = canvas.toDataURL("image/jpeg", quality);
+    while (data.length > 190000 && quality > 0.3)
+      data = canvas.toDataURL("image/jpeg", (quality -= 0.15));
+    await setPhoto(data);
+  } catch {
+    snackbar("That image couldn't be read. Try a JPEG or PNG.");
+  }
+};
+I.camera =
+  "M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4ZM9 2 7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9Zm3 15c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5Z";
+I.settings =
+  "M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.01-1.58ZM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2Z";
+I.logout =
+  "m17 7-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5ZM4 5h8V3H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8v-2H4V5Z";
+
 /* ---------- Start ---------- */
 signedIn();
-if (token) sync().catch(() => {});
+if (token) {
+  loadProfile();
+  sync().catch(() => {});
+}
+if (wide.matches) setDrawer(!sidebarHidden);
 setInterval(() => {
-  if (token && !document.hidden && !busy && !$("editor").open && !$("alert").open)
+  if (
+    token &&
+    !document.hidden &&
+    !busy &&
+    !$("editor").open &&
+    !$("alert").open
+  )
     sync().catch(() => {});
 }, 10000);
 // Past events fade and the now line moves as time passes.
 setInterval(() => {
-  if (token && !document.hidden && !document.querySelector("dialog[open]")) render();
+  if (token && !document.hidden && !document.querySelector("dialog[open]"))
+    render();
 }, 60000);

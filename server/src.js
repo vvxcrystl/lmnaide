@@ -149,6 +149,7 @@ export function createApp({
     CREATE TRIGGER IF NOT EXISTS revoke_deleted_shares AFTER UPDATE OF deleted ON records WHEN NEW.kind='event' AND NEW.deleted=1 BEGIN
       DELETE FROM shares WHERE userId=NEW.userId AND eventId=NEW.id;
     END;
+    CREATE TABLE IF NOT EXISTS profiles(userId TEXT PRIMARY KEY REFERENCES users(id),photo TEXT);
     CREATE TABLE IF NOT EXISTS counter(id INTEGER PRIMARY KEY CHECK(id=1),value INTEGER NOT NULL);
     INSERT OR IGNORE INTO counter VALUES(1,0);`);
   const limits = new Map();
@@ -384,6 +385,29 @@ export function createApp({
           url:
             sharePath && publicUrl ? new URL(sharePath, publicUrl).href : null,
         });
+      }
+      // A small profile photo shown in the web app's top bar, as a data URL.
+      if (path === "/api/profile") {
+        if (req.method === "POST") {
+          const b = await body();
+          const photo = b?.photo ?? null;
+          if (
+            photo !== null &&
+            (typeof photo !== "string" ||
+              photo.length > 200000 ||
+              !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(
+                photo,
+              ))
+          )
+            fail(400, "Use a JPEG, PNG or WebP image under 150 KB.");
+          db.prepare(
+            "INSERT INTO profiles VALUES(?,?) ON CONFLICT(userId) DO UPDATE SET photo=excluded.photo",
+          ).run(userId, photo);
+        } else if (req.method !== "GET") fail(404, "Not found");
+        const profile = db
+          .prepare("SELECT photo FROM profiles WHERE userId=?")
+          .get(userId);
+        return send(200, { photo: profile?.photo ?? null });
       }
       if (req.method === "POST" && path === "/api/logout") {
         db.prepare("DELETE FROM sessions WHERE token=?").run(hash(token));
