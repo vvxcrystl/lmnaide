@@ -22,7 +22,7 @@ async function load() {
   refresh.disabled = true;
   try {
     const token = location.pathname.split("/").pop();
-    const res = await fetch("/api/shared/" + encodeURIComponent(token));
+    const res = await fetch("/api/v1/shared/" + encodeURIComponent(token));
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Unable to open this event.");
     const e = data.event;

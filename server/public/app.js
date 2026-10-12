@@ -467,7 +467,7 @@ function representative(r, c) {
 
 /* ---------- Server ---------- */
 async function api(path, body) {
-  const res = await fetch("/api/" + path, {
+  const res = await fetch("/api/v1/" + path, {
     method: body ? "POST" : "GET",
     headers: {
       "Content-Type": "application/json",

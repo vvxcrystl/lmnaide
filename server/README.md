@@ -136,4 +136,4 @@ Two-emulator sharing checks: run `tools/cloud/event-share-test.sh` with `CLOUD_T
 
 The browser has colored themes, a desktop calendar layout, Material date/time pickers and smart quick add using the Android parser’s rules. New accounts start with Personal, Work and Holidays calendars; their stable IDs match Android’s defaults so devices share the same records.
 
-Use the top-bar account button to add, change or remove a profile photo. Photos are stored privately per account via authenticated `/api/profile`, accept JPEG/PNG/WebP data URLs up to 200,000 characters, and do not appear on shared event pages.
+Use the top-bar account button to add, change or remove a profile photo. Photos are stored privately per account via authenticated `/api/v1/profile`, accept JPEG/PNG/WebP data URLs up to 200,000 characters, and do not appear on shared event pages.

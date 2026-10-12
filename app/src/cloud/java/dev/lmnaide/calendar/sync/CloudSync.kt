@@ -264,7 +264,7 @@ class CloudSync(
         body: JSONObject,
         token: String?,
     ): JSONObject {
-        val connection = URL("$server/api/$path").openConnection() as HttpURLConnection
+        val connection = URL("$server/api/v1/$path").openConnection() as HttpURLConnection
         try {
             connection.requestMethod = "POST"
             connection.connectTimeout = 10000

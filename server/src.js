@@ -185,11 +185,16 @@ export function createApp({
         "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
       );
       res.setHeader("X-Robots-Tag", "noindex, nofollow");
-      const path = new URL(req.url, "http://localhost").pathname;
+      // Pre-v1 clients call unversioned /api/<x>. Route them to /api/v1/<x>.
+      // Other versions, such as /api/v2/, pass through and are rejected below.
+      const path = new URL(req.url, "http://localhost").pathname.replace(
+        /^\/api\/(?!v\d+(?:\/|$))/,
+        "/api/v1/",
+      );
       if (req.method === "GET" && path === "/health")
         return send(200, { ok: true, version: "0.1.0" });
-      if (req.method === "GET" && path.startsWith("/api/shared/")) {
-        const shareToken = path.slice("/api/shared/".length);
+      if (req.method === "GET" && path.startsWith("/api/v1/shared/")) {
+        const shareToken = path.slice("/api/v1/shared/".length);
         if (!/^[a-f0-9]{64}$/.test(shareToken))
           fail(404, "This link is no longer available.");
         const row = db
@@ -257,7 +262,8 @@ export function createApp({
         });
         return res.end(content);
       }
-      if (!path.startsWith("/api/")) fail(404, "Not found");
+      // Unknown versions fail here, before the session check, so they 404 without a token.
+      if (!path.startsWith("/api/v1/")) fail(404, "Not found");
       const body = async () => {
         let size = 0;
         const chunks = [];
@@ -274,7 +280,7 @@ export function createApp({
       };
       if (
         req.method === "POST" &&
-        ["/api/register", "/api/login"].includes(path)
+        ["/api/v1/register", "/api/v1/login"].includes(path)
       ) {
         const ip = req.socket.remoteAddress;
         if (limits.size > 10000)
@@ -305,7 +311,7 @@ export function createApp({
             "Use an email address and a password of 10–256 characters.",
           );
         let user = db.prepare("SELECT * FROM users WHERE email=?").get(email);
-        if (path === "/api/register") {
+        if (path === "/api/v1/register") {
           if (!allowRegistration)
             fail(403, "New accounts are disabled on this server.");
           if (user) fail(409, "An account already exists. Sign in instead.");
@@ -350,7 +356,7 @@ export function createApp({
           .get(hash(token), Date.now());
       if (!session) fail(401, "Session expired. Sign in again.");
       const userId = session.userId;
-      if (req.method === "POST" && path === "/api/share") {
+      if (req.method === "POST" && path === "/api/v1/share") {
         const b = await body();
         if (
           !b ||
@@ -387,7 +393,7 @@ export function createApp({
         });
       }
       // A small profile photo shown in the web app's top bar, as a data URL.
-      if (path === "/api/profile") {
+      if (path === "/api/v1/profile") {
         if (req.method === "POST") {
           const b = await body();
           const photo = b?.photo ?? null;
@@ -409,11 +415,11 @@ export function createApp({
           .get(userId);
         return send(200, { photo: profile?.photo ?? null });
       }
-      if (req.method === "POST" && path === "/api/logout") {
+      if (req.method === "POST" && path === "/api/v1/logout") {
         db.prepare("DELETE FROM sessions WHERE token=?").run(hash(token));
         return send(200, { ok: true });
       }
-      if (req.method === "GET" && path === "/api/history")
+      if (req.method === "GET" && path === "/api/v1/history")
         return send(200, {
           history: db
             .prepare(
@@ -426,7 +432,8 @@ export function createApp({
               userId: undefined,
             })),
         });
-      if (req.method !== "POST" || path !== "/api/sync") fail(404, "Not found");
+      if (req.method !== "POST" || path !== "/api/v1/sync")
+        fail(404, "Not found");
       const b = await body();
       if (!b || typeof b !== "object" || Array.isArray(b))
         fail(400, "Invalid request");
