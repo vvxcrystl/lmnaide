@@ -144,7 +144,9 @@ private fun ScheduleList(
     val end = maxOf(loadedEnd, YearMonth.from(target).plusMonths(1).atEndOfMonth())
     val currentEnd by rememberUpdatedState(end)
 
-    val rows = remember(index, start, end, today, anchor, target, weekStart) { buildRows(index, start, end, today, setOf(anchor, target), weekStart) }
+    // Selection and week labels don't change the expanded event data.
+    val byDay = remember(index, start, end) { index.byDay(start, end) }
+    val rows = remember(byDay, start, end, today, anchor, target, weekStart) { buildRows(byDay, start, end, today, setOf(anchor, target), weekStart) }
     val currentRows by rememberUpdatedState(rows)
     // A list rebuilt by a jump opens a few rows short of the target, on the side it came from.
     val listState = rememberLazyListState(
@@ -193,7 +195,7 @@ private fun ScheduleList(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 96.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
     ) {
-        items(rows, key = { it.key }) { row ->
+        items(rows, key = { it.key }, contentType = { it.javaClass }) { row ->
             when (row) {
                 is ScheduleRow.MonthHeader -> MonthBanner(
                     row.month,
@@ -232,14 +234,13 @@ private fun indexOf(rows: List<ScheduleRow>, date: LocalDate): Int {
 }
 
 private fun buildRows(
-    index: EventIndex,
+    byDay: Map<LocalDate, List<Occurrence>>,
     start: LocalDate,
     end: LocalDate,
     today: LocalDate,
     alwaysShown: Set<LocalDate>,
     weekStart: DayOfWeek,
 ): List<ScheduleRow> {
-    val byDay = index.byDay(start, end)
     val rows = mutableListOf<ScheduleRow>()
     var month = YearMonth.from(start).minusMonths(1)
     var labelledWeek: LocalDate? = null

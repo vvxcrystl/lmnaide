@@ -15,7 +15,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -30,8 +32,8 @@ class MainViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val index: StateFlow<EventIndex> =
-        combine(repository.events, repository.calendars, settingsRepository.settings) { events, calendars, settings ->
-            EventIndex(events, calendars, settings.showTasks)
+        combine(repository.events, repository.calendars, settingsRepository.settings.map { it.showTasks }.distinctUntilChanged()) { events, calendars, showTasks ->
+            EventIndex(events, calendars, showTasks)
         }
         .flowOn(Dispatchers.Default)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EventIndex.Empty)

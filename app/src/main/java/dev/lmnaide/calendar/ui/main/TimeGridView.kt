@@ -79,7 +79,6 @@ import java.time.temporal.TemporalAdjusters
 private val GutterWidth = 52.dp
 private val HourHeight = 56.dp
 private val LaneHeight = 22.dp
-private const val MIN_BLOCK_MINUTES = 22
 private const val COLLAPSED_LANES = 2
 
 /** Day, 3-day and week views: an hourly grid paged horizontally by [days]. */
@@ -159,6 +158,9 @@ private fun TimeGridPage(
         assignLanes(occurrences.filter { it.inAllDayLane }, dates.first(), dates.size)
     }
     val timed = remember(occurrences) { occurrences.filterNot { it.inAllDayLane } }
+    val timedByDay = remember(timed, dates) {
+        dates.associateWith { date -> timed.filter { it.occursOn(date) } }
+    }
     val lineColor = MaterialTheme.colorScheme.outlineVariant
 
     Column(Modifier.fillMaxSize()) {
@@ -189,7 +191,7 @@ private fun TimeGridPage(
                 dates.forEach { date ->
                     DayColumn(
                         date = date,
-                        occurrences = timed.filter { it.occursOn(date) },
+                        occurrences = timedByDay.getValue(date),
                         isToday = date == today,
                         now = now,
                         use24h = use24h,
@@ -438,56 +440,3 @@ private fun DayColumn(
 }
 
 private fun minutesToDp(minutes: Int): Dp = HourHeight * (minutes / 60f)
-
-private class Placed(val occurrence: Occurrence, val startMin: Int, val endMin: Int) {
-    var column = 0
-    var columns = 1
-    var span = 1
-}
-
-/** Positions overlapping events side by side, like most calendar apps do. */
-private fun layoutDay(occurrences: List<Occurrence>, date: LocalDate): List<Placed> {
-    val items = occurrences.map { o ->
-        val start = if (o.startDate < date) 0 else o.start.hour * 60 + o.start.minute
-        val rawEnd = if (o.end.toLocalDate() > date) 24 * 60 else o.end.hour * 60 + o.end.minute
-        val end = maxOf(rawEnd, start + MIN_BLOCK_MINUTES).coerceAtMost(24 * 60)
-        Placed(o, minOf(start, end - MIN_BLOCK_MINUTES), end)
-    }.sortedWith(compareBy<Placed> { it.startMin }.thenByDescending { it.endMin })
-
-    val result = mutableListOf<Placed>()
-    val cluster = mutableListOf<Placed>()
-    val columnEnds = mutableListOf<Int>()
-    var clusterEnd = -1
-
-    fun flush() {
-        cluster.forEach { item ->
-            item.columns = columnEnds.size
-            // Let an event widen into free columns to its right.
-            var span = 1
-            while (item.column + span < columnEnds.size &&
-                cluster.none { it.column == item.column + span && it.startMin < item.endMin && it.endMin > item.startMin }
-            ) span++
-            item.span = span
-        }
-        result += cluster
-        cluster.clear()
-        columnEnds.clear()
-        clusterEnd = -1
-    }
-
-    for (item in items) {
-        if (cluster.isNotEmpty() && item.startMin >= clusterEnd) flush()
-        val column = columnEnds.indexOfFirst { it <= item.startMin }
-        if (column == -1) {
-            item.column = columnEnds.size
-            columnEnds += item.endMin
-        } else {
-            item.column = column
-            columnEnds[column] = item.endMin
-        }
-        cluster += item
-        clusterEnd = maxOf(clusterEnd, item.endMin)
-    }
-    flush()
-    return result
-}
