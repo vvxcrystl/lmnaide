@@ -38,6 +38,9 @@ android {
             }
         }
         release {
+            // Signed with the local debug key so release builds install over debug ones, keeping their
+            // data. Debug builds are debuggable and unoptimized, and Compose scrolls badly in them.
+            signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

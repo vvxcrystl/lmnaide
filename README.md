@@ -120,10 +120,13 @@ Settings also covers the first day of the week, 24-hour time, and the default ca
 You need JDK 17 and the Android SDK with platform 37. Gradle downloads the right JDK on its own, as set in `gradle/gradle-daemon-jvm.properties`.
 
 ```sh
-./gradlew assembleCloudDebug     # app/build/outputs/apk/cloud/debug/app-cloud-debug.apk
-./gradlew installCloudDebug      # installs lmnaide Calander with optional sync
-./gradlew assembleOfflineDebug   # builds lmnaide Calander without network access
+./gradlew installCloudRelease    # installs lmnaide Calander with optional sync
+./gradlew installOfflineRelease  # installs lmnaide Calander without network access
+./gradlew assembleCloudRelease   # app/build/outputs/apk/cloud/release/app-cloud-release.apk
+./gradlew installCloudDebug      # a debuggable build, for development
 ```
+
+Use a release build on your phone. Debug builds are debuggable and skip R8, so scrolling and swiping in them drop frames. Release builds are signed with your local debug key, so they install over a debug build without losing data.
 
 The app runs on Android 8.0 (API 26) and later.
 
