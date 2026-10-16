@@ -8,6 +8,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -46,13 +47,14 @@ class ReminderScheduler(
     private val context: Context,
     private val repository: CalendarRepository,
     private val settings: SettingsRepository,
+    private val clockAlarms: ClockAlarmController,
 ) {
     private val mutex = Mutex()
     private val prefs = context.getSharedPreferences("reminders", Context.MODE_PRIVATE)
     private val alarmManager = context.getSystemService<AlarmManager>()!!
     private val notifications = NotificationManagerCompat.from(context)
 
-    private enum class Reason { REMINDER, STARTING, REPEAT, SNOOZE }
+    private enum class Reason { REMINDER, STARTING, REPEAT, SNOOZE, CLOCK_SETUP }
 
     private data class Trigger(val occurrence: Occurrence, val at: Long, val reason: Reason, val minutes: Int = 0)
 
@@ -64,6 +66,8 @@ class ReminderScheduler(
         val from = maxOf(lastRun, now - TimeUnit.MINUTES.toMillis(15))
         // One notification per occurrence: the latest trigger wins.
         triggersBetween(from, now)
+            // Setup triggers only wake us; the foreground handoff is offered below, never launched here.
+            .filterNot { it.reason == Reason.CLOCK_SETUP }
             .groupBy { it.occurrence.key }
             .values
             .map { group -> group.maxBy { it.at } }
@@ -100,6 +104,7 @@ class ReminderScheduler(
 
     private suspend fun scheduleNextLocked() {
         val now = System.currentTimeMillis()
+        reconcileClockSetupNotifications(now)
         if (!prefs.contains(KEY_LAST_RUN)) prefs.edit { putLong(KEY_LAST_RUN, now) }
         // Look ahead a few weeks; if nothing is due, wake up later to look again.
         val next = triggersBetween(now, now + LOOKAHEAD).minOfOrNull { it.at } ?: (now + LOOKAHEAD)
@@ -126,7 +131,7 @@ class ReminderScheduler(
             .filterNot { it.completed }
             .flatMap { occurrence ->
                 val anchor = anchorMillis(occurrence, zone)
-                val reminders = occurrence.event.reminders.distinct().map { minutes ->
+                val reminders = ClockAlarmPolicy.reminderMinutes(occurrence).map { minutes ->
                     Trigger(occurrence, anchor - TimeUnit.MINUTES.toMillis(minutes.toLong()), Reason.REMINDER, minutes)
                 }
                 val urgent = if (occurrence.event.importance == Importance.HIGH && occurrence.key !in acknowledged) {
@@ -137,7 +142,11 @@ class ReminderScheduler(
                 } else {
                     emptyList()
                 }
-                reminders + urgent
+                val clockSetup = if (occurrence.event.importance == Importance.HIGH &&
+                    !clockAlarms.wasRequested(occurrence, zone)) {
+                    listOf(Trigger(occurrence, ClockAlarmPolicy.setupAt(occurrence, zone).toInstant().toEpochMilli(), Reason.CLOCK_SETUP))
+                } else emptyList()
+                reminders + urgent + clockSetup
             }
 
         val eventsById = events.associateBy { it.id }
@@ -153,6 +162,53 @@ class ReminderScheduler(
         return anchor.atZone(zone).toInstant().toEpochMilli()
     }
 
+    /** Offers a direct Activity PendingIntent: Android does not allow Clock launches in a receiver. */
+    private suspend fun reconcileClockSetupNotifications(now: Long) {
+        val zone = ZoneId.systemDefault()
+        val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+        val ready = repository.getAllEvents()
+            .filter { it.importance == Importance.HIGH }
+            .flatMap { RecurrenceExpander.expand(it, 0, "", today, today.plusDays(2), zone) }
+            .filter { ClockAlarmPolicy.plan(it, Instant.ofEpochMilli(now), zone).status == ClockAlarmStatus.READY }
+            .filterNot { clockAlarms.wasRequested(it, zone) }
+            .associateBy { clockAlarms.fingerprint(it, zone) }
+        val previous = prefs.getStringSet(KEY_CLOCK_NOTIFICATIONS, emptySet()).orEmpty()
+        (previous - ready.keys).forEach { notifications.cancel(CLOCK_SETUP_TAG, it.hashCode()) }
+        val active = previous.intersect(ready.keys).toMutableSet()
+        if (canNotify()) {
+            ensureChannels()
+            ready.forEach { (fingerprint, occurrence) ->
+                if (clockAlarms.needsSetupPrompt(occurrence, zone)) {
+                    val at = ClockAlarmPolicy.alarmAt(occurrence, zone)
+                    val intent = MainActivity.eventIntent(context, occurrence.event.id, occurrence.instanceId)
+                        .putExtra(MainActivity.EXTRA_SET_CLOCK_ALARM, true)
+                        .setData(Uri.parse("lmnaide://clock-alarm/${occurrence.event.id}/${occurrence.instanceId}/${at.toInstant().toEpochMilli()}"))
+                    val open = PendingIntent.getActivity(context, fingerprint.hashCode(), intent,
+                        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+                    val notification = NotificationCompat.Builder(context, CHANNEL_CLOCK_SETUP)
+                        .setSmallIcon(R.drawable.ic_notification)
+                        .setContentTitle("Set a Clock alarm: ${occurrence.event.title.ifBlank { "(No title)" }}")
+                        .setContentText("Tap to request an alarm at ${Fmt.time(at.toLocalTime(), settings.settings.value.use24Hour)}, 30 min before.")
+                        .setContentIntent(open)
+                        .addAction(0, "Set alarm", open)
+                        .setAutoCancel(true)
+                        .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                        .build()
+                    try {
+                        notifications.notify(CLOCK_SETUP_TAG, fingerprint.hashCode(), notification)
+                    } catch (_: SecurityException) {
+                        // Permission can be revoked between checking it and posting.
+                        return@forEach
+                    }
+                    clockAlarms.markPrompted(occurrence, zone)
+                    active += fingerprint
+                }
+            }
+        }
+        prefs.edit { putStringSet(KEY_CLOCK_NOTIFICATIONS, active) }
+    }
+
     private fun occurrenceOf(event: EventEntity, instanceId: Long, zone: ZoneId): Occurrence? {
         val start = Occurrence.instanceStart(instanceId)
         val length = Duration.between(event.localStart(zone), event.localEnd(zone))
@@ -160,10 +216,7 @@ class ReminderScheduler(
     }
 
     private fun notify(trigger: Trigger) {
-        val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
-            PackageManager.PERMISSION_GRANTED
-        if (!granted) return
+        if (!canNotify()) return
         ensureChannels()
 
         val occurrence = trigger.occurrence
@@ -225,7 +278,11 @@ class ReminderScheduler(
         if (event.isTask) {
             builder.addAction(0, "Mark done", action(ReminderReceiver.ACTION_COMPLETE, occurrence, 3))
         }
-        notifications.notify(id, builder.build())
+        try {
+            notifications.notify(id, builder.build())
+        } catch (_: SecurityException) {
+            // Permission can be revoked between checking it and posting.
+        }
     }
 
     private fun action(action: String, occurrence: Occurrence, slot: Int): PendingIntent = PendingIntent.getBroadcast(
@@ -250,6 +307,9 @@ class ReminderScheduler(
         manager.deleteNotificationChannel(LEGACY_CHANNEL)
         manager.createNotificationChannels(
             listOf(
+                NotificationChannel(CHANNEL_CLOCK_SETUP, "Clock alarm setup", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "Offers to set a Clock alarm 30 minutes before high-importance items"
+                },
                 NotificationChannel(CHANNEL_LOW, "Low importance", NotificationManager.IMPORTANCE_LOW).apply {
                     description = "Quiet reminders that wait in the notification shade"
                 },
@@ -266,6 +326,9 @@ class ReminderScheduler(
             ),
         )
     }
+
+    private fun canNotify(): Boolean = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
     private fun alarmIntent(): PendingIntent = PendingIntent.getBroadcast(
         context,
@@ -299,11 +362,14 @@ class ReminderScheduler(
         const val KEY_LAST_RUN = "last_run"
         const val KEY_ACKNOWLEDGED = "acknowledged"
         const val KEY_SNOOZES = "snoozes"
+        const val KEY_CLOCK_NOTIFICATIONS = "clock_setup_notifications"
+        const val CHANNEL_CLOCK_SETUP = "clock_setup"
+        const val CLOCK_SETUP_TAG = "clock_setup"
         const val SNOOZE_MINUTES = 10
         const val NAG_INTERVAL_MINUTES = 5L
         const val NAG_COUNT = 3
         val LOOKAHEAD = TimeUnit.DAYS.toMillis(21)
-        val ALL_DAY_TIME: LocalTime = LocalTime.of(9, 0)
+        val ALL_DAY_TIME: LocalTime = ClockAlarmPolicy.ALL_DAY_TIME
         val URGENT_VIBRATION = longArrayOf(0, 600, 200, 600, 200, 600)
     }
 }

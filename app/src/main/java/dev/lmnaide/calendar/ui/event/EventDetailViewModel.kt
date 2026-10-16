@@ -10,6 +10,8 @@ import dev.lmnaide.calendar.data.Recurrence
 import dev.lmnaide.calendar.data.SettingsRepository
 import dev.lmnaide.calendar.domain.EditScope
 import dev.lmnaide.calendar.domain.Occurrence
+import dev.lmnaide.calendar.reminders.ClockAlarmController
+import dev.lmnaide.calendar.reminders.ClockAlarmPlan
 import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.common.appViewModelFactory
 import kotlinx.coroutines.flow.SharingStarted
@@ -30,6 +32,7 @@ sealed interface DetailState {
 class EventDetailViewModel(
     private val repository: CalendarRepository,
     settingsRepository: SettingsRepository,
+    private val clockAlarms: ClockAlarmController,
     handle: SavedStateHandle,
 ) : ViewModel() {
     private val eventId: Long = checkNotNull(handle["eventId"])
@@ -59,6 +62,9 @@ class EventDetailViewModel(
         return Occurrence(event, start, start.plus(length), event.color ?: calendar?.color ?: 0, calendar?.name.orEmpty())
     }
 
+    /** When a high-importance occurrence's Clock alarm can be requested, if at all. */
+    fun clockAlarmPlan(occurrence: Occurrence): ClockAlarmPlan = clockAlarms.plan(occurrence)
+
     fun delete(occurrence: Occurrence, scope: EditScope) {
         viewModelScope.launch {
             val event = occurrence.event
@@ -83,7 +89,7 @@ class EventDetailViewModel(
 
     companion object {
         val Factory = appViewModelFactory { container, handle ->
-            EventDetailViewModel(container.repository, container.settings, handle)
+            EventDetailViewModel(container.repository, container.settings, container.clockAlarms, handle)
         }
     }
 }

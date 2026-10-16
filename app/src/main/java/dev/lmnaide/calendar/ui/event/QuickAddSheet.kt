@@ -100,6 +100,7 @@ import dev.lmnaide.calendar.ui.common.Fmt
 import dev.lmnaide.calendar.ui.common.Motion
 import dev.lmnaide.calendar.ui.common.rememberLastNonNull
 import dev.lmnaide.calendar.ui.common.rememberNow
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -114,6 +115,7 @@ private val TaskExamples = listOf("Pay rent by Friday", "Call the dentist by 5pm
  *
  * [defaultDate] is used when the text names a time but no day.
  * [initialText] prefills the sheet when adding selected or shared text from another app.
+ * [onClockAlarmMessage] shows feedback from the Clock alarm request after [onSaved]; a toast by default.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,7 +126,9 @@ fun QuickAddSheet(
     onMoreOptions: (text: String, task: Boolean, calendarId: Long?, people: String) -> Unit,
     viewModel: QuickAddViewModel,
     initialText: String = "",
+    onClockAlarmMessage: ((String) -> Unit)? = null,
 ) {
+    val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -174,7 +178,15 @@ fun QuickAddSheet(
         val c = calendar ?: return
         viewModel.save(d, isTask, c, importance, people) { link ->
             val message = "${if (isTask) "Task" else "Event"} added · ${whenLabel(d, isTask, today, settings.use24Hour)}"
-            closeThen { onSaved(link, message, d.start.toLocalDate()) }
+            // High-importance items ask Clock for an alarm while this activity is still in front.
+            // Widget and shared-text hosts finish in onSaved, so the request goes first.
+            scope.launch {
+                val hide = launch { sheetState.hide() }
+                val clockMessage = requestClockAlarm(context, link)
+                hide.join()
+                onSaved(link, message, d.start.toLocalDate())
+                clockMessage?.let { onClockAlarmMessage?.invoke(it) ?: showClockAlarmMessage(context, it) }
+            }
         }
     }
 
@@ -264,6 +276,7 @@ fun QuickAddSheet(
                                 ImportanceMenu(importance) { picked -> importanceChoice = picked?.ordinal ?: IMPORTANCE_NONE }
                             }
                         }
+                        if (importance == Importance.HIGH) ClockAlarmNote()
                     }
                     Preview.Problem -> PreviewRow(
                         Icons.Outlined.Info,

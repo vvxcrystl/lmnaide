@@ -98,6 +98,8 @@ import dev.lmnaide.calendar.ui.event.QuickAddViewModel
 import dev.lmnaide.calendar.ui.common.Fmt
 import dev.lmnaide.calendar.ui.common.Motion
 import dev.lmnaide.calendar.ui.common.rememberNow
+import dev.lmnaide.calendar.container
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
@@ -340,6 +342,10 @@ fun MainScreen(
                         onMoreOptions(maxOf(selectedDate, today), task, text, calendarId, people)
                     },
                     viewModel = viewModel(factory = QuickAddViewModel.Factory),
+                    // Queues behind the "added" snackbar instead of a toast covering it.
+                    onClockAlarmMessage = { message ->
+                        scope.launch { snackbars.showSnackbar(message, withDismissAction = true, duration = SnackbarDuration.Long) }
+                    },
                 )
             }
         }
@@ -448,7 +454,10 @@ private fun RequestNotificationPermission() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
     val context = LocalContext.current
     var asked by rememberSaveable { mutableStateOf(false) }
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
+    // Reminders scheduled before the grant couldn't post, so schedule them again once allowed.
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) context.container.appScope.launch(Dispatchers.IO) { context.container.reminders.reschedule() }
+    }
     LaunchedEffect(Unit) {
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED

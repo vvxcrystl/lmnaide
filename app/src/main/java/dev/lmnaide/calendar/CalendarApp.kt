@@ -6,6 +6,7 @@ import dev.lmnaide.calendar.data.AppDatabase
 import dev.lmnaide.calendar.data.CalendarRepository
 import dev.lmnaide.calendar.data.SettingsRepository
 import dev.lmnaide.calendar.reminders.ReminderScheduler
+import dev.lmnaide.calendar.reminders.ClockAlarmController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,7 +34,8 @@ class AppContainer(private val context: Context) {
     val repository = CalendarRepository({ AppDatabase.build(context) }, appScope)
     val settings = SettingsRepository(context)
     val cloud = dev.lmnaide.calendar.sync.CloudSync(context, repository, appScope)
-    val reminders by lazy { ReminderScheduler(context, repository, settings) }
+    val clockAlarms by lazy { ClockAlarmController(context, repository) }
+    val reminders by lazy { ReminderScheduler(context, repository, settings, clockAlarms) }
 
     fun start() {
         appScope.launch {

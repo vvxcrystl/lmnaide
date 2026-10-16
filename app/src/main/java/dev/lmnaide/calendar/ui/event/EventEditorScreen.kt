@@ -73,6 +73,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -109,6 +110,14 @@ fun EventEditorScreen(
     val calendars by viewModel.calendars.collectAsStateWithLifecycle()
     var dialog by rememberSaveable { mutableStateOf<EditorDialog?>(null) }
     val use24h = viewModel.use24Hour
+    val requestClockAlarm = rememberClockAlarmRequester()
+    val context = LocalContext.current
+    // Navigation goes first; the Clock request carries on in the activity after this screen closes.
+    val afterSave: (EventLink) -> Unit = { link ->
+        onSaved(link)
+        if (viewModel.droppedHighImportance) showClockAlarmMessage(context, CLOCK_ALARM_DROPPED_MESSAGE)
+        else requestClockAlarm(link, !viewModel.isNew)
+    }
 
     BackHandler(enabled = viewModel.isDirty) { dialog = EditorDialog.Discard }
 
@@ -124,7 +133,7 @@ fun EventEditorScreen(
                 actions = {
                     Button(
                         onClick = {
-                            if (viewModel.needsScope) dialog = EditorDialog.Scope else viewModel.save(null, onSaved)
+                            if (viewModel.needsScope) dialog = EditorDialog.Scope else viewModel.save(null, afterSave)
                         },
                         enabled = state?.isValid == true && !viewModel.isSaving,
                         modifier = Modifier.padding(end = 12.dp),
@@ -345,7 +354,7 @@ fun EventEditorScreen(
                 options = viewModel.scopeOptions,
                 selected = null,
                 label = { it.label },
-                onSelect = { viewModel.save(it, onSaved) },
+                onSelect = { viewModel.save(it, afterSave) },
                 onDismiss = { if (dialog == EditorDialog.Scope) dialog = null },
             )
             EditorDialog.Discard -> ConfirmDialog(
@@ -364,7 +373,7 @@ fun EventEditorScreen(
                 title = { Text("Changed on another device") },
                 text = { Text(message) },
                 confirmButton = {
-                    TextButton(onClick = { viewModel.confirmConflict(onSaved) }) { Text("Save my edits") }
+                    TextButton(onClick = { viewModel.confirmConflict(afterSave) }) { Text("Save my edits") }
                 },
                 dismissButton = {
                     TextButton(onClick = viewModel::cancelConflict) { Text("Cancel") }
@@ -394,7 +403,7 @@ private fun KindSelector(kind: EventKind, onSelect: (EventKind) -> Unit) {
 /** None, then Low, Medium and High, each marked with its color. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun ImportanceSelector(importance: Importance?, label: String = "Importance", onSelect: (Importance?) -> Unit) {
+internal fun ImportanceSelector(importance: Importance?, label: String = "Importance", showClockNote: Boolean = true, onSelect: (Importance?) -> Unit) {
     Column {
         Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -421,7 +430,7 @@ internal fun ImportanceSelector(importance: Importance?, label: String = "Import
         val hint = when (importance) {
             Importance.LOW -> "Reminders arrive silently"
             Importance.MEDIUM -> "Standard reminders with sound"
-            Importance.HIGH -> "Urgent alerts at start that repeat until you respond"
+            Importance.HIGH -> "A reminder 30 min before, then urgent alerts at start that repeat until you respond"
             null -> null
         }
         hint?.let {
@@ -432,6 +441,7 @@ internal fun ImportanceSelector(importance: Importance?, label: String = "Import
                 modifier = Modifier.padding(top = 4.dp),
             )
         }
+        if (importance == Importance.HIGH && showClockNote) ClockAlarmNote(Modifier.padding(top = 6.dp))
     }
 }
 

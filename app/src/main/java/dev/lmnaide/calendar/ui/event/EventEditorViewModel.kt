@@ -122,6 +122,10 @@ class EventEditorViewModel(
 
     var conflictMessage by mutableStateOf<String?>(null)
         private set
+
+    /** Set by a save that took a high-importance item down, since Clock keeps any alarm it was sent. */
+    var droppedHighImportance = false
+        private set
     private var pendingSave: Pair<EventEntity, EditScope?>? = null
 
     val isDirty: Boolean get() = state != null && state != initial
@@ -341,6 +345,7 @@ class EventEditorViewModel(
             scope == EditScope.FOLLOWING -> repository.replaceFollowing(latest, opened.toLocalDate(), occurrenceDraft)
             else -> repository.saveEvent(shiftSeries(latest, opened, s, event))
         }
+        droppedHighImportance = original?.importance == Importance.HIGH && event.importance != Importance.HIGH
         onSaved(EventLink(id, s.start.toEpochSecond(ZoneOffset.UTC)))
     }
 

@@ -10,6 +10,14 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.automirrored.outlined.Undo
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.Alarm
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.offset
+import androidx.compose.runtime.rememberCoroutineScope
+import dev.lmnaide.calendar.reminders.ClockAlarmPlan
+import dev.lmnaide.calendar.reminders.ClockAlarmStatus
+import dev.lmnaide.calendar.ui.common.rememberNow
+import kotlinx.coroutines.launch
 import androidx.compose.material3.FilledTonalButton
 import dev.lmnaide.calendar.data.Importance
 import android.net.Uri
@@ -163,6 +171,7 @@ fun EventDetailScreen(
         val event = occurrence.event
         val today = LocalDate.now()
         val context = LocalContext.current
+        val scope = rememberCoroutineScope()
         val (whenLine, secondLine) = Fmt.occurrenceWhen(occurrence, settings.use24Hour, today)
 
         Column(
@@ -228,11 +237,21 @@ fun EventDetailScreen(
                             when (importance) {
                                 Importance.LOW -> "Reminders arrive silently"
                                 Importance.MEDIUM -> "Standard reminders with sound"
-                                Importance.HIGH -> "Alerts at start and repeats until you respond"
+                                Importance.HIGH -> "A reminder 30 min before, then alerts at start that repeat until you respond"
                             },
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                    }
+                }
+            }
+            if (event.importance == Importance.HIGH) {
+                val now = rememberNow()
+                val plan = remember(occurrence, now) { viewModel.clockAlarmPlan(occurrence) }
+                ClockAlarmRow(plan, settings.use24Hour, today) {
+                    scope.launch {
+                        requestClockAlarm(context, EventLink(event.id, occurrence.instanceId), manual = true)
+                            ?.let { showClockAlarmMessage(context, it) }
                     }
                 }
             }
@@ -325,7 +344,8 @@ fun EventDetailScreen(
             if (event.recurrence == Recurrence.NONE) {
                 ConfirmDialog(
                     title = "Delete event?",
-                    text = "“${event.title.ifBlank { "(No title)" }}” will be removed from your calendar.",
+                    text = "“${event.title.ifBlank { "(No title)" }}” will be removed from your calendar." +
+                        if (event.importance == Importance.HIGH) " If Clock has an alarm for it, delete that in Clock too." else "",
                     confirmLabel = "Delete",
                     onConfirm = { viewModel.delete(occurrence, EditScope.ALL) },
                     onDismiss = { confirmDelete = false },
@@ -336,9 +356,45 @@ fun EventDetailScreen(
                     options = EditScope.entries,
                     selected = null,
                     label = { it.label },
-                    onSelect = { viewModel.delete(occurrence, it) },
+                    onSelect = {
+                        viewModel.delete(occurrence, it)
+                        if (event.importance == Importance.HIGH) {
+                            showClockAlarmMessage(context, "If Clock has an alarm for this event, delete it in Clock too.")
+                        }
+                    },
                     onDismiss = { confirmDelete = false },
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Where the Clock alarm stands for a high-importance occurrence. Clock only takes a time of day, so
+ * alarms more than a day out wait for a setup notification. Nothing shows once the time has passed.
+ */
+@Composable
+private fun ClockAlarmRow(plan: ClockAlarmPlan, use24h: Boolean, today: LocalDate, onSend: () -> Unit) {
+    val at = plan.alarmAt ?: return
+    val ready = plan.status == ClockAlarmStatus.READY
+    val unsupported = plan.status == ClockAlarmStatus.UNSUPPORTED_TIME
+    if (!ready && !unsupported && plan.status != ClockAlarmStatus.TOO_EARLY) return
+    val day = at.toLocalDate()
+    val time = Fmt.time(at.toLocalTime(), use24h) + if (day == today) "" else ", ${Fmt.dayMedium(day, today)}"
+    DetailRow(icon = Icons.Outlined.Alarm) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(if (unsupported) "No Clock alarm for $time" else "Clock alarm for $time", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                when {
+                    ready -> "Clock won't follow edits or deletes here. Change or delete the alarm in Clock."
+                    unsupported -> "Clock can't safely use this time because of a clock change. The in-app reminder 30 min before still works."
+                    else -> "Too far ahead for Clock. You'll get a notification a day before to set it."
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (ready) {
+                TextButton(onClick = onSend, modifier = Modifier.padding(top = 2.dp).offset(x = (-12).dp)) { Text("Send to Clock") }
             }
         }
     }

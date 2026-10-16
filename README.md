@@ -78,11 +78,15 @@ Mark any event or task as Low (green), Medium (yellow) or High (red). Each level
 |--------|--------------|
 | Low    | Silent. It waits in the notification shade. |
 | Medium | Normal sound, with a Snooze button. |
-| High   | Strong vibration and an extra alert at the start or due time. It repeats every 5 minutes, up to 3 times, until you tap Got it, snooze, open the event or finish the task. |
+| High   | A reminder 30 minutes before, strong vibration and an extra alert at the start or due time. It repeats every 5 minutes, up to 3 times, until you tap Got it, snooze, open the event or finish the task. |
 
 Each calendar can also have a default importance, which new events on that calendar start with.
 
 Each event can have several reminders. They use exact alarms, so they fire on time, and the app reschedules them after a reboot or a time zone change.
+
+Saving a High importance event or task also asks your Clock app for a one-time alarm 30 minutes before it starts or is due. All-day items use 8:30 am, ahead of their 9 am reminder time. Android's Clock interface accepts a time of day but no date, so events farther away get a **Set alarm** notification about a day ahead; tap it to send the alarm to Clock. The event page also has a Clock alarm action. Each recurring occurrence is handled separately, including skipped and completed occurrences.
+
+Check Clock to confirm the alarm: receiving apps can require confirmation, and Android does not report whether they created it. Changing or deleting the event does not update an alarm already sent to Clock; manage that alarm in Clock. The 30-minute in-app reminder works independently, including when Clock is unavailable. Setup prompts and in-app reminders need notification permission.
 
 ### Calendars
 
