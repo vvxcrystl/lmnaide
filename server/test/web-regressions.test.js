@@ -21,7 +21,7 @@ function handlers(names, globals = {}, expose = "") {
 
 function syncHarness(api) {
   return handlers(
-    ["sync", "performSync", "changeBatches", "invalidateSession"],
+    ["sanitizeIncomingRecord", "sync", "performSync", "changeBatches", "invalidateSession"],
     {
       syncQueue: Promise.resolve(),
       sessionGeneration: 0,

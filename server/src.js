@@ -60,6 +60,37 @@ function clientIp(req, trustedProxies) {
   const address = String(candidate || "").split(",")[0]?.trim();
   return isIP(address) ? normalizeIp(address) : peer || "unknown";
 }
+// Rate-limit bucket for untrusted input: IPv4 addresses (and unknown
+// strings) are used whole, while IPv6 sources collapse to their /64 prefix.
+// A delegated prefix would otherwise gain 2^64 distinct buckets and rotate
+// its interface ID to evade per-IP limits.
+export function ipBucketKey(value) {
+  if (isIP(value) !== 6) return value;
+  const halves = value.split("%")[0].split("::");
+  if (halves.length > 2) return value;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  if (halves.length === 2 ? left.length + right.length > 7 : left.length !== 8)
+    return value;
+  const groups = [
+    ...left,
+    ...Array(8 - left.length - right.length).fill("0"),
+    ...right,
+  ];
+  if (groups.every((group) => /^[0-9a-f]{1,4}$/i.test(group)))
+    return (
+      "v6/" + groups.slice(0, 4).map((g) => parseInt(g, 16)).join(":")
+    );
+  return value;
+}
+// STORAGE_QUOTA_BYTES, when present, must parse as a non-negative byte
+// count; 0 lifts the quota entirely.
+function quotaFromEnv() {
+  const raw = process.env.STORAGE_QUOTA_BYTES;
+  if (raw == null || raw.trim() === "") return 256 * 1024 * 1024;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : 256 * 1024 * 1024;
+}
 function validateUsername(value) {
   if (value === null || value === "") return null;
   if (typeof value !== "string") fail(400, "Invalid username.");
@@ -227,6 +258,10 @@ export function createApp({
   publicUrl = process.env.PUBLIC_URL || "",
   domain = process.env.CALENDAR_DOMAIN || "",
   trustedProxies = process.env.TRUSTED_PROXIES || "127.0.0.1,::1",
+  // Per-account ceiling over records + operation journal, in bytes. When
+  // the quota is reached only deletion batches of live records are
+  // accepted, so a full account can still free space. 0 lifts the quota.
+  quotaBytes = quotaFromEnv(),
 } = {}) {
   publicUrl = resolvePublicUrl({ publicUrl, domain });
   const trustedProxyNets = trustedProxyList(trustedProxies);
@@ -253,7 +288,69 @@ export function createApp({
   if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "username"))
     db.exec("ALTER TABLE users ADD COLUMN username TEXT COLLATE NOCASE");
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS user_username ON users(username COLLATE NOCASE)");
+  if (
+    !db
+      .prepare("PRAGMA table_info(operations)")
+      .all()
+      .some((c) => c.name === "created")
+  ) {
+    db.exec("ALTER TABLE operations ADD COLUMN created INTEGER");
+    // Legacy journal rows get the full 90-day grace window from the
+    // upgrade, so an idempotent offline retry never loses its record.
+    db.prepare("UPDATE operations SET created=?").run(Date.now());
+  }
+  // Sign-in prunes by created-timestamp; index the columns so that sweep
+  // stays off full table scans.
+  db.exec(`CREATE INDEX IF NOT EXISTS operations_created ON operations(created);
+    CREATE INDEX IF NOT EXISTS history_created ON history(created);`);
   const limits = new Map();
+  // Sliding one-minute buckets used for authentication and sync rate limits.
+  // Entries expire from the map on a sweep that runs once the map grows past
+  // its hard cap; still-live entries are then evicted oldest-first so a
+  // flood of distinct keys cannot grow memory without bound.
+  const takeLimit = (key, maximum) => {
+    const now = Date.now();
+    if (limits.size > 20000) {
+      for (const [name, value] of limits)
+        if (value.until < now) limits.delete(name);
+      while (limits.size > 20000) {
+        const oldest = limits.keys().next().value;
+        if (oldest === undefined) break;
+        limits.delete(oldest);
+      }
+    }
+    const limit = limits.get(key) || { count: 0, until: now + 60000 };
+    if (limit.until < now) {
+      limit.count = 0;
+      limit.until = now + 60000;
+    }
+    limits.set(key, limit);
+    if (++limit.count > maximum)
+      fail(429, "Too many attempts. Try again in a minute.");
+  };
+  // Account lockout rejects requests up front but counts failures only, so
+  // password guesses do not deny service to the account's real owner.
+  const accountBlock = (key, maximum) => {
+    const limit = limits.get(key);
+    if (limit && limit.until >= Date.now() && limit.count >= maximum)
+      fail(429, "Too many attempts. Try again in a minute.");
+  };
+  // One fingerprint definition shared by the quota pre-check and the sync
+  // apply loop, so a change's charged and replayed identities cannot drift.
+  // A grouped change hashes the named fields; a no-group change hashes its
+  // whole serialized object, keeping the fingerprint that retries were
+  // stored under before grouping existed.
+  const changeFingerprint = (c) => c.group
+    ? hash(JSON.stringify({
+        kind: c.kind,
+        id: c.id,
+        baseVersion: c.baseVersion,
+        deleted: c.deleted,
+        data: c.data,
+        operationId: c.operationId,
+        group: c.group,
+      }))
+    : hash(JSON.stringify(c));
   const encode = (row) => ({
     kind: row.kind,
     id: row.id,
@@ -285,13 +382,26 @@ export function createApp({
         "Content-Security-Policy",
         "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
       );
+      res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+      res.setHeader("Cross-Origin-Resource-Policy", "same-origin");
+      res.setHeader(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=()",
+      );
       res.setHeader("X-Robots-Tag", "noindex, nofollow");
       // Pre-v1 clients call unversioned /api/<x>. Route them to /api/v1/<x>.
       // Other versions, such as /api/v2/, pass through and are rejected below.
-      const path = new URL(req.url, "http://localhost").pathname.replace(
-        /^\/api\/(?!v\d+(?:\/|$))/,
-        "/api/v1/",
-      );
+      let path;
+      try {
+        path = new URL(req.url, "http://localhost").pathname.replace(
+          /^\/api\/(?!v\d+(?:\/|$))/,
+          "/api/v1/",
+        );
+      } catch {
+        // Protocol-relative or malformed absolute targets, such as //host%2f,
+        // throw out of URL parsing; return 400 instead of leaking a 500.
+        fail(400, "Invalid request");
+      }
       if (req.method === "GET" && path === "/health")
         return send(200, { ok: true, version: "0.1.0" });
       if (req.method === "GET" && path.startsWith("/api/v1/shared/")) {
@@ -383,30 +493,19 @@ export function createApp({
         req.method === "POST" &&
         ["/api/v1/register", "/api/v1/login"].includes(path)
       ) {
-        const takeLimit = (key, maximum) => {
-          const now = Date.now();
-          if (limits.size > 10000)
-            for (const [name, value] of limits)
-              if (value.until < now) limits.delete(name);
-          const limit = limits.get(key) || { count: 0, until: now + 60000 };
-          if (limit.until < now) {
-            limit.count = 0;
-            limit.until = now + 60000;
-          }
-          limits.set(key, limit);
-          if (++limit.count > maximum)
-            fail(429, "Too many attempts. Try again in a minute.");
-        };
-        takeLimit(`ip:${clientIp(req, trustedProxyNets)}`, 30);
+        const ipKey = ipBucketKey(clientIp(req, trustedProxyNets));
+        takeLimit(`ip:${ipKey}`, 30);
         const b = await body();
         if (!b || typeof b !== "object" || Array.isArray(b))
           fail(400, "Invalid request");
         const email =
           typeof b.email === "string" ? b.email.trim().toLowerCase() : "";
-        if (email) takeLimit(`account:${email}`, 10);
+        // Length is checked before the regex: the regex backtracks
+        // quadratically on long inputs, and a single request near the body
+        // cap used to block the event loop for roughly an hour (ReDoS).
         if (
-          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
           email.length > 254 ||
+          !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
           typeof b.password !== "string" ||
           b.password.length < 10 ||
           b.password.length > 256
@@ -415,11 +514,29 @@ export function createApp({
             400,
             "Use an email address and a password of 10–256 characters.",
           );
+        // Account lockout is keyed per (account, source bucket) and counts
+        // failures only: password guesses from an attacker's prefixes never
+        // touch the owner's bucket or their sign-ins, and each source stays
+        // at 10 failures per minute per address prefix. Accepted trade: a
+        // distributed attacker facing K prefixes scales guessing to K x 10
+        // per minute against one account (no global ceiling); the per-IP
+        // cap, 10+ character passwords and scrypt remain the primary
+        // defenses, and a global failure cap would reintroduce the owner
+        // lockout this split exists to prevent.
+        const accountKey = `account:${ipKey}/${email}`;
+        accountBlock(accountKey, 10);
         let user = db.prepare("SELECT * FROM users WHERE email=?").get(email);
         if (path === "/api/v1/register") {
           if (!allowRegistration)
             fail(403, "New accounts are disabled on this server.");
-          if (user) fail(409, "An account already exists. Sign in instead.");
+          // Caps account farming and email-address probing on open
+          // registration: both new accounts and existing-account 409s count
+          // (10 per minute per source prefix).
+          takeLimit(`reg:${ipKey}`, 10);
+          if (user) {
+            takeLimit(accountKey, 10);
+            fail(409, "An account already exists. Sign in instead.");
+          }
           const username = b.username === undefined ? null : validateUsername(b.username);
           const salt = randomBytes(16).toString("hex");
           const key = await scrypt(b.password, salt, 64);
@@ -438,7 +555,10 @@ export function createApp({
             );
           } catch (e) {
             if (e.message.includes("users.username")) fail(409, "That username is already taken.");
-            if (e.message.includes("users.email")) fail(409, "An account already exists. Sign in instead.");
+            if (e.message.includes("users.email")) {
+              takeLimit(accountKey, 10);
+              fail(409, "An account already exists. Sign in instead.");
+            }
             throw e;
           }
         } else {
@@ -446,11 +566,19 @@ export function createApp({
             user?.password || `${"0".repeat(32)}:${"0".repeat(128)}`
           ).split(":");
           const key = await scrypt(b.password, salt, 64);
-          if (!timingSafeEqual(key, Buffer.from(stored, "hex")) || !user)
+          if (!timingSafeEqual(key, Buffer.from(stored, "hex")) || !user) {
+            takeLimit(accountKey, 10);
             fail(401, "Email or password is incorrect.");
+          }
         }
         const token = randomBytes(32).toString("hex");
         db.prepare("DELETE FROM sessions WHERE expires<?").run(Date.now());
+        // Edit history and the idempotency journal are pruned on sign-in so
+        // long-running servers stay bounded: 90 days matches the sync
+        // operation-retry window and the browser's history coverage.
+        const retentionCutoff = Date.now() - 90 * 86400000;
+        db.prepare("DELETE FROM history WHERE created<?").run(retentionCutoff);
+        db.prepare("DELETE FROM operations WHERE created<?").run(retentionCutoff);
         db.prepare("INSERT INTO sessions VALUES(?,?,?)").run(
           hash(token),
           user.id,
@@ -551,6 +679,10 @@ export function createApp({
         });
       if (req.method !== "POST" || path !== "/api/v1/sync")
         fail(404, "Not found");
+      // Generous bound: foreground clients poll every 10 s (6/min); bursts
+      // during large edits stay well under 90. This keeps a single signed-in
+      // client from saturating the single-threaded event loop.
+      takeLimit(`sync:${userId}`, 90);
       const b = await body();
       if (!b || typeof b !== "object" || Array.isArray(b))
         fail(400, "Invalid request");
@@ -581,12 +713,135 @@ export function createApp({
               fail(400, "Invalid group");
             return { ...c, data: validate(c) };
           } catch (error) {
-            if (operationId !== undefined) error.operationId = operationId;
+            if (operationId !== undefined)
+              error.operationId = operationId.slice(0, 250);
             throw error;
           }
         })
         .sort(
           (a, b) => Number(a.kind === "event") - Number(b.kind === "event"),
+        );
+      // Storage quota covers live records and the operation journal; edit
+      // history is capped separately per account (rows, below) so that
+      // tombstoning a record really does free space. Only batches that
+      // would charge something are measured: empty polls run no queries.
+      // A deletion frees space only when it removes a live record at the
+      // exact base version it claims, when nothing else in the batch
+      // writes that record, and when nothing in its group can be rolled
+      // back - that is how a full account gets space back. Stale,
+      // duplicate, unknown-id or already-deleted deletions, deletions of
+      // records their own batch rewrites, and deletions in a group with
+      // any other outcome, grow the database without removing rows
+      // (tombstones, conflict rows, journal entries), so those are
+      // charged like writes.
+      let chargeable = 0;
+      if (quotaBytes > 0) {
+        const rows = new Map();
+        const replays = new Map();
+        // Any key a non-deletion change in this batch writes will have its
+        // version bumped by the time a deletion of it can run, so such a
+        // deletion cannot be trusted to free the row. The set is built
+        // order-independently because staging can run a later write before
+        // an earlier group. Replayed writes count too, which can only
+        // over-charge a rare same-key rewrite-and-delete retry.
+        const batchWrites = new Set();
+        for (const c of changes) if (!c.deleted) batchWrites.add(c.kind + ":" + c.id);
+        // Pass 1: replayed operations are no-ops (skipped entirely, free);
+        // writes charge; a deletion only escapes charging for the first
+        // occurrence of a live row at its claimed base version.
+        const verdicts = [];
+        for (const c of changes) {
+          if (!replays.has(c.operationId)) {
+            replays.set(
+              c.operationId,
+              db
+                .prepare(
+                  "SELECT fingerprint FROM operations WHERE userId=? AND operationId=?",
+                )
+                .get(userId, c.operationId) ?? null,
+            );
+          }
+          const prior = replays.get(c.operationId);
+          // A journaled operation replays as a no-op, so a lost-response
+          // retry must still succeed (free) when the account is full.
+          if (prior && prior.fingerprint === changeFingerprint(c)) {
+            verdicts.push("skip");
+            continue;
+          }
+          if (!c.deleted) {
+            chargeable += Buffer.byteLength(JSON.stringify(c.data)) + 600;
+            verdicts.push("charge");
+            continue;
+          }
+          const key = c.kind + ":" + c.id;
+          if (batchWrites.has(key)) {
+            chargeable += 600;
+            verdicts.push("charge");
+            continue;
+          }
+          if (!rows.has(key)) {
+            rows.set(
+              key,
+              db
+                .prepare(
+                  "SELECT version, deleted FROM records WHERE userId=? AND kind=? AND id=?",
+                )
+                .get(userId, c.kind, c.id) ?? null,
+            );
+          }
+          const current = rows.get(key);
+          if (
+            current &&
+            !current.deleted &&
+            c.baseVersion === current.version
+          ) {
+            // Only the first real deletion of a given row is free; later
+            // copies in the batch would be no-ops that still journal.
+            rows.set(key, { deleted: 1 });
+            verdicts.push("free");
+          } else {
+            chargeable += 600;
+            verdicts.push("charge");
+          }
+        }
+        // Pass 2: a group whose every member is a free deletion normally
+        // removes its rows cleanly, but it can still roll back - for
+        // example when a concurrent request rewrites one of the rows
+        // between this pre-check and the transaction below (the pre-check
+        // runs outside BEGIN IMMEDIATE). A rolled-back group still
+        // journals and archives each member, so such a group's deletions
+        // are charged; the per-account row caps on the journal and
+        // history, later in this transaction, are the hard bound on that
+        // residual growth.
+        const groupsClean = new Map();
+        for (let i = 0; i < changes.length; i++) {
+          if (!changes[i].group) continue;
+          let state = groupsClean.get(changes[i].group);
+          if (!state) groupsClean.set(changes[i].group, (state = { clean: true }));
+          if (verdicts[i] === "charge") state.clean = false;
+        }
+        for (let i = 0; i < changes.length; i++) {
+          if (verdicts[i] !== "free") continue;
+          const group = changes[i].group;
+          if (group && !groupsClean.get(group)?.clean)
+            chargeable += 600;
+        }
+      }
+      const usage = chargeable
+        ? db
+            .prepare(
+              `SELECT
+                 (SELECT COALESCE(SUM(octet_length(data)),0) FROM records WHERE userId=?)
+               + (SELECT COUNT(*) FROM operations WHERE userId=?) * 400 AS bytes`,
+            )
+            .get(userId, userId).bytes
+        : 0;
+      // x2 margins the archived previous versions written alongside each
+      // accepted change.
+      if (chargeable && usage + chargeable * 2 > quotaBytes)
+        fail(
+          413,
+          "Storage quota is full. Delete records and sync, then retry later.",
         );
       const conflicts = [];
       db.exec("BEGIN IMMEDIATE");
@@ -594,20 +849,8 @@ export function createApp({
         const fingerprints = new Map();
         const pending = new Set();
         const requestOperations = new Map();
-        const fingerprintFor = (c) => c.group
-          ? hash(JSON.stringify({
-            kind: c.kind,
-            id: c.id,
-            baseVersion: c.baseVersion,
-            deleted: c.deleted,
-            data: c.data,
-            operationId: c.operationId,
-            group: c.group,
-          }))
-          // Keep the old no-group fingerprint for retries already stored before upgrade.
-          : hash(JSON.stringify(c));
         for (const c of changes) {
-          const fingerprint = fingerprintFor(c);
+          const fingerprint = changeFingerprint(c);
           fingerprints.set(c, fingerprint);
           const prior = db
             .prepare(
@@ -722,11 +965,9 @@ export function createApp({
               }
             }
           }
-          db.prepare("INSERT INTO operations VALUES(?,?,?)").run(
-            userId,
-            c.operationId,
-            fingerprint,
-          );
+          db.prepare(
+            "INSERT INTO operations(userId,operationId,fingerprint,created) VALUES(?,?,?,?)",
+          ).run(userId, c.operationId, fingerprint, Date.now());
           return conflict;
         };
         const groupMembers = new Map();
@@ -775,10 +1016,13 @@ export function createApp({
                 "conflict",
               );
               conflicts.push(c.id);
-              db.prepare("INSERT INTO operations VALUES(?,?,?)").run(
+              db.prepare(
+                "INSERT INTO operations(userId,operationId,fingerprint,created) VALUES(?,?,?,?)",
+              ).run(
                 userId,
                 c.operationId,
                 fingerprints.get(c),
+                Date.now(),
               );
             }
           } else {
@@ -790,14 +1034,15 @@ export function createApp({
         const pageLimit = 500;
         const responseLimit = 1024 * 1024;
         const conflictsJson = JSON.stringify(conflicts);
-        const page = [];
         const envelopeBytes = (cursor, more) =>
           Buffer.byteLength(
             `{"cursor":${cursor},"records":[],"conflicts":${conflictsJson},"more":${more}}`,
           ) - 2;
-        const recordBytes = (rows) => rows.reduce((total, row) =>
-          total + Buffer.byteLength(JSON.stringify(encode(row))), 0) +
-          Math.max(0, rows.length - 1);
+        // Encode each row exactly once and keep a running byte total.
+        // Re-serializing the whole accumulated page for every candidate row
+        // used to make big pages quadratic in event-loop time.
+        const page = [];
+        let pageBytes = 0;
         const pageRows = db
           .prepare(
             "SELECT * FROM records WHERE userId=? AND version>? ORDER BY version LIMIT 500",
@@ -807,10 +1052,24 @@ export function createApp({
           .prepare("SELECT 1 FROM records WHERE userId=? AND version>? LIMIT 1")
           .get(userId, version);
         for (const row of pageRows) {
-          const next = [...page, row];
+          const rowBytes = Buffer.byteLength(JSON.stringify(encode(row)));
           const more = hasAfter(row.version);
-          if (envelopeBytes(row.version, more) + recordBytes(next) > responseLimit) break;
+          // recordBytes' trailing Math.max(0, rows.length - 1) counts the
+          // array commas, which after appending is exactly page.length.
+          if (
+            envelopeBytes(row.version, more) + pageBytes + rowBytes + page.length >
+            responseLimit
+          )
+            break;
           page.push(row);
+          pageBytes += rowBytes;
+        }
+        // A record larger than the whole budget previously left the page
+        // empty and let the cursor jump past it permanently; deliver the
+        // first row regardless so clients stay consistent.
+        if (!page.length && pageRows.length) {
+          page.push(pageRows[0]);
+          pageBytes = Buffer.byteLength(JSON.stringify(encode(pageRows[0])));
         }
         const lastPageVersion = page.at(-1)?.version ?? null;
         const more = lastPageVersion == null
@@ -820,6 +1079,7 @@ export function createApp({
           .prepare("SELECT value FROM counter WHERE id=1")
           .get().value;
         const map = new Map(page.map((r) => [r.kind + ":" + r.id, r]));
+        let mapBytes = pageBytes;
         for (const c of changes) {
           const row = db
             .prepare("SELECT * FROM records WHERE userId=? AND kind=? AND id=?")
@@ -830,10 +1090,64 @@ export function createApp({
           if (row.version > b.cursor &&
             (lastPageVersion == null || row.version > lastPageVersion)) continue;
           if (map.size >= pageLimit) continue;
-          const next = [...map.values(), row].sort((a, b) => a.version - b.version);
-          const bytes = recordBytes(next);
-          if (envelopeBytes(cursor, more) + bytes > responseLimit) continue;
+          const rowBytes = Buffer.byteLength(JSON.stringify(encode(row)));
+          // After appending this row the array has map.size + 1 entries, so
+          // its comma separators number exactly map.size.
+          if (
+            envelopeBytes(cursor, more) + mapBytes + rowBytes + map.size >
+            responseLimit
+          )
+            continue;
           map.set(key, row);
+          mapBytes += rowBytes;
+        }
+        // Edit history and the operation journal are also capped per
+        // account in rows, so a conflict-heavy or crafted account cannot
+        // keep growing them between the 90-day prunes: the journal writes
+        // one row per applied change even when a change turns out to be a
+        // self-identical no-op or a conflict. The browser surfaces the
+        // latest 200 history entries for restore. Only batches that wrote
+        // anything (pending non-replayed changes) pay for the counts;
+        // empty polls and full-replay batches skip them.
+        if (pending.size) {
+          const JOURNAL_ROWS_PER_ACCOUNT = 10000;
+          const journalCount = db
+            .prepare("SELECT COUNT(*) AS n FROM operations WHERE userId=?")
+            .get(userId).n;
+          if (journalCount > JOURNAL_ROWS_PER_ACCOUNT)
+            db
+              .prepare(
+                `DELETE FROM operations WHERE userId=? AND rowid IN (
+                   SELECT rowid FROM (
+                     SELECT rowid FROM operations WHERE userId=?
+                     ORDER BY created, rowid LIMIT ?
+                   )
+                 )`,
+              )
+              .run(
+                userId,
+                userId,
+                journalCount - JOURNAL_ROWS_PER_ACCOUNT,
+              );
+          const HISTORY_ROWS_PER_ACCOUNT = 10000;
+          const historyCount = db
+            .prepare("SELECT COUNT(*) AS n FROM history WHERE userId=?")
+            .get(userId).n;
+          if (historyCount > HISTORY_ROWS_PER_ACCOUNT)
+            db
+              .prepare(
+                `DELETE FROM history WHERE userId=? AND id IN (
+                   SELECT id FROM (
+                     SELECT id FROM history WHERE userId=?
+                     ORDER BY created, id LIMIT ?
+                   )
+                 )`,
+              )
+              .run(
+                userId,
+                userId,
+                historyCount - HISTORY_ROWS_PER_ACCOUNT,
+              );
         }
         db.exec("COMMIT");
         return send(200, {

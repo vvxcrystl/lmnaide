@@ -516,11 +516,18 @@ async function api(path, body, authToken = token) {
     throw error;
   }
   if (generation !== sessionGeneration) throw staleSessionError();
-  if (!res.ok)
+  if (!res.ok) {
+    if (res.status === 401 && requestToken && requestToken === token) {
+      // The session is expired or was revoked elsewhere. Return to the
+      // sign-in screen instead of continuing to poll with a dead token.
+      if (generation === sessionGeneration) signOutLocal();
+      throw staleSessionError();
+    }
     throw Object.assign(new Error(data.error || "Request failed"), {
       operationId: data.operationId,
       status: res.status,
     });
+  }
   return data;
 }
 let snackTimer;
@@ -763,11 +770,13 @@ async function performSync(changes, generation = sessionGeneration) {
           const data = await api("sync", { cursor, changes: pending });
           if (generation !== sessionGeneration) throw staleSessionError();
           for (const r of data.records) {
+            const clean = sanitizeIncomingRecord(r);
+            if (!clean) continue;
             const i = records.findIndex(
-              (x) => x.kind === r.kind && x.id === r.id,
+              (x) => x.kind === clean.kind && x.id === clean.id,
             );
-            if (i < 0) records.push(r);
-            else records[i] = r;
+            if (i < 0) records.push(clean);
+            else records[i] = clean;
           }
           cursor = data.cursor;
           conflicts.push(...(data.conflicts ?? []));
@@ -829,6 +838,91 @@ function seedNewAccount() {
   sync(atomicChanges(defaultRecords().map((r) => change(r, r.data)))).catch(
     () => {},
   );
+}
+/**
+ * Records arrive from our own validated server; this still recasts their
+ * types so a patched or malicious sync source cannot wedge rendering with
+ * one malformed field (defence in depth, not a protocol change).
+ */
+function sanitizeIncomingRecord(r) {
+  if (
+    !r ||
+    typeof r !== "object" ||
+    (r.kind !== "calendar" && r.kind !== "event") ||
+    typeof r.id !== "string" ||
+    !r.id
+  )
+    return null;
+  const d = r.data && typeof r.data === "object" ? r.data : null;
+  const text = (v, max) => (typeof v === "string" ? v : "").slice(0, max);
+  const ms = (v) =>
+    Number.isSafeInteger(v)
+      ? Math.min(Date.UTC(2201, 0, 1) - 1, Math.max(Date.UTC(1900, 0, 1), v))
+      : Date.UTC(1900, 0, 1);
+  const day = (v) =>
+    Number.isSafeInteger(v)
+      ? Math.min(
+          Date.UTC(2201, 0, 1) / 86400000 - 1,
+          Math.max(Date.UTC(1900, 0, 1) / 86400000, v),
+        )
+      : null;
+  const listDay = (v) =>
+    Array.isArray(v) ? v.map(day).filter((x) => x != null) : [];
+  const listMinutes = (v) =>
+    Array.isArray(v)
+      ? v.filter((m) => Number.isSafeInteger(m) && m >= 0 && m <= 525600)
+      : [];
+  const color = (v) =>
+    Number.isInteger(v) && v >= -2147483648 && v <= 2147483647 ? v : null;
+  const oneOf = (v, list) => (list.includes(v) ? v : list[0]);
+  let data = null;
+  if (r.deleted !== true && d) {
+    data =
+      r.kind === "calendar"
+        ? {
+            name: text(d.name, 200),
+            keywords: text(d.keywords, 2000),
+            color: color(d.color) ?? -16777216,
+            visible: d.visible === true,
+            defaultImportance:
+              ["LOW", "MEDIUM", "HIGH"].includes(d.defaultImportance)
+                ? d.defaultImportance
+                : null,
+          }
+        : {
+            title: text(d.title, 1000),
+            description: text(d.description, 20000),
+            location: text(d.location, 2000),
+            calendarId: text(d.calendarId, 200),
+            start: ms(d.start),
+            end: Math.max(ms(d.end), ms(d.start)),
+            allDay: d.allDay === true,
+            color: color(d.color),
+            recurrence: oneOf(d.recurrence, [
+              "NONE",
+              "DAILY",
+              "WEEKDAYS",
+              "WEEKLY",
+              "MONTHLY",
+              "YEARLY",
+            ]),
+            recurrenceUntil: day(d.recurrenceUntil),
+            exceptions: listDay(d.exceptions),
+            completions: listDay(d.completions),
+            reminders: listMinutes(d.reminders),
+            kind: d.kind === "TASK" ? "TASK" : "EVENT",
+            importance: ["LOW", "MEDIUM", "HIGH"].includes(d.importance)
+              ? d.importance
+              : null,
+          };
+  }
+  return {
+    kind: r.kind,
+    id: r.id.slice(0, 200),
+    version: Number.isSafeInteger(r.version) && r.version >= 0 ? r.version : 0,
+    deleted: r.deleted === true || data === null,
+    data,
+  };
 }
 const change = (record, data, deleted = false) => ({
   kind: record.kind,
@@ -2851,7 +2945,10 @@ async function openShare(o) {
 }
 function showShare(o, share) {
   const url = share.active
-    ? share.url || new URL(share.path, location.origin).href
+    ? share.url ||
+      (/^\/s\/[a-f0-9]{64}$/.test(share.path || "")
+        ? new URL(share.path, location.origin).href
+        : "")
     : "";
   const input = h("input", {
     value: url,
@@ -4296,6 +4393,19 @@ function schemePreview(mode, light, dark) {
   });
   return canvas;
 }
+/** Clear local session state and return to the sign-in screen. */
+function signOutLocal() {
+  invalidateSession();
+  token = null;
+  records = [];
+  cursor = 0;
+  quarantinedChanges = [];
+  lastSync = 0;
+  sessionStorage.clear();
+  photo = null;
+  for (const d of document.querySelectorAll("dialog[open]")) d.close();
+  signedIn();
+}
 async function signOut() {
   if (
     !(await confirmAlert(
@@ -4313,15 +4423,7 @@ async function signOut() {
     await api("logout", {}, logoutToken);
   } catch {}
   if (generation !== sessionGeneration) return;
-  token = null;
-  records = [];
-  cursor = 0;
-  quarantinedChanges = [];
-  lastSync = 0;
-  sessionStorage.clear();
-  photo = null;
-  for (const d of document.querySelectorAll("dialog[open]")) d.close();
-  signedIn();
+  signOutLocal();
 }
 async function openHistory() {
   const generation = sessionGeneration;
