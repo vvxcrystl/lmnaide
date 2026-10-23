@@ -22,7 +22,7 @@ test("reload sync defers main-screen rendering until startup reveals it", () => 
   };
   let renders = 0;
   const app = handlers(["render", "signedIn"], {
-    $, token: "test-session", prefs: { view: "SCHEDULE" }, wide: { matches: false },
+    $, token: "test-session", publicToken: null, prefs: { view: "SCHEDULE" }, wide: { matches: false },
     VIEWS: [["SCHEDULE", "Schedule"]], pickerOpen: false,
     renderDrawer() {}, renderSchedule() { renders++; }, updateTitle() {},
   });

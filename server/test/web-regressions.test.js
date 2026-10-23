@@ -47,6 +47,16 @@ function syncHarness(api) {
   );
 }
 
+test("browser sync retains calendar public details and treats older records as private", async () => {
+  for (const publicDetails of [undefined, false, true]) {
+    const data = { name: "Personal", keywords: "", color: -1, visible: true, defaultImportance: null,
+      ...(publicDetails === undefined ? {} : { publicDetails }) };
+    const app = syncHarness(async () => ({ records: [{ kind: "calendar", id: "personal", version: 1, deleted: false, data }], cursor: 1, more: false }));
+    await app.sync();
+    assert.equal(app.records[0].data.publicDetails, publicDetails === true);
+  }
+});
+
 test("API responses are invalidated by a session change", async () => {
   let finishFetch;
   let requestOptions;

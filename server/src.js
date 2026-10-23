@@ -12,6 +12,7 @@ import { promisify } from "node:util";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve, sep, extname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { toICalendar } from "./public/calendar-export.js";
 const scrypt = promisify(scryptCallback);
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const MIN_EVENT_TIME = Date.UTC(1900, 0, 1);
@@ -138,6 +139,8 @@ function validate(change) {
     if (d.color < -2147483648 || d.color > 2147483647)
       fail(400, "Invalid color");
     if (typeof d.visible !== "boolean") fail(400, "Invalid visibility");
+    if (d.publicDetails !== undefined && typeof d.publicDetails !== "boolean")
+      fail(400, "Invalid publicDetails");
     if (
       d.defaultImportance != null &&
       !enums.importance.includes(d.defaultImportance)
@@ -149,6 +152,8 @@ function validate(change) {
       visible: d.visible,
       keywords: d.keywords,
       defaultImportance: d.defaultImportance ?? null,
+      // Omit false to preserve legacy operation fingerprints and identical seed records.
+      ...(d.publicDetails === true ? { publicDetails: true } : {}),
     };
   }
   text("title", 1000);
@@ -276,6 +281,7 @@ export function createApp({
     CREATE INDEX IF NOT EXISTS history_user_created ON history(userId,created DESC);
     CREATE TABLE IF NOT EXISTS operations(userId TEXT NOT NULL,operationId TEXT NOT NULL,fingerprint TEXT NOT NULL,PRIMARY KEY(userId,operationId));
     CREATE TABLE IF NOT EXISTS shares(userId TEXT NOT NULL REFERENCES users(id),eventId TEXT NOT NULL,token TEXT UNIQUE NOT NULL,PRIMARY KEY(userId,eventId));
+    CREATE TABLE IF NOT EXISTS public_calendars(userId TEXT PRIMARY KEY REFERENCES users(id),token TEXT UNIQUE NOT NULL);
     CREATE TRIGGER IF NOT EXISTS revoke_inserted_tombstones AFTER INSERT ON records WHEN NEW.kind='event' AND NEW.deleted=1 BEGIN
       DELETE FROM shares WHERE userId=NEW.userId AND eventId=NEW.id;
     END;
@@ -404,8 +410,37 @@ export function createApp({
       }
       if (req.method === "GET" && path === "/health")
         return send(200, { ok: true, version: "0.1.0" });
+      if (req.method === "GET" && path.startsWith("/api/v1/public/")) {
+        const token = path.slice("/api/v1/public/".length);
+        const owner = /^[a-f0-9]{64}$/.test(token) && db.prepare(
+          "SELECT u.id,u.username FROM public_calendars p JOIN users u ON u.id=p.userId WHERE p.token=?",
+        ).get(token);
+        if (!owner) fail(404, "This public calendar is no longer available.");
+        const calendars = new Map(db.prepare(
+          "SELECT id,data FROM records WHERE userId=? AND kind='calendar' AND deleted=0",
+        ).all(owner.id).map((r) => [r.id, JSON.parse(r.data)]));
+        const name = owner.username || "User";
+        const events = db.prepare(
+          "SELECT data FROM records WHERE userId=? AND kind='event' AND deleted=0 ORDER BY version",
+        ).all(owner.id).flatMap((row) => {
+          const e = JSON.parse(row.data);
+          const calendar = calendars.get(e.calendarId);
+          if (!calendar) return [];
+          // Allowlist timing fields for busy entries. Private metadata never reaches the visitor.
+          const timing = Object.fromEntries([
+            "start", "end", "allDay", "recurrence", "recurrenceUntil", "exceptions",
+          ].map((key) => [key, e[key]]));
+          return [{ ...timing, ...(calendar.publicDetails === true ? {
+            title: e.title, description: e.description, location: e.location,
+            calendar: calendar.name, color: e.color ?? calendar.color, kind: e.kind,
+          } : { title: name + " is busy" }) }];
+        });
+        return send(200, { name, events });
+      }
       if (req.method === "GET" && path.startsWith("/api/v1/shared/")) {
-        const shareToken = path.slice("/api/v1/shared/".length);
+        const download = path.endsWith("/event.ics");
+        const shareToken = path.slice("/api/v1/shared/".length,
+          download ? -"/event.ics".length : undefined);
         if (!/^[a-f0-9]{64}$/.test(shareToken))
           fail(404, "This link is no longer available.");
         const row = db
@@ -415,6 +450,14 @@ export function createApp({
           .get(shareToken);
         if (!row) fail(404, "This link is no longer available.");
         const event = JSON.parse(row.data);
+        if (download) {
+          res.writeHead(200, {
+            "Content-Type": "text/calendar; charset=utf-8",
+            "Content-Disposition": 'attachment; filename="event.ics"',
+            "Cache-Control": "no-store",
+          });
+          return res.end(toICalendar(event, hash(shareToken) + "@lmnaide"));
+        }
         return send(200, {
           event: Object.fromEntries(
             [
@@ -453,6 +496,8 @@ export function createApp({
                   ? "/index.html"
                   : /^\/s\/[a-f0-9]{64}$/.test(path)
                     ? "/share.html"
+                    : /^\/public\/[a-f0-9]{64}$/.test(path)
+                      ? "/index.html"
                     : path,
               ),
           );
@@ -594,6 +639,22 @@ export function createApp({
           .get(hash(token), Date.now());
       if (!session) fail(401, "Session expired. Sign in again.");
       const userId = session.userId;
+      if (req.method === "POST" && path === "/api/v1/public") {
+        const b = await body();
+        if (!b || !["status", "create", "revoke"].includes(b.action))
+          fail(400, "Invalid public calendar request");
+        if (b.action === "revoke")
+          db.prepare("DELETE FROM public_calendars WHERE userId=?").run(userId);
+        if (b.action === "create")
+          db.prepare("INSERT OR IGNORE INTO public_calendars VALUES(?,?)")
+            .run(userId, randomBytes(32).toString("hex"));
+        const share = db.prepare("SELECT token FROM public_calendars WHERE userId=?").get(userId);
+        const path = share ? "/public/" + share.token : null;
+        return send(200, {
+          active: !!share, path,
+          url: path && publicUrl ? new URL(path, publicUrl).href : null,
+        });
+      }
       if (req.method === "POST" && path === "/api/v1/share") {
         const b = await body();
         if (

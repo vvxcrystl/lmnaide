@@ -1,6 +1,11 @@
+import { createCalendarActions } from "./calendar-actions.js";
+
 const title = document.getElementById("title");
 const content = document.getElementById("content");
 const refresh = document.getElementById("refresh");
+const actions = document.getElementById("calendar-actions-container");
+let calendarActions;
+
 const date = (value, allDay) =>
   new Intl.DateTimeFormat(undefined, {
     dateStyle: "full",
@@ -18,11 +23,31 @@ function section(label, text) {
   row.append(heading, body);
   return row;
 }
+async function signedInToInstance() {
+  try {
+    const sessionToken = sessionStorage.getItem("token");
+    if (!sessionToken) return false;
+    const response = await fetch("/api/v1/profile", {
+      headers: { Authorization: "Bearer " + sessionToken },
+      cache: "no-store",
+      signal: AbortSignal.timeout(1500),
+    });
+    return response.ok && sessionStorage.getItem("token") === sessionToken;
+  } catch {
+    // A public event stays usable when storage or the session check is unavailable.
+    return false;
+  }
+}
 async function load() {
   refresh.disabled = true;
+  calendarActions?.dispose();
+  actions.hidden = true;
   try {
     const token = location.pathname.split("/").pop();
-    const res = await fetch("/api/v1/shared/" + encodeURIComponent(token));
+    const [res, signedIn] = await Promise.all([
+      fetch("/api/v1/shared/" + encodeURIComponent(token)),
+      signedInToInstance(),
+    ]);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Unable to open this event.");
     const e = data.event;
@@ -60,6 +85,14 @@ async function load() {
     if (e.location) rows.push(section("Location", e.location));
     if (e.description) rows.push(section("Notes", e.description));
     content.replaceChildren(...rows);
+    const fallback = new URL("/", location.origin);
+    fallback.searchParams.set("addShared", token);
+    calendarActions = createCalendarActions({
+      event: e, webUrl: fallback.href, signedIn,
+      downloadUrl: "/api/v1/shared/" + encodeURIComponent(token) + "/event.ics",
+    });
+    actions.replaceChildren(calendarActions.element);
+    actions.hidden = false;
   } catch (error) {
     title.textContent = "Event unavailable";
     document.title = "Event unavailable · calander";
@@ -69,4 +102,13 @@ async function load() {
   }
 }
 refresh.onclick = load;
-load();
+window.addEventListener("pageshow", (event) => {
+  if (event.persisted) load();
+});
+// Match the app's first reveal: wait briefly for the font and event to settle.
+Promise.race([
+  Promise.allSettled([document.fonts.load('1em "Google Sans Flex"'), load()]),
+  new Promise((done) => setTimeout(done, 1500)),
+]).then(() => {
+  document.getElementById("shared-event").hidden = false;
+});

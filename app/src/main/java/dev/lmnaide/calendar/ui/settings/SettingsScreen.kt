@@ -52,6 +52,7 @@ import dev.lmnaide.calendar.ui.common.appViewModelFactory
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalTime
 import java.time.format.TextStyle
@@ -59,7 +60,7 @@ import java.time.temporal.WeekFields
 import java.util.Locale
 
 class SettingsViewModel(
-    repository: CalendarRepository,
+    private val repository: CalendarRepository,
     private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
     val settings = settingsRepository.settings
@@ -67,6 +68,9 @@ class SettingsViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun update(transform: (Settings) -> Settings) = settingsRepository.update(transform)
+    fun shareDetails(calendar: CalendarEntity, enabled: Boolean) {
+        viewModelScope.launch { repository.saveCalendar(calendar.copy(publicDetails = enabled)) }
+    }
 
     companion object {
         val Factory = appViewModelFactory { container, _ -> SettingsViewModel(container.repository, container.settings) }
@@ -109,6 +113,20 @@ fun SettingsScreen(
                 .padding(bottom = 24.dp),
         ) {
             dev.lmnaide.calendar.sync.CloudSettings()
+
+            if (BuildConfig.CLOUD_ENABLED) {
+                Section("Public calendar details") {
+                    calendars.forEachIndexed { index, calendar ->
+                        if (index > 0) RowDivider()
+                        SwitchRow(
+                            title = calendar.name,
+                            subtitle = "Share details publicly. Off shows only busy times.",
+                            checked = calendar.publicDetails,
+                            onCheckedChange = { viewModel.shareDetails(calendar, it) },
+                        )
+                    }
+                }
+            }
 
             Section("Appearance") {
                 ThemePicker(

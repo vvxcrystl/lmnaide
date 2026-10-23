@@ -39,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -191,6 +192,7 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
     var color by remember { mutableStateOf(initial.color) }
     var keywords by remember { mutableStateOf(initial.keywords) }
     var importance by remember { mutableStateOf(initial.defaultImportance) }
+    var publicDetails by remember { mutableStateOf(initial.publicDetails) }
     val normalizedKeywords = keywords.split(',').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(", ")
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -214,6 +216,15 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
                     modifier = Modifier.fillMaxWidth(),
                 )
                 ImportanceSelector(importance, label = "Default importance") { importance = it }
+                if (dev.lmnaide.calendar.BuildConfig.CLOUD_ENABLED) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Share details publicly", style = MaterialTheme.typography.bodyLarge)
+                            Text("On your Public link, show titles, notes, locations and this calendar's name. Off shows only busy times.", style = MaterialTheme.typography.bodySmall)
+                        }
+                        Switch(checked = publicDetails, onCheckedChange = { publicDetails = it })
+                    }
+                }
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -252,7 +263,7 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(initial.copy(name = name.trim(), color = color, keywords = normalizedKeywords, defaultImportance = importance)) },
+                onClick = { onSave(initial.copy(name = name.trim(), color = color, keywords = normalizedKeywords, defaultImportance = importance, publicDetails = publicDetails)) },
                 enabled = SyncLimits.validCalendar(name.trim(), normalizedKeywords),
             ) { Text("Save") }
         },

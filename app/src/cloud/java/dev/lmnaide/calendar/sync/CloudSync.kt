@@ -314,6 +314,21 @@ class CloudSync(
         }
     }
 
+    suspend fun publicCalendar(action: String): String? = withContext(Dispatchers.IO) {
+        ready.await()
+        check(state.value.connected) { "Connect Cloud sync before sharing your calendar." }
+        if (action == "create") check(sync()) { state.value.message }
+        mutex.withLock {
+            val server = prefs.getString("server", "").orEmpty()
+            val token = prefs.getString("token", null)?.let { TokenVault.decrypt(it) }
+            check(token != null) { "Sign in to Cloud sync again." }
+            val result = request(server, "public", JSONObject().put("action", action), token)
+            if (!result.getBoolean("active")) null
+            else if (!result.isNull("url")) result.getString("url")
+            else URI(server + "/").resolve(result.getString("path")).toString()
+        }
+    }
+
     /** Share the synced event/series; reminders, contacts and calendar metadata stay private. */
     suspend fun share(eventId: Long, action: String): String? =
         withContext(Dispatchers.IO) {
@@ -442,6 +457,7 @@ class CloudSync(
                                 .put("name", c.name)
                                 .put("color", c.color)
                                 .put("visible", c.visible)
+                                .put("publicDetails", c.publicDetails)
                                 .put("keywords", c.keywords)
                                 .put("defaultImportance", c.defaultImportance?.name ?: JSONObject.NULL)
                         }
@@ -682,6 +698,7 @@ class CloudSync(
                                 name = d.getString("name"),
                                 color = d.getInt("color"),
                                 visible = d.getBoolean("visible"),
+                                publicDetails = d.optBoolean("publicDetails", false),
                                 keywords = d.getString("keywords"),
                                 defaultImportance =
                                     d.nullString("defaultImportance")?.let(Importance::valueOf),

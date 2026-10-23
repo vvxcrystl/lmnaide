@@ -96,12 +96,13 @@ class EventEditorViewModel(
     /** Text typed into quick add before choosing More options. */
     private val initialPeople = dev.lmnaide.calendar.data.Converters().stringToPeople(handle["people"] ?: "[]")
     private val initialText: String = handle["text"] ?: ""
+    private val sharedDraft = dev.lmnaide.calendar.domain.SharedEventDraft.parse(handle["sharedEvent"])
     private val initialCalendar: Long = handle["calendar"] ?: Routes.NO_VALUE
     var isSaving by mutableStateOf(false)
         private set
 
     val isNew = eventId == 0L
-    val autoMatchPeople get() = isNew && initialText.isBlank()
+    val autoMatchPeople get() = isNew && initialText.isBlank() && sharedDraft == null
     val use24Hour = settings.use24Hour
 
     val calendars: StateFlow<List<CalendarEntity>> = repository.calendars
@@ -171,6 +172,22 @@ class EventEditorViewModel(
             reminders = if (initialTask) listOf(0) else listOfNotNull(settings.defaultReminderMinutes),
             kind = if (initialTask) EventKind.TASK else EventKind.EVENT,
         )
+        sharedDraft?.let { draft ->
+            return blank.copy(
+                title = draft.title,
+                description = draft.description,
+                location = draft.location,
+                allDay = draft.allDay,
+                startDate = draft.start.toLocalDate(),
+                startTime = draft.start.toLocalTime(),
+                endDate = if (draft.allDay) maxOf(draft.start.toLocalDate(), draft.end.toLocalDate().minusDays(1)) else draft.end.toLocalDate(),
+                endTime = draft.end.toLocalTime(),
+                recurrence = draft.recurrence,
+                recurrenceUntil = draft.recurrenceUntil,
+                kind = draft.kind,
+                reminders = if (draft.kind == EventKind.TASK) listOf(0) else listOfNotNull(settings.defaultReminderMinutes),
+            )
+        }
         if (initialText.isBlank()) return blank
         // Keep whatever quick add understood; otherwise the text becomes the title.
         val parsed = SmartEventParser.parse(initialText, now.toLocalDate(), settings.defaultDurationMinutes, initialTask, date)

@@ -159,17 +159,33 @@ This suite creates a recurring task on emulator one, edits/completes it on the p
 
 See [TESTING.md](TESTING.md) for the device results from this implementation.
 
+## Public calendar
+
+Open **Settings → Public** in the browser or Android Cloud app to create one read-only address for all your synced calendars. Anyone with the link can view it without signing in. Public uses the app's Month, Week, 3 days, Day and Schedule views, with the same date navigation, search and event details. Visitors can filter calendars locally. **Stop sharing** disables the address permanently. Creating a link again gives you a new address.
+
+Each calendar has a **Share details publicly** toggle in Settings and its calendar editor. It starts off. Off shows event times as **[username] is busy**, or **User is busy** if you haven't set a username. On includes the calendar name, event titles, notes, locations and event/task type. Contacts, reminders, importance and task completion stay private. Hiding a calendar from your own views does not remove it from Public. Android changes appear after syncing.
+
+Public sharing is separate from individual event links. Changing a calendar's toggle does not revoke event links you previously created.
+
 ## Share event links
 
 In the browser, open an event → **More options → Share event → Create link**. In calander for Android, open an event and tap the **Share event** icon, then **Create link**. Copy the link or use the device’s share sheet. Anyone with the link can open a read-only page without an account.
 
 The page includes title, dates, location and notes. Recurring events share the series, with its start dates and repeat rule clearly labelled. Timed dates display in the viewer’s time zone; all-day dates stay fixed. Calendar details, contacts, reminders, importance and task completion remain private. Edits update the shared page when it is opened or refreshed.
 
+Recipients can use **Add to calendar** to download a calendar file, or open the arrow menu for **Google Calendar**, **lmnaide**, and **System default**. On Android, the lmnaide option opens a draft in the installed app, including the Offline edition. If the app is unavailable, it opens the browser calendar. The browser keeps the event through sign-in or account creation, then opens the editor so the recipient can choose a calendar and save. System default downloads an iCalendar file that other calendar apps can open or import.
+
+When the current browser tab has a valid session on this server, the main button shows **Add to lmnaide** with the app logo and opens the browser editor for that account. The page verifies the session before choosing this default. Expired sessions or an unavailable session check keep the calendar-file default. Web sign-in remains scoped to the browser tab.
+
+These actions save independent copies. Later edits or revocation do not change copies already saved. Copies include the repeat pattern and its end date, without skipped occurrences. Google Calendar and iCalendar files represent tasks as events. The download endpoint, `GET /api/v1/shared/{token}/event.ics`, checks the live share link on every request and returns 404 after revocation or deletion.
+
 **Stop sharing** works from either client on the same account. Re-sharing creates a fresh link; revoked links never become valid again. Deleting the event or its calendar also revokes the link permanently, including if you later restore the event. Sharing is opt-in and does not publish other calendar events.
 
 The server must be reachable by recipients. Production Compose sets the public HTTPS origin automatically. For plain Node hosting, set `PUBLIC_URL` to your public origin; otherwise the browser uses its origin and Android uses its configured server address. A localhost/ADB development link only reaches the local test server.
 
-Two-emulator sharing checks: run `tools/cloud/event-share-test.sh` with `CLOUD_TEST_EMAIL` and `CLOUD_TEST_PASSWORD` set to a dedicated account. The script builds with `-PcloudDeviceTest=true`, installing `dev.lmnaide.calendar.devicetest` separately from calander. The three-device sync script uses that isolated package too. Both standard editions use `dev.lmnaide.calendar`.
+Two-emulator sharing checks: run `tools/cloud/event-share-test.sh` with `CLOUD_TEST_EMAIL` and `CLOUD_TEST_PASSWORD` set to a dedicated account. The script builds with `-PcloudDeviceTest=true`, installing `dev.lmnaide.calendar.devicetest` separately from calendar. The three-device sync script uses that isolated package too. Both standard editions use `dev.lmnaide.calendar`.
+
+For the calendar-button browser check, install Playwright and its Chromium browser, then run `node tools/cloud/event-calendar-browser-test.mjs` from the repository root. It starts a temporary server with an in-memory database and checks downloads, sign-in, saving copies, all-day dates, and revocation. Set `PLAYWRIGHT_MODULE` to use an existing Playwright installation.
 
 ## Web appearance and quick add
 

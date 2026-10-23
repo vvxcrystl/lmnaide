@@ -192,6 +192,7 @@ fun CloudSettings() {
             }
         }
     }
+    if (state.connected) PublicCalendarSettings(cloud)
     state.importPrompt?.let { prompt ->
         // No outside-tap dismissal: the sign-in stays on hold until the user picks one.
         AlertDialog(
@@ -237,4 +238,61 @@ fun CloudSettings() {
             },
             dismissButton = { TextButton(onClick = { signingOut = false }) { Text("Cancel") } },
         )
+}
+
+@Composable
+private fun PublicCalendarSettings(cloud: CloudSync) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var link by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    suspend fun load(action: String) {
+        loading = true
+        error = null
+        try {
+            link = cloud.publicCalendar(action)
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            error = e.message ?: "Could not update Public sharing."
+        } finally {
+            loading = false
+        }
+    }
+    LaunchedEffect(cloud) { load("status") }
+    Text("Public", style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 4.dp, top = 20.dp, bottom = 8.dp))
+    Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceContainerLow,
+        modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Share your entire calendar", style = MaterialTheme.typography.titleMedium)
+            Text("Anyone with the link can see times from all your calendars. Use the calendar toggles below to show titles, notes and locations. Other items show your username followed by 'is busy'. Without a username, they show 'User is busy'.", style = MaterialTheme.typography.bodySmall)
+            link?.let { url ->
+                OutlinedTextField(value = url, onValueChange = {}, readOnly = true,
+                    label = { Text("Public calendar link") }, modifier = Modifier.fillMaxWidth())
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Public calendar", url))
+                    }) { Text("Copy link") }
+                    TextButton(onClick = {
+                        context.startActivity(android.content.Intent.createChooser(
+                            android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(android.content.Intent.EXTRA_TEXT, url)
+                            }, "Share Public calendar"))
+                    }) { Text("Share") }
+                }
+            }
+            error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+            if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { scope.launch { load(if (link == null) "create" else "revoke") } }, enabled = !loading) {
+                    Text(if (link == null) "Create Public link" else "Stop sharing")
+                }
+                if (error != null) TextButton(onClick = { scope.launch { load("status") } }, enabled = !loading) { Text("Retry") }
+            }
+        }
+    }
 }

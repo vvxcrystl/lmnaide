@@ -84,6 +84,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent) {
+        val uri = intent.data
+        if (intent.action == Intent.ACTION_VIEW && uri?.scheme == "lmnaide" && uri.host == "add-event") {
+            val query = uri.encodedQuery
+            if (dev.lmnaide.calendar.domain.SharedEventDraft.parse(query) != null) {
+                pendingEditor.value = dev.lmnaide.calendar.ui.Routes.importEvent(query.orEmpty())
+            } else {
+                android.widget.Toast.makeText(this, "This event could not be opened.", android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
         if (intent.getBooleanExtra("widget_edit", false)) {
             pendingEditor.value = dev.lmnaide.calendar.ui.Routes.newEvent(
                 java.time.LocalDate.now(),

@@ -1,0 +1,17 @@
+.public-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px 12px;
+  min-width: 0;
+}
+.public-info h1 {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.public-info > span { white-space: nowrap; }
+.public-note { padding: 16px; line-height: 1.6; }
+.public-calendar .column { cursor: default; }
+.detail-calendar-actions { padding: 8px 0 0 36px; }
+.detail-calendar-actions p { margin-top: 4px; }

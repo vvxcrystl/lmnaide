@@ -10,10 +10,14 @@ import {
 } from "./themes.js";
 import { parse as parseSmart, looksLikeTask, matchCalendar } from "./smart.js";
 import { defaultRecords } from "./holidays.js";
+import { publicCalendarRecords } from "./public.js";
+import { createCalendarActions } from "./calendar-actions.js";
 
 const $ = (id) => document.getElementById(id);
 const DAY = 86400000;
 const SVG = "http://www.w3.org/2000/svg";
+const publicToken = location.pathname.match(/^\/public\/([a-f0-9]{64})$/)?.[1] ?? null;
+const preferenceKey = publicToken ? "lmnaide.public.prefs" : "lmnaide.prefs";
 
 /* ---------- Icons ---------- */
 const I = {
@@ -127,10 +131,10 @@ const prefs = {
   // Light, dark or following the system, and the named color theme.
   theme: "system",
   appTheme: "MATERIAL_YOU",
-  ...JSON.parse(localStorage.getItem("lmnaide.prefs") || "{}"),
+  ...JSON.parse(localStorage.getItem(preferenceKey) || "{}"),
 };
 function savePrefs() {
-  localStorage.setItem("lmnaide.prefs", JSON.stringify(prefs));
+  localStorage.setItem(preferenceKey, JSON.stringify(prefs));
 }
 const systemDark = matchMedia("(prefers-color-scheme: dark)");
 const themeIsDark = () =>
@@ -142,7 +146,7 @@ function applyTheme() {
 applyTheme();
 systemDark.addEventListener("change", () => {
   applyTheme();
-  if (token) render();
+  if (token || publicToken) render();
   if ($("settings-page")?.open) renderSettings();
 });
 
@@ -351,8 +355,8 @@ function paint(el, o) {
 }
 
 /* ---------- Data ---------- */
-let token = sessionStorage.getItem("token"),
-  email = sessionStorage.getItem("email"),
+let token = publicToken ? null : sessionStorage.getItem("token"),
+  email = publicToken ? null : sessionStorage.getItem("email"),
   records = [],
   cursor = 0,
   busy = false,
@@ -360,6 +364,42 @@ let token = sessionStorage.getItem("token"),
   lastSync = 0,
   syncMessage = "",
   quarantinedChanges = [];
+
+let sharedImportToken = publicToken ? null : new URLSearchParams(location.search).get("addShared");
+// Public calendar copies stay in this tab's storage while the visitor signs in.
+if (!publicToken && !sharedImportToken && new URLSearchParams(location.search).has("addCopy"))
+  sharedImportToken = "copy:" + new URLSearchParams(location.search).get("addCopy");
+let loadingSharedImport = false;
+
+async function openSharedImport() {
+  if (!token || !sharedImportToken || loadingSharedImport) return;
+  loadingSharedImport = true;
+  const generation = sessionGeneration;
+  try {
+    // A fresh account's first sync queues its starter calendars in a second sync.
+    await syncQueue;
+    if (generation !== sessionGeneration) return;
+    if (!calendars().length) throw new Error("Add a calendar, then reopen the shared link.");
+    const copyKey = sharedImportToken.startsWith("copy:") ? "lmnaide." + sharedImportToken : null;
+    const { event } = copyKey
+      ? JSON.parse(sessionStorage.getItem(copyKey) || "null") ?? {}
+      : await api("shared/" + encodeURIComponent(sharedImportToken));
+    if (!event) throw new Error("This event copy has expired. Reopen it from the public calendar.");
+    if (generation !== sessionGeneration) return;
+    openEditor({ date: wall(event.start, event.allDay), sharedEvent: event });
+    if (copyKey) sessionStorage.removeItem(copyKey);
+    sharedImportToken = null;
+    const url = new URL(location.href);
+    url.searchParams.delete("addShared");
+    url.searchParams.delete("addCopy");
+    history.replaceState(null, "", url);
+    snackbar("Review this copy and choose Save to add it to your calendar.");
+  } catch (error) {
+    if (!error.stale && generation === sessionGeneration) snackbar(error.message);
+  } finally {
+    loadingSharedImport = false;
+  }
+}
 
 const calendars = () =>
   records.filter((r) => r.kind === "calendar" && !r.deleted);
@@ -559,9 +599,9 @@ function snackbar(text, action) {
   }
 }
 function signedIn() {
-  $("auth").hidden = !!token;
-  $("calendar").hidden = !token;
-  if (token) render({ jump: true });
+  $("auth").hidden = !!(token || publicToken);
+  $("calendar").hidden = !(token || publicToken);
+  if (token || publicToken) render({ jump: true });
 }
 async function authenticate(register) {
   snackbar();
@@ -586,6 +626,7 @@ async function authenticate(register) {
     signedIn();
     loadProfile();
     await sync();
+    await openSharedImport();
   } catch (e) {
     if (!e.stale) snackbar(e.message);
   }
@@ -635,6 +676,8 @@ function invalidClientChange(c) {
     )
       return "Invalid calendar color";
     if (typeof d.visible !== "boolean") return "Invalid calendar visibility";
+    if (d.publicDetails !== undefined && typeof d.publicDetails !== "boolean")
+      return "Invalid public details setting";
     if (
       d.defaultImportance != null &&
       !["LOW", "MEDIUM", "HIGH"].includes(d.defaultImportance)
@@ -884,6 +927,7 @@ function sanitizeIncomingRecord(r) {
             keywords: text(d.keywords, 2000),
             color: color(d.color) ?? -16777216,
             visible: d.visible === true,
+            publicDetails: d.publicDetails === true,
             defaultImportance:
               ["LOW", "MEDIUM", "HIGH"].includes(d.defaultImportance)
                 ? d.defaultImportance
@@ -986,7 +1030,7 @@ function openDay(date) {
 
 /** Re-renders after data changes, keeping each view where it is. */
 function refresh() {
-  if (!token) return;
+  if (!token && !publicToken) return;
   render();
   if ($("detail").open) renderDetail();
   if ($("calendars").open) renderCalendars();
@@ -998,7 +1042,7 @@ const wide = matchMedia("(min-width: 1000px)");
 function render({ jump = false, slide = 0 } = {}) {
   // Reload startup fetches data before revealing the calendar. Hidden layouts have
   // zero dimensions and must not trigger schedule growth or allocate view resources.
-  if (!token || $("calendar").hidden) return;
+  if ((!token && !publicToken) || $("calendar").hidden) return;
   renderDrawer();
   $("today-date").textContent = new Date().getDate();
   $("view-label").textContent = VIEWS.find(([id]) => id === prefs.view)[1];
@@ -1006,6 +1050,10 @@ function render({ jump = false, slide = 0 } = {}) {
   $("mini").hidden = !pickerOpen || wide.matches;
   if (wide.matches) renderMini(0, $("side-mini"));
   else if (pickerOpen) renderMini();
+  if (publicToken && publicMessage) {
+    $("view").replaceChildren(h("p", { class: "empty", role: "status", text: publicMessage }));
+    return;
+  }
   if (prefs.view === "SCHEDULE") renderSchedule(jump);
   else if (prefs.view === "MONTH") renderMonth(slide);
   else renderGrid(slide);
@@ -1055,9 +1103,13 @@ function renderDrawer() {
     );
   $("visibility").replaceChildren(
     ...calendars().map((c) =>
-      row(c.data.name, css(c.data.color), c.data.visible, () =>
-        save([change(c, { ...c.data, visible: !c.data.visible })]),
-      ),
+      row(c.data.name, css(c.data.color), c.data.visible, () => {
+        if (publicToken) {
+          c.data.visible = !c.data.visible;
+          publicHiddenCalendars[c.id] = !c.data.visible;
+          render();
+        } else save([change(c, { ...c.data, visible: !c.data.visible })]);
+      }),
     ),
     row("Tasks", "var(--primary)", prefs.showTasks, () => {
       prefs.showTasks = !prefs.showTasks;
@@ -1241,7 +1293,7 @@ function eventCard(o, timeText, detail, onToggle) {
         }
       },
     },
-    o.isTask &&
+    o.isTask && !publicToken &&
       h(
         "button",
         {
@@ -1721,7 +1773,7 @@ function renderMonth(slide) {
             {
               class: "month-cell",
               onclick: (e) =>
-                e.target === e.currentTarget && openQuickAdd({ date }),
+                e.target === e.currentTarget && (publicToken ? openDay(date) : openQuickAdd({ date })),
             },
             wk === 0 &&
               h("span", {
@@ -1747,13 +1799,13 @@ function renderMonth(slide) {
       const bar =
         web && !o.inAllDayLane
           ? timedChip(o)
-          : eventBar(o, web ? 12 : 10, web ? () => openDetail(o) : null);
+          : eventBar(o, web ? 12 : 10, web || publicToken ? () => openDetail(o) : null);
       Object.assign(bar.style, {
         left: `calc(${(item.start * 100) / 7}% + ${web ? 4 : 1.5}px)`,
         width: `calc(${((item.end - item.start + 1) * 100) / 7}% - ${web ? 8 : 3}px)`,
         top: top + (chip + gap) * item.lane + "px",
         height: chip + "px",
-        pointerEvents: web ? "" : "none",
+        pointerEvents: web || publicToken ? "" : "none",
       });
       week.append(bar);
     }
@@ -2061,6 +2113,7 @@ function renderGrid(slide) {
       class: "column",
       "data-date": dayKey(date),
       onclick: (e) => {
+        if (publicToken) return;
         const hour = Math.min(23, Math.max(0, Math.floor(e.offsetY / HOUR)));
         grid.draft = atMinute(date, hour * 60);
         renderDraft(columns, columnWidth);
@@ -2202,7 +2255,7 @@ $("view").addEventListener(
 );
 addEventListener("keydown", (e) => {
   if (
-    !token ||
+    (!token && !publicToken) ||
     document.querySelector("dialog[open]") ||
     e.target.closest?.("input, textarea")
   )
@@ -2220,7 +2273,7 @@ addEventListener("keydown", (e) => {
   else if (e.key === "ArrowRight") shiftPeriod(1);
 });
 addEventListener("resize", () => {
-  if (!token) return;
+  if (!token && !publicToken) return;
   if (prefs.view === "SCHEDULE") drawBanners($("view"));
   else render();
 });
@@ -2701,6 +2754,11 @@ function pageBar(navPath, navLabel, onNav, title, ...actions) {
    clicked event, like Google Calendar's. */
 let detailOf = null,
   clicked = null;
+let detailCalendarActions = null;
+$("detail").addEventListener("close", () => {
+  detailCalendarActions?.dispose();
+  detailCalendarActions = null;
+});
 addEventListener(
   "click",
   (e) => {
@@ -2739,6 +2797,8 @@ function placePopover(dialog, anchor) {
     Math.max(edge, Math.min(a.top, innerHeight - ht - edge)) + "px";
 }
 function renderDetail() {
+  detailCalendarActions?.dispose();
+  detailCalendarActions = null;
   const dialog = $("detail");
   const o = detailOf && findOccurrence(detailOf.id, detailOf.start);
   // The event was deleted, here or on another device.
@@ -2820,7 +2880,9 @@ function renderDetail() {
     openEditor({ occurrence: o }),
   );
   dialog.replaceChildren(
-    popover
+    publicToken
+      ? pageBar(I.close, "Close", () => dialog.close(), "")
+      : popover
       ? h(
           "header",
           { class: "page-bar" },
@@ -2904,7 +2966,7 @@ function renderDetail() {
       ),
       d.description.trim() &&
         row(I.notes, h("span", { class: "body-large", text: d.description })),
-      o.isTask &&
+      o.isTask && !publicToken &&
         h(
           "button",
           { type: "button", class: "tonal", onclick: () => toggleTask(o) },
@@ -2913,6 +2975,23 @@ function renderDetail() {
         ),
     ),
   );
+  if (publicToken) {
+    const event = Object.fromEntries([
+      "title", "description", "location", "start", "end", "allDay", "recurrence", "recurrenceUntil", "kind",
+    ].map((key) => [key, d[key]]));
+    const copyId = crypto.randomUUID();
+    const webUrl = new URL("/", location.origin);
+    webUrl.searchParams.set("addCopy", copyId);
+    let signedIn = false;
+    try { signedIn = !!sessionStorage.getItem("token"); } catch {}
+    detailCalendarActions = createCalendarActions({
+      event, webUrl: webUrl.href, signedIn,
+      beforeImport: () => sessionStorage.setItem("lmnaide.copy:" + copyId, JSON.stringify({ event })),
+      onError: () => snackbar("Unable to prepare a copy. Try downloading the calendar file instead."),
+    });
+    detailCalendarActions.element.classList.add("detail-calendar-actions");
+    dialog.querySelector(".detail-page").append(detailCalendarActions.element);
+  }
 }
 /** Opens a new email with the event's title, time and place. */
 function mailEvent(o) {
@@ -2943,33 +3022,50 @@ async function openShare(o) {
     if (!e.stale) snackbar(e.message);
   }
 }
+async function openPublic() {
+  const generation = sessionGeneration;
+  try {
+    await sync();
+    if (generation !== sessionGeneration) return;
+    const share = await api("public", { action: "status" });
+    if (generation === sessionGeneration) showShare(null, share);
+  } catch (e) {
+    if (!e.stale) snackbar(e.message);
+  }
+}
 function showShare(o, share) {
+  const isPublic = o == null;
+  const endpoint = isPublic ? "public" : "share";
+  const request = (action) => ({ ...(isPublic ? {} : { eventId: o.record.id }), action });
+  const label = isPublic ? "Public calendar link" : "Event link";
   const url = share.active
     ? share.url ||
-      (/^\/s\/[a-f0-9]{64}$/.test(share.path || "")
+      ((isPublic ? /^\/public\/[a-f0-9]{64}$/ : /^\/s\/[a-f0-9]{64}$/).test(share.path || "")
         ? new URL(share.path, location.origin).href
         : "")
     : "";
   const input = h("input", {
     value: url,
     readonly: true,
-    "aria-label": "Event link",
+    "aria-label": label,
     onclick: (e) => e.target.select(),
   });
   let working = false;
   showAlert(
-    "Share event",
+    isPublic ? "Public" : "Share event",
     [
       h("p", {
-        text: "Anyone with the link can read this event’s title, dates, location and notes. Edits update the shared page.",
+        text: isPublic
+          ? "One read-only link for all your calendars. Anyone with the link can see event times. Turn on Share details publicly for a calendar to show its name, event titles, notes and locations. Other events show your username followed by 'is busy', or 'User is busy' without a username. Edits update this page."
+          : "Anyone with the link can read this event’s title, dates, location and notes. Edits update the shared page.",
       }),
-      o.event.recurrence !== "NONE" &&
+      !isPublic && o.event.recurrence !== "NONE" &&
         h("p", { text: "This link shares the recurring series." }),
       url &&
         h(
           "label",
           { class: "field share-link" },
-          h("span", { text: "Event link" }),
+          h("span", { text: label }),
           input,
         ),
     ],
@@ -2990,15 +3086,12 @@ function showShare(o, share) {
         textButton("Close", () => finish()),
         url
           ? action("Stop sharing", async () => {
-              await api("share", { eventId: o.record.id, action: "revoke" });
+              await api(endpoint, request("revoke"));
               if (alertDone === finish) finish();
               snackbar("Link disabled");
             })
           : action("Create link", async () => {
-              const created = await api("share", {
-                eventId: o.record.id,
-                action: "create",
-              });
+              const created = await api(endpoint, request("create"));
               if (alertDone === finish) {
                 finish();
                 showShare(o, created);
@@ -3019,7 +3112,7 @@ function showShare(o, share) {
           navigator.share &&
           action("Share", async () => {
             try {
-              await navigator.share({ title: o.event.title, url });
+              await navigator.share({ title: isPublic ? "Public calendar" : o.event.title, url });
             } catch (e) {
               if (e.name !== "AbortError") throw e;
             }
@@ -3131,7 +3224,9 @@ function openEditor({
   task = false,
   calendarId,
   draft,
+  sharedEvent,
 }) {
+  if (publicToken) return;
   const cals = calendars();
   if (!cals.length) {
     snackbar("Add a calendar first");
@@ -3213,6 +3308,27 @@ function openEditor({
         endTime: minutesOf(draft.end),
         recurrence: draft.recurrence,
       });
+    if (sharedEvent) {
+      const d = sharedEvent;
+      const start = wall(d.start, d.allDay);
+      const end = wall(d.end, d.allDay);
+      Object.assign(state, {
+        title: d.title,
+        description: d.description,
+        location: d.location,
+        kind: d.kind,
+        allDay: d.allDay,
+        startDate: startOfDay(start),
+        startTime: minutesOf(start),
+        endDate: d.allDay
+          ? maxDate(addDays(startOfDay(end), -1), startOfDay(start))
+          : startOfDay(end),
+        endTime: minutesOf(end),
+        recurrence: d.recurrence,
+        until: d.recurrenceUntil == null ? null : fromEpochDay(d.recurrenceUntil),
+        reminders: d.kind === "TASK" ? [0] : [30],
+      });
+    }
   }
   ed = { state, initial: JSON.stringify(state), series, opened, saving: false };
   renderEditor();
@@ -3869,6 +3985,20 @@ function editCalendar(record, data) {
     h("small", { text: "Quick add sends matching items here" }),
   );
   const importance = h("div");
+  const publicToggle = h("button", {
+    type: "button", class: "switch", role: "switch",
+    "aria-label": "Share details publicly",
+    "aria-checked": state.publicDetails === true,
+    onclick: () => {
+      state.publicDetails = !state.publicDetails;
+      publicToggle.setAttribute("aria-checked", String(state.publicDetails));
+    },
+  });
+  const publicField = h("div", { class: "setting" },
+    h("div", {}, h("span", { class: "body-large", text: "Share details publicly" }),
+      h("span", { class: "body-small variant", text: "On your Public link, show event titles, notes, locations and this calendar's name. Off shows only busy times." })),
+    publicToggle,
+  );
   const swatches = h("div", { class: "swatches" });
   const draw = () => {
     importance.replaceChildren(
@@ -3905,7 +4035,7 @@ function editCalendar(record, data) {
   const valid = () =>
     !!name.value.trim() && name.value.length <= 200 && keywords.value.length <= 2000;
   name.oninput = keywords.oninput = () => (saveButton.disabled = !valid());
-  const formBody = h("div", {}, nameField, keywordField, importance, swatches);
+  const formBody = h("div", {}, nameField, keywordField, importance, publicField, swatches);
   showAlert(
     record ? "Edit calendar" : "New calendar",
     formBody,
@@ -4222,6 +4352,27 @@ function renderSettings({ statusOnly = false } = {}) {
           }),
           textButton("Sign out", signOut),
         ),
+      ),
+      h("p", { class: "settings-label label-large", text: "Public" }),
+      h("div", { class: "group" },
+        setting("Public", "Share all calendars under one address", openPublic),
+        ...calendars().map((c) => h("div", { class: "setting" },
+          h("div", {}, h("span", { class: "body-large", text: c.data.name }),
+            h("span", { class: "body-small variant", text: "Share details publicly. Off shows only busy times." })),
+          h("button", { type: "button", class: "switch", role: "switch",
+            "aria-label": "Share " + c.data.name + " details publicly",
+            "aria-checked": c.data.publicDetails === true,
+            onclick: async function () {
+              const enabled = !c.data.publicDetails;
+              this.disabled = true;
+              try {
+                await save([change(c, { ...c.data, publicDetails: enabled })]);
+                this.setAttribute("aria-checked", String(calendarById(c.id)?.data.publicDetails === true));
+              }
+              finally { this.disabled = false; }
+            },
+          }),
+        )),
       ),
       h("p", { class: "settings-label label-large", text: "Appearance" }),
       themePicker(),
@@ -4611,6 +4762,7 @@ function whenLabel(d, task) {
 
 /** Google-style quick add: one sentence in, an event or task out. */
 function openQuickAdd({ date } = {}) {
+  if (publicToken) return;
   closeDrawer();
   if (!calendars().length) {
     snackbar("Add a calendar first");
@@ -5123,28 +5275,96 @@ I.settings =
 I.logout =
   "m17 7-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5-5-5ZM4 5h8V3H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8v-2H4V5Z";
 
+/* ---------- Public calendar: the same views, using only the server's public projection ---------- */
+let publicMessage = "Loading calendar…";
+let publicLoading = false;
+let publicSnapshot = null;
+const publicHiddenCalendars = {};
+function setupPublicCalendar() {
+  document.body.classList.add("public-calendar");
+  document.title = "Public calendar";
+  for (const id of ["create", "add", "manage", "settings", "avatar"])
+    $(id).hidden = true;
+  $("settings").previousElementSibling.hidden = true;
+  const info = h("div", { class: "public-info" },
+    h("h1", { id: "public-name", class: "title-small", text: "Public calendar" }),
+    h("span", { class: "label-medium variant", text: "Read-only" }),
+  );
+  $("drawer").prepend(info);
+  const refreshButton = iconButton(I.repeat, "Refresh calendar", () => loadPublicCalendar(), { id: "public-refresh" });
+  $("calendar").querySelector(".topbar").append(refreshButton);
+  $("drawer").append(h("p", { class: "public-note body-small variant",
+    text: "Private events appear as busy. Times are shown in " + Intl.DateTimeFormat().resolvedOptions().timeZone + ".",
+  }));
+}
+async function loadPublicCalendar() {
+  if (publicLoading) return;
+  publicLoading = true;
+  $("public-refresh").disabled = true;
+  try {
+    const res = await fetch("/api/v1/public/" + publicToken, { cache: "no-store" });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Unable to open this calendar.");
+    const snapshot = JSON.stringify(data);
+    if (snapshot !== publicSnapshot) {
+      // Public event IDs are local to this response. Changed data invalidates open details.
+      $("detail").close();
+      detailOf = null;
+      records = publicCalendarRecords(data.events, publicHiddenCalendars);
+      publicSnapshot = snapshot;
+    }
+    publicMessage = "";
+    $("public-name").textContent = data.name + "'s calendar";
+    document.title = data.name + "'s calendar · Public";
+  } catch (error) {
+    records = [];
+    publicSnapshot = null;
+    publicMessage = error.message;
+    $("public-name").textContent = "Calendar unavailable";
+    document.title = "Calendar unavailable";
+    for (const dialog of document.querySelectorAll("dialog[open]")) dialog.close();
+    closeOpenMenu?.();
+    detailOf = null;
+    if ($("results")) $("results").replaceChildren();
+  } finally {
+    publicLoading = false;
+    $("public-refresh").disabled = false;
+    refresh();
+  }
+}
+
 /* ---------- Start ---------- */
 // The first screen waits for the font, events and photo so a reload fades in finished.
 // A slow server only holds it back briefly; the rest then arrives as usual.
 const ready = [document.fonts.load('1em "Google Sans Flex"')];
+if (publicToken) {
+  setupPublicCalendar();
+  ready.push(loadPublicCalendar());
+}
 if (token) ready.push(loadProfile(), sync().catch(() => {}));
 Promise.race([
   Promise.all(ready),
   new Promise((done) => setTimeout(done, 1500)),
-]).then(signedIn);
+]).then(() => {
+  signedIn();
+  if (token && sharedImportToken)
+    syncQueue.then(openSharedImport).catch(() => {});
+  else if (sharedImportToken)
+    snackbar("Sign in or create an account to add the shared event.");
+});
 if (wide.matches) setDrawer(!sidebarHidden);
 setInterval(() => {
   if (
-    token &&
+    (token || publicToken) &&
     !document.hidden &&
     !busy &&
     !$("editor").open &&
     !$("alert").open
   )
-    sync().catch(() => {});
+    (publicToken ? loadPublicCalendar() : sync()).catch(() => {});
 }, 10000);
 // Past events fade and the now line moves as time passes.
 setInterval(() => {
-  if (token && !document.hidden && !document.querySelector("dialog[open]"))
+  if ((token || publicToken) && !document.hidden && !document.querySelector("dialog[open]"))
     render();
 }, 60000);

@@ -21,6 +21,9 @@ body.shared-page {
   font-size: 24px;
   margin-bottom: 12px;
 }
+#shared-event:not([hidden]) {
+  animation: screen-in 0.2s ease-out;
+}
 .shared-card h1,
 .shared-card p {
   overflow-wrap: anywhere;
@@ -45,6 +48,146 @@ body.shared-page {
   width: 100%;
   min-width: 0;
   margin-top: 16px;
+}
+.calendar-split {
+  display: inline-flex;
+  align-self: flex-start;
+  max-width: 100%;
+  margin: 4px 0 12px;
+  border-radius: 999px;
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+.calendar-primary,
+.calendar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  color: inherit;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  text-decoration: none;
+}
+.calendar-primary {
+  gap: 8px;
+  padding: 0 24px 0 16px;
+  border-radius: 999px 0 0 999px;
+}
+.calendar-toggle {
+  width: 44px;
+  flex: none;
+  border-left: 1px solid color-mix(in srgb, var(--on-secondary-container) 20%, transparent);
+  border-radius: 0 999px 999px 0;
+}
+.calendar-split svg:not(.calendar-lemon),
+.calendar-menu svg:not(.calendar-lemon) {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.calendar-lemon {
+  fill: currentColor;
+  stroke: none;
+}
+.calendar-split svg,
+.calendar-default-logo {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.calendar-menu svg,
+.calendar-app-logo,
+.calendar-provider-mark {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+.calendar-toggle svg {
+  transition: transform 150ms ease;
+}
+.calendar-toggle[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.calendar-primary:hover,
+.calendar-toggle[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--on-secondary-container) 8%, transparent);
+}
+.calendar-primary:focus-visible,
+.calendar-toggle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+.calendar-menu {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  width: min(264px, calc(100vw - 32px));
+  padding: 6px;
+  border: 1px solid var(--outline-variant);
+  border-radius: 16px;
+  background: var(--container);
+  color: var(--on-surface);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 16%);
+  overflow-y: auto;
+}
+.calendar-menu::backdrop {
+  background: transparent;
+}
+.calendar-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 52px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.calendar-option:last-child {
+  margin-top: 4px;
+  border-top: 1px solid var(--outline-variant);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.calendar-option:hover,
+.calendar-option:focus-visible {
+  background: var(--container-highest);
+}
+.calendar-option:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.calendar-provider-mark {
+  text-align: center;
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 24px;
+}
+.calendar-option-hint {
+  display: block;
+  color: var(--on-surface-variant);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  letter-spacing: 0.2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  #shared-event:not([hidden]) {
+    animation: none;
+  }
+  .calendar-toggle svg {
+    transition: none;
+  }
 }
 @media (max-width: 480px) {
   .shared-card {

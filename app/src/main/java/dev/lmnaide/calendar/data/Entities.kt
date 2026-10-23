@@ -27,6 +27,7 @@ data class CalendarEntity(
     val name: String,
     val color: Int,
     val visible: Boolean = true,
+    @ColumnInfo(defaultValue = "0") val publicDetails: Boolean = false,
     /** Comma-separated words that send quick add items to this calendar, like "produce, shift". */
     @ColumnInfo(defaultValue = "") val keywords: String = "",
     /** Importance given to new items in this calendar, like High for work. */

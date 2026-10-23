@@ -41,13 +41,15 @@ object Routes {
     const val SETTINGS = "settings"
     const val CALENDARS = "calendars"
     const val EVENT = "event/{eventId}/{instance}"
-    const val EDIT = "edit?eventId={eventId}&instance={instance}&date={date}&minute={minute}&allDay={allDay}&task={task}&text={text}&calendar={calendar}&people={people}"
+    const val EDIT = "edit?eventId={eventId}&instance={instance}&date={date}&minute={minute}&allDay={allDay}&task={task}&text={text}&calendar={calendar}&people={people}&sharedEvent={sharedEvent}"
 
     const val NO_VALUE = Long.MIN_VALUE
 
     fun event(link: EventLink) = "event/${link.eventId}/${link.instanceId}"
 
     fun editEvent(link: EventLink) = "edit?eventId=${link.eventId}&instance=${link.instanceId}"
+
+    fun importEvent(query: String) = "edit?sharedEvent=${Uri.encode(query)}"
 
     /**
      * [minute] is minutes after midnight, or -1 for the next full hour. [text] is a quick add
@@ -155,6 +157,7 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
                 navArgument("people") { type = NavType.StringType; defaultValue = "[]" },
                 navArgument("text") { type = NavType.StringType; defaultValue = "" },
                 navArgument("calendar") { type = NavType.LongType; defaultValue = Routes.NO_VALUE },
+                navArgument("sharedEvent") { type = NavType.StringType; defaultValue = "" },
             ),
         ) { entry ->
             EventEditorScreen(
