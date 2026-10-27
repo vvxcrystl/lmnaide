@@ -1,10 +1,10 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# lmnaide Calander
+# lmnaide Calendar
 
-lmnaide Calander is an Android calendar built with Jetpack Compose and Material 3, with Material You colors, Google Sans Flex type, solid event chips and illustrated month banners. It works offline, with optional account sync through a separate Node.js server and a browser calendar. See [server/README.md](server/README.md) for setup, HTTPS deployment, event sharing and cross-device testing.
+lmnaide Calendar is an Android calendar built with Jetpack Compose and Material 3, with Material You colors, Google Sans Flex type, solid event chips and illustrated month banners. It works offline, with optional account sync through a separate Node.js server and a browser calendar. See [server/README.md](server/README.md) for setup, HTTPS deployment, event sharing and cross-device testing.
 
-Both build editions use the original app package, `dev.lmnaide.calendar`. The Cloud build adds optional sync; the Offline build has no accounts or network access. Choose one edition to install. Version `0.0.4-alpha` upgrades the existing main app in place when signed with the same key, preserving its calendars, events and settings.
+Both build editions use the original app package, `dev.lmnaide.calendar`. The Cloud build adds optional sync; the Offline build has no accounts or network access. Choose one edition to install. Version `0.0.5-alpha` upgrades the existing main app in place when signed with the same key, preserving its calendars, events and settings.
 
 Created in [T3 Code](https://t3.codes). [DESIGN.md](DESIGN.md) covers the design system.
 
@@ -54,7 +54,7 @@ Tap the calendar in the preview to change it before saving.
 
 Highlight a date or event sentence in another app, then choose **Add to calendar** from its text-selection menu (it may be under the overflow menu). A prefilled quick-add sheet lets you check the date, edit the title and pick a calendar before saving. A date on its own gets an editable “New event” title. Saving or dismissing returns to the source app without changing its text. This works in apps that support Android's standard text-selection actions.
 
-For apps with their own message-selection menus, you can also share the selected text to **Add to calendar**. In Google Messages, long-press a message, choose **More → Share**, then **lmnaide Calander — Add to calendar**.
+For apps with their own message-selection menus, you can also share the selected text to **Add to calendar**. In Google Messages, long-press a message, choose **More → Share**, then **lmnaide Calendar — Add to calendar**.
 
 ### Events and tasks
 
@@ -120,8 +120,8 @@ Settings also covers the first day of the week, 24-hour time, and the default ca
 You need JDK 17 and the Android SDK with platform 37. Gradle downloads the right JDK on its own, as set in `gradle/gradle-daemon-jvm.properties`.
 
 ```sh
-./gradlew installCloudRelease    # installs lmnaide Calander with optional sync
-./gradlew installOfflineRelease  # installs lmnaide Calander without network access
+./gradlew installCloudRelease    # installs lmnaide Calendar with optional sync
+./gradlew installOfflineRelease  # installs lmnaide Calendar without network access
 ./gradlew assembleCloudRelease   # app/build/outputs/apk/cloud/release/app-cloud-release.apk
 ./gradlew installCloudDebug      # a debuggable build, for development
 ```

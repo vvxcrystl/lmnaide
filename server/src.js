@@ -239,7 +239,7 @@ export function resolvePublicUrl({ publicUrl = "", domain = "" } = {}) {
       )
     )
       throw new Error(
-        "CALENDAR_DOMAIN must be a single DNS hostname, such as calander.domain.com (no scheme, port or path)",
+        "CALENDAR_DOMAIN must be a single DNS hostname, such as calendar.domain.com (no scheme, port or path)",
       );
     publicUrl = `https://${domain}`;
   }
@@ -289,6 +289,7 @@ export function createApp({
       DELETE FROM shares WHERE userId=NEW.userId AND eventId=NEW.id;
     END;
     CREATE TABLE IF NOT EXISTS profiles(userId TEXT PRIMARY KEY REFERENCES users(id),photo TEXT);
+    CREATE TABLE IF NOT EXISTS event_origins(userId TEXT NOT NULL REFERENCES users(id),eventId TEXT NOT NULL,PRIMARY KEY(userId,eventId));
     CREATE TABLE IF NOT EXISTS counter(id INTEGER PRIMARY KEY CHECK(id=1),value INTEGER NOT NULL);
     INSERT OR IGNORE INTO counter VALUES(1,0);`);
   if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "username"))
@@ -362,7 +363,12 @@ export function createApp({
     id: row.id,
     version: row.version,
     deleted: !!row.deleted,
-    data: row.data ? JSON.parse(row.data) : null,
+    data: row.data ? {
+      ...JSON.parse(row.data),
+      ...(row.kind === "event" && db.prepare(
+        "SELECT 1 FROM event_origins WHERE userId=? AND eventId=?",
+      ).get(row.userId, row.id) ? { createdProgrammatically: true } : {}),
+    } : null,
   });
   const nextVersion = () =>
     db
@@ -738,13 +744,95 @@ export function createApp({
               userId: undefined,
             })),
         });
-      if (req.method !== "POST" || path !== "/api/v1/sync")
+      // REST writes use the sync transaction below, including history, quotas,
+      // calendar deletion cascades and the version counter used by all clients.
+      let apiWrite = null;
+      let syncBody;
+      const resource = path.match(/^\/api\/v1\/(calendars|events)(?:\/([^/]+))?$/);
+      if (resource) {
+        takeLimit(`api:${userId}`, 90);
+        const kind = resource[1] === "calendars" ? "calendar" : "event";
+        let id;
+        try { id = resource[2] && decodeURIComponent(resource[2]); }
+        catch { fail(400, "Invalid record ID"); }
+        const current = id && db.prepare(
+          "SELECT * FROM records WHERE userId=? AND kind=? AND id=?",
+        ).get(userId, kind, id);
+        if (req.method === "GET") {
+          if (id) {
+            if (!current || current.deleted) fail(404, "Not found");
+            return send(200, encode(current));
+          }
+          const query = new URL(req.url, "http://localhost").searchParams;
+          const cursor = Number(query.get("cursor") ?? 0);
+          const limit = Number(query.get("limit") ?? 100);
+          if (!Number.isSafeInteger(cursor) || cursor < 0 ||
+              !Number.isSafeInteger(limit) || limit < 1 || limit > 500)
+            fail(400, "Invalid pagination");
+          const calendarId = kind === "event" ? query.get("calendarId") : null;
+          const rows = db.prepare(
+            `SELECT * FROM records WHERE userId=? AND kind=? AND deleted=0 AND version>?
+             ${calendarId !== null ? "AND json_extract(data,'$.calendarId')=?" : ""}
+             ORDER BY version LIMIT ?`,
+          ).all(userId, kind, cursor, ...(calendarId !== null ? [calendarId] : []), limit + 1);
+          const page = [];
+          let bytes = 100; // Envelope and comma overhead, within the sync response budget.
+          for (const row of rows.slice(0, limit)) {
+            const record = encode(row);
+            const size = Buffer.byteLength(JSON.stringify(record)) + 1;
+            if (page.length && bytes + size > 1024 * 1024) break;
+            page.push(record);
+            bytes += size;
+          }
+          const more = rows.length > page.length;
+          return send(200, { records: page, more,
+            nextCursor: page.at(-1)?.version ?? cursor });
+        }
+        if (!((req.method === "POST" && !id) ||
+              (["PATCH", "DELETE"].includes(req.method) && id)))
+          fail(405, "Use GET, POST, PATCH or DELETE for this resource.");
+        const input = await body();
+        if (!input || typeof input !== "object" || Array.isArray(input))
+          fail(400, "Invalid request");
+        const creating = req.method === "POST";
+        if (creating) {
+          id = input.id ?? randomUUID();
+          if (typeof id !== "string" || !id || id.length > 200 || [".", ".."].includes(id))
+            fail(400, "Invalid record ID");
+          if (db.prepare("SELECT 1 FROM records WHERE userId=? AND kind=? AND id=?").get(userId, kind, id))
+            fail(409, "Record ID already exists.");
+        } else {
+          // Re-read after awaiting the body so a concurrent save cannot be overwritten.
+          const latest = db.prepare("SELECT * FROM records WHERE userId=? AND kind=? AND id=?").get(userId, kind, id);
+          if (!latest || latest.deleted) fail(404, "Not found");
+          if (!Number.isSafeInteger(input.version) || input.version < 1)
+            fail(400, "Supply the current record version.");
+          if (input.version !== latest.version) fail(409, "Record changed. Fetch it again before saving.");
+          apiWrite = { current: latest };
+        }
+        const defaults = kind === "calendar"
+          ? { color: -13388167, visible: true, keywords: "", defaultImportance: null }
+          : { title: "", description: "", location: "", allDay: false, color: null,
+              recurrence: "NONE", recurrenceUntil: null, exceptions: [], reminders: [],
+              kind: "EVENT", completions: [], importance: null };
+        const data = { ...(creating ? defaults : JSON.parse(apiWrite.current.data)), ...input };
+        const deleted = req.method === "DELETE";
+        const change = { kind, id, baseVersion: creating ? 0 : input.version,
+          deleted, data: deleted ? null : data, operationId: randomUUID() };
+        change.data = validate(change);
+        if (kind === "event" && !deleted && !db.prepare(
+          "SELECT 1 FROM records WHERE userId=? AND kind='calendar' AND id=? AND deleted=0",
+        ).get(userId, change.data.calendarId)) fail(400, "Calendar does not exist.");
+        apiWrite = { kind, id, creating };
+        syncBody = { cursor: 0, changes: [change] };
+      }
+      if (!apiWrite && (req.method !== "POST" || path !== "/api/v1/sync"))
         fail(404, "Not found");
       // Generous bound: foreground clients poll every 10 s (6/min); bursts
       // during large edits stay well under 90. This keeps a single signed-in
       // client from saturating the single-threaded event loop.
       takeLimit(`sync:${userId}`, 90);
-      const b = await body();
+      const b = syncBody ?? await body();
       if (!b || typeof b !== "object" || Array.isArray(b))
         fail(400, "Invalid request");
       if (
@@ -1210,7 +1298,13 @@ export function createApp({
                 historyCount - HISTORY_ROWS_PER_ACCOUNT,
               );
         }
+        if (apiWrite?.creating && apiWrite.kind === "event")
+          db.prepare("INSERT INTO event_origins VALUES(?,?)").run(userId, apiWrite.id);
+        const apiRecord = apiWrite && db.prepare(
+          "SELECT * FROM records WHERE userId=? AND kind=? AND id=?",
+        ).get(userId, apiWrite.kind, apiWrite.id);
         db.exec("COMMIT");
+        if (apiWrite) return send(apiWrite.creating ? 201 : 200, encode(apiRecord));
         return send(200, {
           cursor,
           records: [...map.values()].sort((a, b) => a.version - b.version).map(encode),
@@ -1248,7 +1342,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const app = createApp();
   const port = Number(process.env.PORT || 3000);
   app.server.listen(port, process.env.HOST || "0.0.0.0", () =>
-    console.log(`calander server listening on ${port}`),
+    console.log(`calendar server listening on ${port}`),
   );
   for (const signal of ["SIGINT", "SIGTERM"])
     process.on(signal, () => app.close().then(() => process.exit(0)));

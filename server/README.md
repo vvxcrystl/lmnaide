@@ -1,6 +1,6 @@
-# calander server
+# calendar server
 
-A separate Node.js sync server, responsive browser calendar, and optional sync for Android **calander**. The Android Cloud build uses `dev.lmnaide.calendar`, matching `main`, and updates the existing app in place with the same signing key. Existing calendars, events and settings stay in its database. Sync starts only after you connect an account in Settings.
+A separate Node.js sync server, responsive browser calendar, and optional sync for Android **calendar**. The Android Cloud build uses `dev.lmnaide.calendar`, matching `main`, and updates the existing app in place with the same signing key. Existing calendars, events and settings stay in its database. Sync starts only after you connect an account in Settings.
 
 Cloud and Offline builds are alternative editions of the same installed app. Earlier experimental `dev.lmnaide.calendar.cloud` installations have a separate database; this package change does not automatically move their local data. Their server data remains available by signing in to the same account.
 
@@ -51,21 +51,21 @@ The release build is produced with `./gradlew assembleCloudRelease`. Configure y
 
 ## Custom domains and HTTPS
 
-You can host the cloud server at a subdomain such as **calander.domain.com**. At your DNS provider, create an `A` record named `calander` pointing to the Docker host's public IPv4 address. If you also publish an `AAAA` record, it must point to the host's reachable IPv6 address. Allow incoming TCP ports 80 and 443, then:
+You can host the cloud server at a subdomain such as **calendar.domain.com**. At your DNS provider, create an `A` record named `calendar` pointing to the Docker host's public IPv4 address. If you also publish an `AAAA` record, it must point to the host's reachable IPv6 address. Allow incoming TCP ports 80 and 443, then:
 
 ```sh
 cd server
 cp .env.example .env
-# Edit .env: CALENDAR_DOMAIN=calander.domain.com
+# Edit .env: CALENDAR_DOMAIN=calendar.domain.com
 # Use your actual hostname, without https://, a port or a path.
 docker compose -f compose.production.yaml up --build -d
 ```
 
-Caddy obtains and renews the HTTPS certificate and redirects HTTP to HTTPS ([Caddy HTTPS documentation](https://caddyserver.com/docs/automatic-https)). Open `https://calander.domain.com` and enter that same address in Android Settings → Cloud sync. Browser API calls use the same origin, and event share links use the configured HTTPS domain. The calendar service is accessible through Caddy, without exposing port 3000 publicly. A public host and domain are needed to deploy it.
+Caddy obtains and renews the HTTPS certificate and redirects HTTP to HTTPS ([Caddy HTTPS documentation](https://caddyserver.com/docs/automatic-https)). Open `https://calendar.domain.com` and enter that same address in Android Settings → Cloud sync. Browser API calls use the same origin, and event share links use the configured HTTPS domain. The calendar service is accessible through Caddy, without exposing port 3000 publicly. A public host and domain are needed to deploy it.
 
 To change the hostname later, update its DNS record and `CALENDAR_DOMAIN` in `.env`, then rerun the production command. Keep the existing volumes to preserve accounts and events, and update the Android server address. Previously copied share links still contain the old hostname; keep that hostname working through your proxy if those links must remain reachable.
 
-Check startup with `docker compose -f compose.production.yaml logs https calendar`, then open `https://calander.domain.com/health`. If certificate issuance fails, check DNS (including any `AAAA` record) and whether ports 80/443 reach this host.
+Check startup with `docker compose -f compose.production.yaml logs https calendar`, then open `https://calendar.domain.com/health`. If certificate issuance fails, check DNS (including any `AAAA` record) and whether ports 80/443 reach this host.
 
 ### Behind an existing reverse proxy
 
@@ -73,18 +73,18 @@ If the host already runs Caddy, nginx or another HTTPS proxy, route your custom 
 
 ```sh
 cd server
-HOST=127.0.0.1 CALENDAR_DOMAIN=calander.domain.com npm start
+HOST=127.0.0.1 CALENDAR_DOMAIN=calendar.domain.com npm start
 ```
 
 For example, add this site to a Caddy installation on that same host:
 
 ```caddyfile
-calander.domain.com {
+calendar.domain.com {
     reverse_proxy 127.0.0.1:3000
 }
 ```
 
-The proxy supplies HTTPS; Node listens on HTTP internally. `CALENDAR_DOMAIN` configures public links and does not obtain certificates itself. Plain `npm start` does not load `.env`; export the variables through your service manager or use `node --env-file=.env src.js`. Set `PUBLIC_URL` instead when the external origin needs an explicit port, for example `https://calander.domain.com:8443`.
+The proxy supplies HTTPS; Node listens on HTTP internally. `CALENDAR_DOMAIN` configures public links and does not obtain certificates itself. Plain `npm start` does not load `.env`; export the variables through your service manager or use `node --env-file=.env src.js`. Set `PUBLIC_URL` instead when the external origin needs an explicit port, for example `https://calendar.domain.com:8443`.
 
 After creating the accounts you need, set `ALLOW_REGISTRATION=false` in `.env` and rerun the production command. Existing accounts can still sign in.
 
@@ -96,7 +96,7 @@ For a plain Node service, environment variables are:
 | `HOST` | `0.0.0.0` | Listen interface; use `127.0.0.1` behind a host reverse proxy |
 | `DB_PATH` | `./data/calendar.sqlite` | Persistent SQLite file, relative to the working directory |
 | `ALLOW_REGISTRATION` | `true` | Set exactly `false` to disable new accounts |
-| `CALENDAR_DOMAIN` | empty | Custom DNS hostname, e.g. `calander.domain.com`; supplies the HTTPS origin for share links and configures Caddy in production Compose |
+| `CALENDAR_DOMAIN` | empty | Custom DNS hostname, e.g. `calendar.domain.com`; supplies the HTTPS origin for share links and configures Caddy in production Compose |
 | `PUBLIC_URL` | empty | Explicit HTTP(S) origin for share links; overrides `CALENDAR_DOMAIN` for plain Node hosting |
 | `TRUSTED_PROXIES` | `127.0.0.1,::1` | Comma-separated proxy IPs or CIDRs allowed to supply `X-Forwarded-For`; only use addresses that cannot be reached by untrusted clients. Production Compose trusts its private Caddy network (`172.30.0.0/24`). IPv6 sources share their `/64` prefix in per-IP limits. |
 | `STORAGE_QUOTA_BYTES` | `268435456` (256 MiB) | Per-account ceiling over records and the sync journal; edit history is separately capped per account. Deleting records frees space; set to 0 to lift the quota. |
@@ -110,6 +110,12 @@ For a simple consistent backup, stop the calendar service and copy the whole dat
 - Deletions, including events removed with a calendar.
 
 Contact names and device contact lookup URIs stay local. Appearance, display preferences, selected/default calendar and notification acknowledgement/snooze state also stay local. The server does not send reminders; Android schedules them using its synced local data. The browser includes Schedule, Day, 3 days, Week and Month views, a mini-month picker, event details/editor, search, calendar management and settings. Recurring items can be edited or deleted for one occurrence, this and following, or the entire series. Android retains its offline quick-add parser, contacts and home-screen widget.
+
+## Calendar API
+
+Scripts and integrations can list, create, update, and delete calendars and events through authenticated `/api/v1/calendars` and `/api/v1/events` endpoints. Changes sync to the browser and Android. API-created events show a small **API** tag; pressing it explains that the event was added programmatically. The tag remains after edits.
+
+See [Calendar API reference](API.md) for authentication, request examples, pagination, and version checks.
 
 ## Sync protocol
 
@@ -169,7 +175,7 @@ Public sharing is separate from individual event links. Changing a calendar's to
 
 ## Share event links
 
-In the browser, open an event → **More options → Share event → Create link**. In calander for Android, open an event and tap the **Share event** icon, then **Create link**. Copy the link or use the device’s share sheet. Anyone with the link can open a read-only page without an account.
+In the browser, open an event → **More options → Share event → Create link**. In calendar for Android, open an event and tap the **Share event** icon, then **Create link**. Copy the link or use the device’s share sheet. Anyone with the link can open a read-only page without an account.
 
 The page includes title, dates, location and notes. Recurring events share the series, with its start dates and repeat rule clearly labelled. Timed dates display in the viewer’s time zone; all-day dates stay fixed. Calendar details, contacts, reminders, importance and task completion remain private. Edits update the shared page when it is opened or refreshed.
 

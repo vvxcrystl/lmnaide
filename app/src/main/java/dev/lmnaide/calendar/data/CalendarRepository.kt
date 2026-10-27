@@ -166,6 +166,6 @@ class CalendarRepository(database: () -> AppDatabase, scope: CoroutineScope) {
             val stored = EventEntity.toStored(start, event.allDay)
             event.copy(start = stored, end = stored + length)
         }
-        return eventDao.insert(copy.copy(id = 0, exceptions = emptyList(), completions = emptyList()))
+        return eventDao.insert(copy.copy(id = 0, exceptions = emptyList(), completions = emptyList(), createdProgrammatically = false))
     }
 }

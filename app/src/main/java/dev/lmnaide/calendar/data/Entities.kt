@@ -77,6 +77,8 @@ data class EventEntity(
     @ColumnInfo(defaultValue = "") val completions: List<Long> = emptyList(),
     val importance: Importance? = null,
     @ColumnInfo(defaultValue = "'[]'") val people: List<dev.lmnaide.calendar.contacts.EventPerson> = emptyList(),
+    /** Assigned by the server when an event is created through the calendar API. */
+    @ColumnInfo(defaultValue = "0") val createdProgrammatically: Boolean = false,
 ) {
     val isTask: Boolean get() = kind == EventKind.TASK
 

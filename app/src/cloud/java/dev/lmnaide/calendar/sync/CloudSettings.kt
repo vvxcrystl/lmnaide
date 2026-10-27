@@ -112,7 +112,7 @@ fun CloudSettings() {
                 }
             } else {
                 Text(
-                    "Connect to your calander server and use the same account on each device. Events, tasks and calendars sync; device contacts and appearance stay local.",
+                    "Connect to your calendar server and use the same account on each device. Events, tasks and calendars sync; device contacts and appearance stay local.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

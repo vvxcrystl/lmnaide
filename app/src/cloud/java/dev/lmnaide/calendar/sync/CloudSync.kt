@@ -467,6 +467,7 @@ class CloudSync(
                                 .put("calendarId", calendarIds[e.calendarId])
                                 .put("title", e.title)
                                 .put("description", e.description)
+                                .apply { if (e.createdProgrammatically) put("createdProgrammatically", true) }
                                 .put("location", e.location)
                                 .put("start", e.start)
                                 .put("end", e.end)
@@ -733,6 +734,7 @@ class CloudSync(
                                 completions = d.longs("completions"),
                                 importance = d.nullString("importance")?.let(Importance::valueOf),
                                 people = local?.people ?: emptyList(),
+                                createdProgrammatically = d.optBoolean("createdProgrammatically", false),
                             )
                         if (local == null) localId = db.eventDao().insert(value)
                         else db.eventDao().update(value)

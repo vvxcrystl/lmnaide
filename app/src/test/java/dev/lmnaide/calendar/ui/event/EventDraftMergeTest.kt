@@ -36,6 +36,7 @@ class EventDraftMergeTest {
             description = "notes from another device",
             reminders = listOf(30),
             completions = listOf(10, 17),
+            createdProgrammatically = true,
         )
         val draftState = opened.copy(title = "Planning moved")
         val draft = original.copy(title = "Planning moved")
@@ -46,6 +47,7 @@ class EventDraftMergeTest {
         assertEquals("notes from another device", merged.event.description)
         assertEquals(listOf(30), merged.event.reminders)
         assertEquals(listOf(10L, 17L), merged.event.completions)
+        assertTrue(merged.event.createdProgrammatically)
         assertTrue(merged.conflicts.isEmpty())
     }
 

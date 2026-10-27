@@ -345,3 +345,29 @@ test("search occurrence lookup matches expansion but returns only the first resu
   };
   assert.equal(nextOccurrence(ended, "2025-01-01", 366), null);
 });
+
+test("incoming API origin survives sanitizing and its tag opens an explanation", () => {
+  let explanation;
+  let stopped = false;
+  const app = handlers(["sanitizeIncomingRecord", "apiOriginTag"], {
+    h: (tag, props) => ({ tag, ...props }),
+    showAlert: (title, body) => { explanation = { title, body }; },
+  });
+  const record = app.sanitizeIncomingRecord({ kind: "event", id: "api-event", version: 1, data: {
+    title: "API event", calendarId: "personal", start: 0, end: 0,
+    createdProgrammatically: true,
+  } });
+  assert.equal(record.data.createdProgrammatically, true);
+  const tag = app.apiOriginTag(record.data);
+  assert.equal(tag.tag, "button");
+  assert.equal(tag.text, "API");
+  tag.onclick({ stopPropagation() { stopped = true; } });
+  assert.equal(stopped, true, "Tag clicks do not open or edit the enclosing event");
+  assert.equal(explanation.title, "Added programmatically");
+  assert.match(explanation.body, /added programmatically through the calendar API/);
+  assert.equal(app.apiOriginTag({}), null);
+  assert.equal(app.apiOriginTag(record.data, false).tag, "span", "Noninteractive mobile previews contain no buttons");
+  const malformed = app.sanitizeIncomingRecord({ kind: "event", id: "manual", version: 1,
+    data: { createdProgrammatically: "true" } });
+  assert.equal(malformed.data.createdProgrammatically, false);
+});

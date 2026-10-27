@@ -138,6 +138,7 @@ fun GridEventBlock(
             val showTime = height >= if (compact) 56.dp else 40.dp
             val titleLines = ((height.value - 6 - if (showTime) lineHeight else 0) / lineHeight).toInt().coerceIn(1, 4)
             Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                if (occurrence.event.createdProgrammatically) ApiOriginTag(tint = content)
                 if (occurrence.isTask) {
                     TaskCheck(occurrence.completed, content, size = (titleSize + 1).dp)
                 }
@@ -192,6 +193,7 @@ fun EventBar(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
             occurrence.event.importance?.let { ImportanceDot(it, size = 7.dp) }
+            if (occurrence.event.createdProgrammatically) ApiOriginTag(tint = content)
             if (occurrence.isTask) TaskCheck(occurrence.completed, content, size = fontSize.dp)
             Text(
                 occurrence.titleText(),
@@ -256,6 +258,7 @@ fun EventCard(
                 )
             }
         }
+        if (occurrence.event.createdProgrammatically) ApiOriginTag(tint = content)
         occurrence.event.importance?.let { ImportanceDot(it, Modifier.padding(start = 8.dp), size = 12.dp) }
     }
 }

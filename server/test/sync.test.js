@@ -347,7 +347,7 @@ test("database and sessions survive server restart", async (t) => {
 
 test("custom domain share links use the public HTTPS host behind a proxy", async (t) => {
   const { api, base, token } = await harness(t, {
-    domain: "calander.domain.com",
+    domain: "calendar.domain.com",
     publicUrl: "",
   });
   assert.equal((await api("sync", {
@@ -369,7 +369,7 @@ test("custom domain share links use the public HTTPS host behind a proxy", async
   });
   assert.equal(response.status, 200);
   const link = await response.json();
-  assert.equal(link.url, "https://calander.domain.com" + link.path);
+  assert.equal(link.url, "https://calendar.domain.com" + link.path);
   assert.equal((await fetch(base + link.path)).status, 200);
 });
 

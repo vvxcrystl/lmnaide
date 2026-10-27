@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs an isolated calander Test app; requires the local server and a dedicated account.
+# Installs an isolated calendar Test app; requires the local server and a dedicated account.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 : "${CLOUD_TEST_EMAIL:?Set CLOUD_TEST_EMAIL to a dedicated test account}"

@@ -82,6 +82,7 @@ import dev.lmnaide.calendar.data.Recurrence
 import dev.lmnaide.calendar.domain.CanadianHolidays
 import dev.lmnaide.calendar.domain.EditScope
 import dev.lmnaide.calendar.ui.common.HolidayBanner
+import dev.lmnaide.calendar.ui.common.ApiOriginTag
 import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.common.ConfirmDialog
 import dev.lmnaide.calendar.ui.common.Fmt
@@ -209,6 +210,7 @@ fun EventDetailScreen(
                         Text(event.title.ifBlank { "(No title)" }, style = MaterialTheme.typography.headlineSmall)
                     }
                     Spacer(Modifier.height(2.dp))
+                    if (event.createdProgrammatically) ApiOriginTag()
                     if (event.isTask) {
                         Text(
                             if (occurrence.completed) "Task, completed" else "Task",

@@ -12,8 +12,8 @@ android {
         applicationId = "dev.lmnaide.calendar"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.0.4-alpha"
+        versionCode = 5
+        versionName = "0.0.5-alpha"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -34,7 +34,7 @@ android {
             // Device checks install separately from the user’s app and data.
             if (providers.gradleProperty("cloudDeviceTest").orNull == "true") {
                 applicationIdSuffix = ".devicetest"
-                resValue("string", "app_name", "calander Test")
+                resValue("string", "app_name", "calendar Test")
             }
         }
         release {

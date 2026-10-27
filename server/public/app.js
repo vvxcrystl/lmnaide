@@ -941,6 +941,7 @@ function sanitizeIncomingRecord(r) {
             start: ms(d.start),
             end: Math.max(ms(d.end), ms(d.start)),
             allDay: d.allDay === true,
+            createdProgrammatically: d.createdProgrammatically === true,
             color: color(d.color),
             recurrence: oneOf(d.recurrence, [
               "NONE",
@@ -1276,6 +1277,30 @@ const importanceDot = (importance) =>
     style: { background: IMPORTANCE[importance].color },
   });
 
+function apiOriginTag(event, interactive = true) {
+  if (!event.createdProgrammatically) return null;
+  return h(interactive ? "button" : "span", {
+    type: interactive ? "button" : null,
+    class: "api-origin-tag",
+    text: "API",
+    title: "Added programmatically",
+    "aria-label": "Added programmatically via the calendar API",
+    onclick: interactive ? (e) => {
+      e.stopPropagation();
+      showAlert("Added programmatically",
+        "This event was added programmatically through the calendar API.",
+        (finish) => textButton("Got it", () => finish()));
+    } : null,
+  });
+}
+
+function activateEventOnKey(e) {
+  if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+    e.preventDefault();
+    e.currentTarget.click();
+  }
+}
+
 /** A full-width event card used in the schedule and search lists. */
 function eventCard(o, timeText, detail, onToggle) {
   const card = h(
@@ -1315,6 +1340,7 @@ function eventCard(o, timeText, detail, onToggle) {
       h("small", { text: timeText }),
       detail && h("small", { text: detail }),
     ),
+    apiOriginTag(o.event),
     importanceDot(o.event.importance),
   );
   return paint(card, o);
@@ -1322,9 +1348,11 @@ function eventCard(o, timeText, detail, onToggle) {
 /** A one-line chip for all-day lanes and the month grid. */
 function eventBar(o, fontSize, onclick) {
   const bar = h(
-    onclick ? "button" : "div",
+    "div",
     {
-      type: onclick ? "button" : null,
+      role: onclick ? "button" : null,
+      tabindex: onclick ? 0 : null,
+      onkeydown: onclick ? activateEventOnKey : null,
       class: "bar" + (o.completed ? " done" : ""),
       onclick,
       style: {
@@ -1335,6 +1363,7 @@ function eventBar(o, fontSize, onclick) {
     importanceDot(o.event.importance),
     o.isTask && icon(o.completed ? I.checkCircle : I.circle),
     h("span", { class: "bar-title", text: o.event.title || "(No title)" }),
+    apiOriginTag(o.event, !!onclick),
   );
   return paint(bar, o);
 }
@@ -1836,9 +1865,11 @@ function renderMonth(slide) {
 /** A timed event in the web month grid: a colored dot, its start time and title. */
 function timedChip(o) {
   return h(
-    "button",
+    "div",
     {
-      type: "button",
+      role: "button",
+      tabindex: 0,
+      onkeydown: activateEventOnKey,
       class:
         "timed-chip" +
         (isPast(o) ? " past" : "") +
@@ -1854,6 +1885,7 @@ function timedChip(o) {
       : h("span", { class: "dot", style: { background: css(o.color) } }),
     !o.allDay && h("span", { class: "chip-time", text: time(o.start) }),
     h("span", { class: "bar-title", text: o.event.title || "(No title)" }),
+    apiOriginTag(o.event),
   );
 }
 
@@ -1950,9 +1982,11 @@ function gridBlock(p, columnWidth) {
     check.style.width = check.style.height = titleSize + 1 + "px";
   }
   const block = h(
-    "button",
+    "div",
     {
-      type: "button",
+      role: "button",
+      tabindex: 0,
+      onkeydown: activateEventOnKey,
       class:
         "block" + (compact ? " compact" : "") + (p.o.completed ? " done" : ""),
       onclick: (e) => {
@@ -1977,6 +2011,7 @@ function gridBlock(p, columnWidth) {
         style: { "-webkit-line-clamp": String(titleLines) },
       }),
       !compact && importanceDot(p.o.event.importance),
+      apiOriginTag(p.o.event),
     ),
     showTime &&
       h("small", {
@@ -2904,6 +2939,7 @@ function renderDetail() {
           "div",
           {},
           h("h2", { class: "headline-small", text: d.title || "(No title)" }),
+          apiOriginTag(d),
           o.isTask &&
             h("p", {
               class: "body-medium variant",

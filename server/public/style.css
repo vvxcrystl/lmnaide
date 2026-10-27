@@ -2670,3 +2670,36 @@ input.time-field.on {
 .account-username button {
   flex: none;
 }
+
+/* A compact origin label on API-created events. */
+.api-origin-tag {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  width: auto;
+  min-height: 20px;
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 16px;
+  vertical-align: middle;
+}
+button.api-origin-tag { cursor: pointer; }
+.bar[role="button"], .timed-chip[role="button"], .block[role="button"] { cursor: pointer; }
+.bar[role="button"]:focus-visible, .timed-chip[role="button"]:focus-visible, .block[role="button"]:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+button.api-origin-tag:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.detail-head .api-origin-tag { margin-block: 4px; align-self: flex-start; }
+.bar .api-origin-tag, .timed-chip .api-origin-tag, .block .api-origin-tag {
+  min-height: 0;
+  padding: 0 3px;
+  font-size: 9px;
+  line-height: 12px;
+}
