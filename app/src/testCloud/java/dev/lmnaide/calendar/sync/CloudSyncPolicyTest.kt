@@ -10,6 +10,13 @@ import org.junit.Test
 
 class CloudSyncPolicyTest {
     @Test
+    fun oidcChallengeMatchesTheServer() {
+        // From Node: createHash("sha256").update("lmnaide-test-verifier").digest("base64url")
+        assertEquals("wIRc3FstxJKKiGD4asNmh5y73R4msmdnPjW71LaO8jA", oidcChallenge("lmnaide-test-verifier"))
+        assertTrue(Regex("^[A-Za-z0-9_-]{43}$").matches(oidcChallenge(oidcVerifier())))
+    }
+
+    @Test
     fun duplicateHolidayIdentityMapsOnlyTheCanonicalCopy() {
         val ids = canonicalHolidaySeedIds(
             listOf(

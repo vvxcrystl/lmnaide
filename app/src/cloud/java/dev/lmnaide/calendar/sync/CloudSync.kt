@@ -29,9 +29,14 @@ data class SyncState(
     val server: String = "",
     val message: String = "Connect your devices",
     val lastSync: Long = 0,
+    /** The account signs in through the server's OIDC issuer, such as CrystlCloud. */
+    val linked: Boolean = false,
     /** Set after a sign-in while this device has unsynced items, until the user decides. */
     val importPrompt: ImportPrompt? = null,
 )
+
+/** The sign-in options a server offers, from GET /api/v1/config. */
+data class ServerConfig(val passwordLogin: Boolean, val registration: Boolean, val oidcName: String?)
 
 /** Items made on this device while signed out, waiting for the user to choose whether to sync them. */
 data class ImportPrompt(val events: Int, val tasks: Int, val calendars: Int, val email: String) {
@@ -80,6 +85,7 @@ class CloudSync(
             username = prefs.getString("username", "").orEmpty(),
             server = prefs.getString("server", "").orEmpty(),
             lastSync = prefs.getLong("lastSync", 0),
+            linked = prefs.getBoolean("linked", false),
             message = if (prefs.contains("token")) "Ready to sync" else "Connect your devices",
         )
 
@@ -162,20 +168,7 @@ class CloudSync(
             mutex.withLock {
                 mutableState.value = state.value.copy(busy = true, message = "Connecting…")
                 try {
-                    val uri = URI(server.trim().trimEnd('/'))
-                    require(
-                        uri.host != null &&
-                            uri.rawUserInfo == null &&
-                            uri.rawQuery == null &&
-                            uri.rawFragment == null &&
-                            uri.path.orEmpty().isEmpty()
-                    ) {
-                        "Enter the server address, such as https://calendar.example.com"
-                    }
-                    require(uri.scheme == "https" || (BuildConfig.DEBUG && uri.scheme == "http")) {
-                        "Use an HTTPS server address"
-                    }
-                    val address = uri.toString()
+                    val address = serverAddress(server)
                     val result =
                         request(
                             address,
@@ -185,40 +178,147 @@ class CloudSync(
                             },
                             null,
                         )
-                    val binding = address + ":" + result.getString("userId")
-                    val previous = prefs.getString("binding", null)
-                    if (boundToOtherAccount(previous, result.getString("userId"))) {
-                        runCatching {
-                            request(address, "logout", JSONObject(), result.getString("token"))
-                        }
-                        error(
-                            "This local calendar belongs to ${prefs.getString("email", "another account")}. Sign in to that account to keep data separate."
-                        )
-                    }
-                    val prompt = offlineItems(result.getString("email"))
-                    if (prompt == null) bind(address, result, binding)
-                    else {
-                        // Nothing is stored or uploaded until the user chooses in the prompt.
-                        held = HeldSignIn(address, result, binding)
-                        mutableState.value = readState().copy(importPrompt = prompt, message = "Choose whether to sync this device")
-                    }
+                    completeSignIn(address, result)
                 } catch (e: Exception) {
-                    if (e is CancellationException) {
-                        mutableState.value = readState()
-                        throw e
-                    }
-                    mutableState.value =
-                        readState()
-                            .copy(
-                                message =
-                                    if (e is java.io.IOException)
-                                        "Could not reach the server. Check the address and your connection."
-                                    else e.message ?: "Could not connect"
-                            )
+                    connectFailed(e)
                 }
             }
             if (prefs.contains("token")) sync()
         }
+
+    private fun serverAddress(server: String): String {
+        val uri = URI(server.trim().trimEnd('/'))
+        require(
+            uri.host != null &&
+                uri.rawUserInfo == null &&
+                uri.rawQuery == null &&
+                uri.rawFragment == null &&
+                uri.path.orEmpty().isEmpty()
+        ) {
+            "Enter the server address, such as https://calendar.example.com"
+        }
+        require(uri.scheme == "https" || (BuildConfig.DEBUG && uri.scheme == "http")) {
+            "Use an HTTPS server address"
+        }
+        return uri.toString()
+    }
+
+    private fun connectFailed(e: Exception) {
+        if (e is CancellationException) {
+            mutableState.value = readState()
+            throw e
+        }
+        mutableState.value =
+            readState()
+                .copy(
+                    message =
+                        if (e is java.io.IOException)
+                            "Could not reach the server. Check the address and your connection."
+                        else e.message ?: "Could not connect"
+                )
+    }
+
+    /** Binds a new session from password or OIDC sign-in, keeping one account per local calendar. */
+    private suspend fun completeSignIn(address: String, result: JSONObject) {
+        val binding = address + ":" + result.getString("userId")
+        val previous = prefs.getString("binding", null)
+        if (boundToOtherAccount(previous, result.getString("userId"))) {
+            runCatching {
+                request(address, "logout", JSONObject(), result.getString("token"))
+            }
+            error(
+                "This local calendar belongs to ${prefs.getString("email", "another account")}. Sign in to that account to keep data separate."
+            )
+        }
+        val prompt = offlineItems(result.getString("email"))
+        if (prompt == null) bind(address, result, binding)
+        else {
+            // Nothing is stored or uploaded until the user chooses in the prompt.
+            held = HeldSignIn(address, result, binding)
+            mutableState.value = readState().copy(importPrompt = prompt, message = "Choose whether to sync this device")
+        }
+    }
+
+    /** Null when the server can't be reached. Servers from before OIDC offer passwords only. */
+    suspend fun serverConfig(server: String): ServerConfig? = withContext(Dispatchers.IO) {
+        val result =
+            try {
+                request(serverAddress(server), "config", null, null)
+            } catch (e: java.io.IOException) {
+                return@withContext null
+            } catch (e: IllegalArgumentException) {
+                return@withContext null
+            } catch (e: Exception) {
+                JSONObject()
+            }
+        ServerConfig(
+            passwordLogin = result.optBoolean("passwordLogin", true),
+            registration = result.optBoolean("registration", true),
+            oidcName = result.optJSONObject("oidc")?.optString("name")?.takeIf { it.isNotBlank() },
+        )
+    }
+
+    /** Refreshes whether this account signs in through the server's OIDC issuer. */
+    suspend fun refreshLinked() = withContext(Dispatchers.IO) {
+        val token = prefs.getString("token", null)?.let { runCatching { TokenVault.decrypt(it) }.getOrNull() }
+            ?: return@withContext
+        runCatching { request(prefs.getString("server", "").orEmpty(), "profile", null, token) }
+            .onSuccess {
+                prefs.edit().putBoolean("linked", it.optBoolean("linked", false)).commit()
+                mutableState.value = state.value.copy(linked = prefs.getBoolean("linked", false))
+            }
+    }
+
+    /**
+     * Returns the address to open in a Custom Tab for "Continue with" or, with [link],
+     * "Connect account". The verifier stays in preferences, so the one-time code that comes
+     * back to [finishOidc] works even if Android stopped the app in between.
+     */
+    suspend fun startOidc(server: String, link: Boolean): String? = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            try {
+                val address = if (link) prefs.getString("server", "").orEmpty() else serverAddress(server)
+                val intent = if (!link) null else {
+                    val token = prefs.getString("token", null)?.let { TokenVault.decrypt(it) }
+                    check(token != null) { "Sign in to Cloud sync again." }
+                    request(address, "oidc/link", JSONObject(), token).getString("intent")
+                }
+                val verifier = oidcVerifier()
+                prefs.edit()
+                    .putString("oidcVerifier", verifier)
+                    .putString("oidcServer", address)
+                    .commit()
+                "$address/api/v1/oidc/start?client=android&challenge=${oidcChallenge(verifier)}" +
+                    (intent?.let { "&link=" + java.net.URLEncoder.encode(it, "UTF-8") } ?: "")
+            } catch (e: Exception) {
+                connectFailed(e)
+                null
+            }
+        }
+    }
+
+    /** Swaps the one-time code from lmnaide://oidc for a session, or confirms a connected account. */
+    suspend fun finishOidc(code: String) {
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                val verifier = prefs.getString("oidcVerifier", null)
+                val address = prefs.getString("oidcServer", null)
+                prefs.edit().remove("oidcVerifier").remove("oidcServer").commit()
+                if (verifier == null || address == null) return@withLock
+                mutableState.value = state.value.copy(busy = true, message = "Connecting…")
+                try {
+                    val result = request(address, "oidc/exchange", JSONObject().put("code", code).put("verifier", verifier), null)
+                    if (result.optBoolean("linked")) {
+                        prefs.edit().putBoolean("linked", true).commit()
+                        mutableState.value = readState().copy(message = "Account connected")
+                    } else completeSignIn(address, result)
+                } catch (e: Exception) {
+                    connectFailed(e)
+                }
+            }
+        }
+        if (prefs.contains("token")) sync()
+    }
 
     private fun bind(address: String, result: JSONObject, binding: String) {
         prefs
@@ -228,6 +328,7 @@ class CloudSync(
             .putString("username", if (result.isNull("username")) "" else result.optString("username"))
             .putString("token", TokenVault.encrypt(result.getString("token")))
             .putString("binding", binding)
+            .putBoolean("linked", false)
             .commit()
         mutableState.value = readState()
         schedule()
@@ -363,22 +464,25 @@ class CloudSync(
             }
         }
 
+    /** POSTs [body] as JSON, or GETs when [body] is null. */
     private fun request(
         server: String,
         path: String,
-        body: JSONObject,
+        body: JSONObject?,
         token: String?,
     ): JSONObject {
         val connection = URL("$server/api/v1/$path").openConnection() as HttpURLConnection
         try {
-            connection.requestMethod = "POST"
+            connection.requestMethod = if (body == null) "GET" else "POST"
             connection.connectTimeout = 10000
             connection.readTimeout = 20000
-            connection.doOutput = true
             connection.instanceFollowRedirects = false
-            connection.setRequestProperty("Content-Type", "application/json")
             if (token != null) connection.setRequestProperty("Authorization", "Bearer $token")
-            connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            if (body != null) {
+                connection.doOutput = true
+                connection.setRequestProperty("Content-Type", "application/json")
+                connection.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+            }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
             val result = stream?.bufferedReader()?.use { JSONObject(it.readText()) } ?: JSONObject()

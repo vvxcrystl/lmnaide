@@ -20,6 +20,7 @@ import dev.lmnaide.calendar.BuildConfig
 import dev.lmnaide.calendar.container
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -35,6 +36,23 @@ fun CloudSettings() {
     // Passwords are kept only in memory, never in saved state or preferences.
     var password by remember { mutableStateOf("") }
     var signingOut by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    // Which sign-in options the server offers. Unknown (null) shows the password form, as before.
+    var config by remember { mutableStateOf<ServerConfig?>(null) }
+    val configServer = if (state.connected) state.server else server
+    LaunchedEffect(configServer) {
+        config = null
+        if (configServer.isBlank()) return@LaunchedEffect
+        delay(400)
+        config = cloud.serverConfig(configServer)
+    }
+    LaunchedEffect(state.connected) { if (state.connected) cloud.refreshLinked() }
+    val oidcName = config?.oidcName
+    val passwordLogin = config?.passwordLogin != false
+    val registration = config?.registration != false
+    fun openOidc(link: Boolean) {
+        scope.launch { cloud.startOidc(server, link)?.let { openCustomTab(context, it) } }
+    }
     Text(
         "Cloud sync",
         style = MaterialTheme.typography.labelLarge,
@@ -89,6 +107,18 @@ fun CloudSettings() {
                         modifier = Modifier.padding(top = 12.dp),
                     ) { Text("Save") }
                 }
+                if (oidcName != null) {
+                    if (state.linked)
+                        Text(
+                            "Signs in with $oidcName",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    else
+                        OutlinedButton(onClick = { openOidc(link = true) }, enabled = !state.busy) {
+                            Text("Connect $oidcName account")
+                        }
+                }
                 Text(
                     state.server,
                     style = MaterialTheme.typography.bodySmall,
@@ -126,7 +156,7 @@ fun CloudSettings() {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     enabled = !state.busy,
                 )
-                OutlinedTextField(
+                if (passwordLogin) OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
                     label = { Text("Email") },
@@ -135,7 +165,7 @@ fun CloudSettings() {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     enabled = !state.busy,
                 )
-                OutlinedTextField(
+                if (passwordLogin) OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
                     label = { Text("Password · at least 10 characters") },
@@ -145,7 +175,7 @@ fun CloudSettings() {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     enabled = !state.busy,
                 )
-                OutlinedTextField(
+                if (passwordLogin && registration) OutlinedTextField(
                     value = username,
                     onValueChange = { username = it },
                     label = { Text("Username · optional for new accounts") },
@@ -154,7 +184,7 @@ fun CloudSettings() {
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.busy,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (passwordLogin) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val ready =
                         server.isNotBlank() &&
                             email.isNotBlank() &&
@@ -171,7 +201,7 @@ fun CloudSettings() {
                     ) {
                         Text("Sign in")
                     }
-                    TextButton(
+                    if (registration) TextButton(
                         onClick = {
                             scope.launch {
                                 cloud.connect(server, email, password, true, username)
@@ -183,6 +213,14 @@ fun CloudSettings() {
                         Text("Create account")
                     }
                 }
+                if (oidcName != null)
+                    OutlinedButton(
+                        onClick = { openOidc(link = false) },
+                        enabled = server.isNotBlank() && !state.busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Continue with $oidcName")
+                    }
                 if (BuildConfig.DEBUG)
                     Text(
                         "For USB testing, use http://127.0.0.1:3000 with ADB reverse.",
@@ -295,4 +333,14 @@ private fun PublicCalendarSettings(cloud: CloudSync) {
             }
         }
     }
+}
+
+/**
+ * Opens [url] in a Custom Tab. The Custom Tabs protocol is a single extra on a VIEW intent,
+ * so this doesn't need androidx.browser. Browsers without Custom Tabs open it as a normal page.
+ */
+private fun openCustomTab(context: android.content.Context, url: String) {
+    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+        .putExtras(android.os.Bundle().apply { putBinder("android.support.customtabs.extra.SESSION", null) })
+    runCatching { context.startActivity(intent) }
 }

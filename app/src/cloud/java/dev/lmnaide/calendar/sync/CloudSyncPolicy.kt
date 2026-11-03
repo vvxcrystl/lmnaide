@@ -1,6 +1,8 @@
 package dev.lmnaide.calendar.sync
 
 import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.Base64
 
 internal data class HolidaySeedRow(val localId: Long, val title: String, val start: Long)
 
@@ -17,6 +19,15 @@ internal fun canonicalHolidaySeedIds(rows: List<HolidaySeedRow>): Map<Long, Stri
         }
     }
 }
+
+/** A PKCE-style verifier for the one-time code that the server hands back after OIDC sign-in. */
+internal fun oidcVerifier(): String =
+    Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32).also { SecureRandom().nextBytes(it) })
+
+/** Matches the server's check: base64url(SHA-256(verifier)) without padding. */
+internal fun oidcChallenge(verifier: String): String =
+    Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)))
 
 /** Old bindings store address:userId; only an account change should lock local data. */
 internal fun boundToOtherAccount(previous: String?, userId: String): Boolean =
