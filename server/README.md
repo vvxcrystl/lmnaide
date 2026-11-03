@@ -128,10 +128,10 @@ lmnaide signs in with **CrystlCloud Accounts** unless you set `ACCOUNTS=local`. 
    OIDC_CLIENT_SECRET=...
    ```
 
-The browser and the Android Cloud app then show **Sign in with CrystlCloud**.
+Opening the calendar in a browser then goes straight to the CrystlCloud sign-in page. The lmnaide sign-in card appears instead after you sign out in that tab, when sign-in fails, or at `/?password`. On that card and in the Android Cloud app, **Sign in with CrystlCloud** comes first and the password form is behind **Sign in with a password**.
 
 - New accounts come only from CrystlCloud. `ALLOW_REGISTRATION=false` stops new accounts too, so only connected accounts can sign in.
-- Password accounts made before the switch still sign in. To use CrystlCloud, sign in with the password, then choose **Connect CrystlCloud account** in Settings → Cloud sync or on the account card. lmnaide never matches accounts by email.
+- Password accounts made before the switch still sign in, at `/?password` in the browser. To use CrystlCloud, sign in with the password, then choose **Connect CrystlCloud account** in Settings → Cloud sync or on the account card. lmnaide never matches accounts by email.
 - Once everyone has connected, `PASSWORD_LOGIN=false` hides password sign-in.
 - Signing out of lmnaide doesn't sign you out of CrystlCloud.
 

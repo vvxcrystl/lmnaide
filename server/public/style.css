@@ -354,10 +354,9 @@ textarea::placeholder {
 .auth-oidc {
   width: 100%;
   justify-content: center;
-  margin-top: 20px;
 }
-#login[hidden] + .auth-oidc {
-  margin-top: 0;
+.auth-use-password {
+  margin: 8px 0 12px;
 }
 .wordmark {
   display: flex;

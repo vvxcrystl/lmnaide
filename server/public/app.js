@@ -650,11 +650,32 @@ async function loadConfig() {
     const res = await fetch("/api/v1/config");
     if (res.ok) serverConfig = await res.json();
   } catch {}
-  $("login").hidden = !serverConfig.passwordLogin;
+  // With an issuer, its button leads and the password form waits behind
+  // "Sign in with a password", unless the page was opened as /?password.
+  const oidc = !!serverConfig.oidc;
+  const passwordFirst = new URLSearchParams(location.search).has("password");
+  $("oidc").hidden = !oidc;
+  if (oidc) $("oidc").textContent = "Sign in with " + serverConfig.oidc.name;
+  $("use-password").hidden = !oidc || !serverConfig.passwordLogin || passwordFirst;
+  $("login").hidden = !serverConfig.passwordLogin || (oidc && !passwordFirst);
   $("register").hidden = !serverConfig.registration;
-  $("oidc").hidden = !serverConfig.oidc;
-  if (serverConfig.oidc) $("oidc").textContent = "Sign in with " + serverConfig.oidc.name;
 }
+$("use-password").onclick = () => {
+  $("use-password").hidden = true;
+  $("login").hidden = false;
+  $("email").focus();
+};
+/**
+ * A fresh visit to a server with an issuer goes straight to its sign-in page.
+ * The sign-in card shows instead after signing out in this tab (otherwise
+ * the issuer's session would sign you straight back in), after a failed
+ * sign-in, and at /?password for password accounts that aren't connected yet.
+ */
+const autoSignIn = () =>
+  !token && !publicToken && !!serverConfig.oidc &&
+  !oidcReturn?.has("oidc") && !oidcReturn?.has("oidc-error") &&
+  !sessionStorage.getItem("signedOut") &&
+  !new URLSearchParams(location.search).has("password");
 const base64url = (bytes) =>
   btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 /**
@@ -662,10 +683,12 @@ const base64url = (bytes) =>
  * only this tab can swap for a session, because only it knows the verifier.
  * Linking first asks for an intent, so the bearer token stays out of URLs.
  */
-async function startOidc(link) {
+async function startOidc(link, auto = false) {
   snackbar();
-  if (!crypto.subtle)
-    return snackbar("Open this page over HTTPS to continue with " + serverConfig.oidc.name + ".");
+  if (!crypto.subtle) {
+    snackbar("Open this page over HTTPS to sign in with " + serverConfig.oidc.name + ".");
+    return false;
+  }
   const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
   const challenge = base64url(new Uint8Array(
     await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
@@ -676,12 +699,14 @@ async function startOidc(link) {
       intent = "&link=" + encodeURIComponent((await api("oidc/link", {})).intent);
     } catch (e) {
       if (!e.stale) snackbar(e.message);
-      return;
+      return false;
     }
   }
   sessionStorage.setItem("oidcVerifier", verifier);
   sessionStorage.setItem("oidcSearch", location.search);
-  location.assign(`/api/v1/oidc/start?client=web&challenge=${challenge}${intent}`);
+  // The automatic redirect replaces this page, so Back doesn't bounce into it again.
+  location[auto ? "replace" : "assign"](`/api/v1/oidc/start?client=web&challenge=${challenge}${intent}`);
+  return true;
 }
 async function finishOidc(code) {
   const verifier = sessionStorage.getItem("oidcVerifier") ?? "";
@@ -4670,6 +4695,7 @@ function signOutLocal() {
   quarantinedChanges = [];
   lastSync = 0;
   sessionStorage.clear();
+  sessionStorage.setItem("signedOut", "1");
   photo = null;
   for (const d of document.querySelectorAll("dialog[open]")) d.close();
   signedIn();
@@ -5471,11 +5497,14 @@ if (token) ready.push(loadProfile(), sync().catch(() => {}));
 if (oidcReturn?.has("oidc"))
   ready.push(configLoaded.then(() => finishOidc(oidcReturn.get("oidc"))));
 else if (oidcReturn?.has("oidc-error"))
-  snackbar("Signing in took too long. Try again.");
+  configLoaded.then(() => snackbar(oidcReturn.get("oidc-error") === "unavailable"
+    ? `Could not reach ${serverConfig.oidc?.name ?? "the sign-in service"}. Try again later.`
+    : "Signing in took too long. Try again."));
 Promise.race([
   Promise.all(ready),
   new Promise((done) => setTimeout(done, 1500)),
-]).then(() => {
+]).then(async () => {
+  if (autoSignIn() && (await startOidc(false, true))) return;
   signedIn();
   if (token && sharedImportToken)
     syncQueue.then(openSharedImport).catch(() => {});

@@ -181,6 +181,13 @@ test("the callback rejects bad state, foreign browsers and tampered ID tokens", 
   const { app, issuer, api, get, flow, codeOf, signIn } = await harness(t);
   const expired = await get("/api/v1/oidc/callback?code=x&state=unknown");
   assert.equal(expired.headers.get("location"), "/#oidc-error=expired");
+  // The web app redirects to start on its own, so an unreachable issuer sends people back.
+  const down = createApp({ dbPath: ":memory:", accounts: "oidc", publicUrl: "http://127.0.0.1",
+    oidcIssuer: "http://127.0.0.1:9", oidcClientId: "id", oidcClientSecret: "s" });
+  await new Promise((resolve) => down.server.listen(0, "127.0.0.1", resolve));
+  t.after(() => down.close());
+  const unreachable = await fetch(`http://127.0.0.1:${down.server.address().port}/api/v1/oidc/start?client=web&challenge=${"a".repeat(43)}`, { redirect: "manual" });
+  assert.equal(unreachable.headers.get("location"), "/#oidc-error=unavailable");
 
   const foreign = await flow({ keepCookie: false });
   const result = await api("oidc/exchange", { code: codeOf(foreign.location), verifier: foreign.verifier });

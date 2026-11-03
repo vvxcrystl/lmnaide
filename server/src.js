@@ -683,8 +683,10 @@ export function createApp({
           try {
             location = await oidcClient.authorizeUrl({ state, ...flow });
           } catch (e) {
+            // The web app redirects here on its own, so send people back to
+            // a page that can explain, not a JSON error.
             console.error("OIDC discovery failed:", e.message);
-            fail(502, `Could not reach ${oidc.name}. Try again later.`);
+            return redirect("/#oidc-error=unavailable");
           }
           oidcFlows.put(state, flow, 10 * 60000);
           return redirect(location, cookie(state, browser, 600));

@@ -50,6 +50,9 @@ fun CloudSettings() {
     val oidcName = config?.oidcName
     val passwordLogin = config?.passwordLogin != false
     val registration = config?.registration != false
+    // With an issuer, its button leads and the password form waits behind "Sign in with a password".
+    var usePassword by rememberSaveable { mutableStateOf(false) }
+    val showPasswordForm = passwordLogin && (oidcName == null || usePassword)
     fun openOidc(link: Boolean) {
         scope.launch { cloud.startOidc(server, link)?.let { openCustomTab(context, it) } }
     }
@@ -156,7 +159,20 @@ fun CloudSettings() {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     enabled = !state.busy,
                 )
-                if (passwordLogin) OutlinedTextField(
+                if (oidcName != null) {
+                    Button(
+                        onClick = { openOidc(link = false) },
+                        enabled = server.isNotBlank() && !state.busy,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Sign in with $oidcName")
+                    }
+                    if (passwordLogin && !usePassword)
+                        TextButton(onClick = { usePassword = true }, enabled = !state.busy) {
+                            Text("Sign in with a password")
+                        }
+                }
+                if (showPasswordForm) OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
                     label = { Text("Email") },
@@ -165,7 +181,7 @@ fun CloudSettings() {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     enabled = !state.busy,
                 )
-                if (passwordLogin) OutlinedTextField(
+                if (showPasswordForm) OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
                     label = { Text("Password · at least 10 characters") },
@@ -175,7 +191,7 @@ fun CloudSettings() {
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                     enabled = !state.busy,
                 )
-                if (passwordLogin && registration) OutlinedTextField(
+                if (showPasswordForm && registration) OutlinedTextField(
                     value = username,
                     onValueChange = { username = it },
                     label = { Text("Username · optional for new accounts") },
@@ -184,7 +200,7 @@ fun CloudSettings() {
                     modifier = Modifier.fillMaxWidth(),
                     enabled = !state.busy,
                 )
-                if (passwordLogin) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (showPasswordForm) Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     val ready =
                         server.isNotBlank() &&
                             email.isNotBlank() &&
@@ -213,14 +229,6 @@ fun CloudSettings() {
                         Text("Create account")
                     }
                 }
-                if (oidcName != null)
-                    OutlinedButton(
-                        onClick = { openOidc(link = false) },
-                        enabled = server.isNotBlank() && !state.busy,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Sign in with $oidcName")
-                    }
                 if (BuildConfig.DEBUG)
                     Text(
                         "For USB testing, use http://127.0.0.1:3000 with ADB reverse.",
