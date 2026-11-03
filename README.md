@@ -6,7 +6,7 @@ lmnaide Calendar is an Android calendar built with Jetpack Compose and Material 
 
 Both build editions use the original app package, `dev.lmnaide.calendar`. The Cloud build adds optional sync; the Offline build has no accounts or network access. Choose one edition to install. Version `0.0.5-alpha` upgrades the existing main app in place when signed with the same key, preserving its calendars, events and settings.
 
-Created in [T3 Code](https://t3.codes). [DESIGN.md](DESIGN.md) covers the design system.
+Created in [T3 Code](https://t3.codes). [DESIGN.md](DESIGN.md) covers the design system, and [AGENTS.md](AGENTS.md) has setup and testing steps for coding agents.
 
 <p>
   <img src="assets/screenshots/schedule.png" width="24%" alt="Schedule view with an October banner and a week of events">
