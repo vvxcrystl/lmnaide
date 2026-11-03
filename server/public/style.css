@@ -351,6 +351,14 @@ textarea::placeholder {
 .auth .actions {
   margin-top: 4px;
 }
+.auth-oidc {
+  width: 100%;
+  justify-content: center;
+  margin-top: 20px;
+}
+#login[hidden] + .auth-oidc {
+  margin-top: 0;
+}
 .wordmark {
   display: flex;
   align-items: center;

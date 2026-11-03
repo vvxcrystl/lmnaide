@@ -18,6 +18,13 @@ const DAY = 86400000;
 const SVG = "http://www.w3.org/2000/svg";
 const publicToken = location.pathname.match(/^\/public\/([a-f0-9]{64})$/)?.[1] ?? null;
 const preferenceKey = publicToken ? "lmnaide.public.prefs" : "lmnaide.prefs";
+// Back from "Continue with" (see startOidc). The server put a one-time code
+// or an error in the hash. Restore the query the page had before leaving.
+const oidcReturn = publicToken ? null : new URLSearchParams(location.hash.slice(1));
+if (oidcReturn?.has("oidc") || oidcReturn?.has("oidc-error")) {
+  history.replaceState(null, "", location.pathname + (sessionStorage.getItem("oidcSearch") ?? location.search));
+  sessionStorage.removeItem("oidcSearch");
+}
 
 /* ---------- Icons ---------- */
 const I = {
@@ -612,25 +619,96 @@ async function authenticate(register) {
       password: $("password").value,
     });
     if (generation !== sessionGeneration) return;
-    token = result.token;
-    email = result.email;
-    username = result.username ?? null;
-    sessionStorage.setItem("token", token);
-    sessionStorage.setItem("email", email);
     $("password").value = "";
-    records = [];
-    cursor = 0;
-    seedTried = false;
-    quarantinedChanges = [];
-    lastSync = 0;
-    signedIn();
-    loadProfile();
-    await sync();
-    await openSharedImport();
+    await startSession(result);
   } catch (e) {
     if (!e.stale) snackbar(e.message);
   }
 }
+async function startSession(result) {
+  token = result.token;
+  email = result.email;
+  username = result.username ?? null;
+  sessionStorage.setItem("token", token);
+  sessionStorage.setItem("email", email);
+  records = [];
+  cursor = 0;
+  seedTried = false;
+  quarantinedChanges = [];
+  lastSync = 0;
+  signedIn();
+  loadProfile();
+  await sync();
+  await openSharedImport();
+}
+
+/* ---------- Sign-in through an OIDC issuer ---------- */
+let serverConfig = { passwordLogin: true, registration: true, oidc: null },
+  linked = false;
+async function loadConfig() {
+  try {
+    const res = await fetch("/api/v1/config");
+    if (res.ok) serverConfig = await res.json();
+  } catch {}
+  $("login").hidden = !serverConfig.passwordLogin;
+  $("register").hidden = !serverConfig.registration;
+  $("oidc").hidden = !serverConfig.oidc;
+  if (serverConfig.oidc) $("oidc").textContent = "Continue with " + serverConfig.oidc.name;
+}
+const base64url = (bytes) =>
+  btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+/**
+ * Leaves for the issuer. The server sends us back with a one-time code that
+ * only this tab can swap for a session, because only it knows the verifier.
+ * Linking first asks for an intent, so the bearer token stays out of URLs.
+ */
+async function startOidc(link) {
+  snackbar();
+  if (!crypto.subtle)
+    return snackbar("Open this page over HTTPS to continue with " + serverConfig.oidc.name + ".");
+  const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
+  const challenge = base64url(new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier)),
+  ));
+  let intent = "";
+  if (link) {
+    try {
+      intent = "&link=" + encodeURIComponent((await api("oidc/link", {})).intent);
+    } catch (e) {
+      if (!e.stale) snackbar(e.message);
+      return;
+    }
+  }
+  sessionStorage.setItem("oidcVerifier", verifier);
+  sessionStorage.setItem("oidcSearch", location.search);
+  location.assign(`/api/v1/oidc/start?client=web&challenge=${challenge}${intent}`);
+}
+async function finishOidc(code) {
+  const verifier = sessionStorage.getItem("oidcVerifier") ?? "";
+  sessionStorage.removeItem("oidcVerifier");
+  const generation = token ? sessionGeneration : invalidateSession();
+  try {
+    const result = await api("oidc/exchange", { code, verifier }, null);
+    if (generation !== sessionGeneration) return;
+    if (result.linked) {
+      linked = true;
+      if ($("account").open) renderAccount();
+      if ($("settings-page")?.open) renderSettings();
+      return snackbar((serverConfig.oidc?.name ?? "Your") + " account connected");
+    }
+    await startSession(result);
+  } catch (e) {
+    if (!e.stale) snackbar(e.message);
+  }
+}
+$("oidc").onclick = () => startOidc(false);
+const connectButton = () =>
+  h("button", {
+    type: "button",
+    class: "outlined",
+    text: "Connect " + serverConfig.oidc.name + " account",
+    onclick: () => startOidc(true),
+  });
 $("login").onsubmit = (e) => {
   e.preventDefault();
   authenticate(false);
@@ -4357,6 +4435,9 @@ function renderSettings({ statusOnly = false } = {}) {
           usernameDraft?.dirty ? usernameDraft.value : username || "",
           !!usernameDraft?.dirty,
         ),
+        serverConfig.oidc && (linked
+          ? h("p", { class: "body-small variant", text: "Signs in with " + serverConfig.oidc.name })
+          : h("div", { class: "actions" }, connectButton())),
         h("p", { class: "body-small variant", text: location.origin }),
         h("p", {
             id: "last-sync",
@@ -5171,6 +5252,7 @@ async function loadProfile() {
     const profile = await api("profile");
     if (generation !== sessionGeneration) return;
     ({ photo, username } = profile);
+    linked = profile.linked === true;
   } catch (error) {
     if (generation !== sessionGeneration || error.stale) return;
     photo = null;
@@ -5224,6 +5306,12 @@ function renderAccount() {
     h(
       "div",
       { class: "account-links" },
+      serverConfig.oidc && !linked && h(
+        "button",
+        { type: "button", onclick: () => startOidc(true) },
+        icon(I.cloud),
+        "Connect " + serverConfig.oidc.name + " account",
+      ),
       h(
         "button",
         {
@@ -5377,7 +5465,13 @@ if (publicToken) {
   setupPublicCalendar();
   ready.push(loadPublicCalendar());
 }
+const configLoaded = loadConfig();
+ready.push(configLoaded);
 if (token) ready.push(loadProfile(), sync().catch(() => {}));
+if (oidcReturn?.has("oidc"))
+  ready.push(configLoaded.then(() => finishOidc(oidcReturn.get("oidc"))));
+else if (oidcReturn?.has("oidc-error"))
+  snackbar("Signing in took too long. Try again.");
 Promise.race([
   Promise.all(ready),
   new Promise((done) => setTimeout(done, 1500)),

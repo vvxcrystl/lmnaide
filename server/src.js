@@ -13,6 +13,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve, sep, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { toICalendar } from "./public/calendar-export.js";
+import { createOidcClient, oidcConfig, randomToken, s256 } from "./oidc.js";
 const scrypt = promisify(scryptCallback);
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 const MIN_EVENT_TIME = Date.UTC(1900, 0, 1);
@@ -267,8 +268,25 @@ export function createApp({
   // the quota is reached only deletion batches of live records are
   // accepted, so a full account can still free space. 0 lifts the quota.
   quotaBytes = quotaFromEnv(),
+  // "local" keeps lmnaide's own email/password accounts. "oidc" adds
+  // "Continue with <OIDC_NAME>" through an OpenID Connect issuer such as
+  // CrystlCloud Accounts; new accounts then come only from the issuer.
+  accounts = process.env.ACCOUNTS || "local",
+  oidcIssuer = process.env.OIDC_ISSUER || "",
+  oidcClientId = process.env.OIDC_CLIENT_ID || "",
+  oidcClientSecret = process.env.OIDC_CLIENT_SECRET || "",
+  oidcName = process.env.OIDC_NAME || "",
+  passwordLogin = process.env.PASSWORD_LOGIN !== "false",
 } = {}) {
   publicUrl = resolvePublicUrl({ publicUrl, domain });
+  const oidc = oidcConfig({
+    accounts, issuer: oidcIssuer, clientId: oidcClientId,
+    clientSecret: oidcClientSecret, name: oidcName, publicUrl,
+  });
+  if (!oidc && !passwordLogin)
+    throw new Error("PASSWORD_LOGIN=false needs ACCOUNTS=oidc, or nobody could sign in");
+  const oidcClient = oidc && createOidcClient(oidc);
+  const passwordRegistration = !oidc && allowRegistration;
   const trustedProxyNets = trustedProxyList(trustedProxies);
   if (dbPath !== ":memory:") mkdirSync(dirname(dbPath), { recursive: true });
   const db = new DatabaseSync(dbPath);
@@ -290,6 +308,7 @@ export function createApp({
     END;
     CREATE TABLE IF NOT EXISTS profiles(userId TEXT PRIMARY KEY REFERENCES users(id),photo TEXT);
     CREATE TABLE IF NOT EXISTS event_origins(userId TEXT NOT NULL REFERENCES users(id),eventId TEXT NOT NULL,PRIMARY KEY(userId,eventId));
+    CREATE TABLE IF NOT EXISTS identities(issuer TEXT NOT NULL,subject TEXT NOT NULL,userId TEXT NOT NULL REFERENCES users(id),created INTEGER NOT NULL,PRIMARY KEY(issuer,subject),UNIQUE(issuer,userId));
     CREATE TABLE IF NOT EXISTS counter(id INTEGER PRIMARY KEY CHECK(id=1),value INTEGER NOT NULL);
     INSERT OR IGNORE INTO counter VALUES(1,0);`);
   if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "username"))
@@ -378,6 +397,85 @@ export function createApp({
     db
       .prepare("INSERT INTO history VALUES(?,?,?,?,?,?,?,?)")
       .run(randomUUID(), userId, kind, id, data, deleted, Date.now(), reason);
+  // Short-lived OIDC state lives in memory: a restart only cancels sign-ins
+  // that are in progress. Each map is capped like the rate-limit map.
+  const shortLived = () => {
+    const map = new Map();
+    return {
+      put(key, value, ttl) {
+        const now = Date.now();
+        if (map.size >= 10000)
+          for (const [k, v] of map) if (v.expires < now || map.size >= 10000) map.delete(k);
+        map.set(key, { ...value, expires: now + ttl });
+      },
+      // Single use: reading an entry removes it.
+      take(key) {
+        const value = map.get(key);
+        map.delete(key);
+        return value && value.expires >= Date.now() ? value : null;
+      },
+    };
+  };
+  const oidcFlows = shortLived();
+  const oidcCodes = shortLived();
+  const linkIntents = shortLived();
+  const startSession = (user) => {
+    const token = randomBytes(32).toString("hex");
+    db.prepare("DELETE FROM sessions WHERE expires<?").run(Date.now());
+    // Edit history and the idempotency journal are pruned on sign-in so
+    // long-running servers stay bounded: 90 days matches the sync
+    // operation-retry window and the browser's history coverage.
+    const retentionCutoff = Date.now() - 90 * 86400000;
+    db.prepare("DELETE FROM history WHERE created<?").run(retentionCutoff);
+    db.prepare("DELETE FROM operations WHERE created<?").run(retentionCutoff);
+    db.prepare("INSERT INTO sessions VALUES(?,?,?)").run(
+      hash(token),
+      user.id,
+      Date.now() + 90 * 86400000,
+    );
+    return { token, email: user.email, userId: user.id, username: user.username ?? null };
+  };
+  // Finds or creates the lmnaide user for an issuer identity, or links it to
+  // the user who started a "Connect" flow. Accounts are never matched by email.
+  const resolveIdentity = ({ subject, email }, linkUserId) => {
+    const linked = db
+      .prepare("SELECT userId FROM identities WHERE issuer=? AND subject=?")
+      .get(oidc.issuer, subject);
+    if (linkUserId) {
+      if (linked?.userId === linkUserId) return { linked: true };
+      if (linked)
+        fail(409, `This ${oidc.name} account is already connected to another calendar account.`);
+      try {
+        db.prepare("INSERT INTO identities VALUES(?,?,?,?)")
+          .run(oidc.issuer, subject, linkUserId, Date.now());
+      } catch (e) {
+        if (e.message.includes("UNIQUE"))
+          fail(409, `This calendar account is already connected to a different ${oidc.name} account.`);
+        throw e;
+      }
+      return { linked: true };
+    }
+    if (linked) return { userId: linked.userId };
+    if (!allowRegistration) fail(403, "New accounts are disabled on this server.");
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      fail(400, `Your ${oidc.name} account didn't share an email address.`);
+    if (db.prepare("SELECT 1 FROM users WHERE email=?").get(email))
+      fail(409, `An account with ${email} already exists. Sign in with your password, then choose Connect ${oidc.name} account in Settings.`);
+    const userId = randomUUID();
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      // "!" can never match a salt:hash pair, so password sign-in stays closed.
+      db.prepare("INSERT INTO users(id,email,password) VALUES(?,?,'!')").run(userId, email);
+      db.prepare("INSERT INTO identities VALUES(?,?,?,?)")
+        .run(oidc.issuer, subject, userId, Date.now());
+      db.exec("COMMIT");
+    } catch (e) {
+      db.exec("ROLLBACK");
+      if (e.message.includes("UNIQUE")) fail(409, "Someone signed in with this account at the same time. Try again.");
+      throw e;
+    }
+    return { userId };
+  };
   const publicDir = join(dirname(fileURLToPath(import.meta.url)), "public");
   const server = createServer(async (req, res) => {
     const send = (status, data) => {
@@ -540,12 +638,112 @@ export function createApp({
           fail(400, "Invalid JSON");
         }
       };
+      // Tells clients which sign-in options to show.
+      if (req.method === "GET" && path === "/api/v1/config")
+        return send(200, {
+          passwordLogin,
+          registration: passwordRegistration,
+          oidc: oidc ? { name: oidc.name } : null,
+        });
+      if (!oidc && path.startsWith("/api/v1/oidc/")) fail(404, "Not found");
+      if (oidc && path.startsWith("/api/v1/oidc/") && path !== "/api/v1/oidc/link") {
+        takeLimit(`ip:${ipBucketKey(clientIp(req, trustedProxyNets))}`, 30);
+        const query = new URL(req.url, "http://localhost").searchParams;
+        const redirect = (location, cookie) => {
+          res.writeHead(302, {
+            Location: location,
+            "Cache-Control": "no-store",
+            ...(cookie ? { "Set-Cookie": cookie } : {}),
+          });
+          res.end();
+        };
+        // The cookie ties the callback to the browser that started the flow,
+        // so nobody can finish a sign-in or link they sent someone else.
+        const cookieName = (state) => "lmnaide_oidc_" + state.slice(0, 16);
+        const cookie = (state, value, maxAge) =>
+          `${cookieName(state)}=${value}; Path=/api/v1/oidc/callback; Max-Age=${maxAge}; HttpOnly; SameSite=Lax` +
+          (publicUrl.startsWith("https:") ? "; Secure" : "");
+        if (req.method === "GET" && path === "/api/v1/oidc/start") {
+          // The client keeps the verifier for this challenge and proves it
+          // when it swaps the one-time code, so an intercepted code is useless.
+          const client = query.get("client");
+          const challenge = query.get("challenge") ?? "";
+          if (!["web", "android"].includes(client) || !/^[A-Za-z0-9_-]{43}$/.test(challenge))
+            fail(400, "Invalid sign-in request");
+          let linkUserId = null;
+          if (query.has("link")) {
+            linkUserId = linkIntents.take(hash(query.get("link")))?.userId;
+            if (!linkUserId) fail(400, "This link request expired. Try again.");
+          }
+          const state = randomToken();
+          const browser = randomToken();
+          const flow = { nonce: randomToken(), verifier: randomToken(), client, challenge, linkUserId, browser: hash(browser) };
+          let location;
+          try {
+            location = await oidcClient.authorizeUrl({ state, ...flow });
+          } catch (e) {
+            console.error("OIDC discovery failed:", e.message);
+            fail(502, `Could not reach ${oidc.name}. Try again later.`);
+          }
+          oidcFlows.put(state, flow, 10 * 60000);
+          return redirect(location, cookie(state, browser, 600));
+        }
+        if (req.method === "GET" && path === "/api/v1/oidc/callback") {
+          const state = query.get("state") ?? "";
+          const flow = state && oidcFlows.take(state);
+          if (!flow) return redirect("/#oidc-error=expired");
+          const sent = (req.headers.cookie ?? "").split(/;\s*/)
+            .find((c) => c.startsWith(cookieName(state) + "="))?.split("=")[1];
+          // The client swaps this code for the result with its verifier.
+          const finish = (status, result) => {
+            const code = randomToken();
+            oidcCodes.put(hash(code), { challenge: flow.challenge, status, result }, 2 * 60000);
+            redirect(flow.client === "android" ? `/oidc-return.html#${code}` : `/#oidc=${code}`,
+              cookie(state, "", 0));
+          };
+          try {
+            if (!sent || hash(sent) !== flow.browser)
+              fail(400, "Finish signing in in the browser where you started.");
+            if (query.get("error"))
+              fail(400, query.get("error") === "access_denied"
+                ? "Sign-in was cancelled."
+                : `${oidc.name} could not sign you in.`);
+            let identity;
+            try {
+              identity = await oidcClient.signIn({ code: query.get("code") ?? "", ...flow });
+            } catch (e) {
+              console.error("OIDC sign-in failed:", e.message);
+              fail(401, `Could not verify your ${oidc.name} sign-in. Try again.`);
+            }
+            return finish(200, resolveIdentity(identity, flow.linkUserId));
+          } catch (e) {
+            if (!e.status) throw e;
+            return finish(e.status, { error: e.message });
+          }
+        }
+        if (req.method === "POST" && path === "/api/v1/oidc/exchange") {
+          const b = await body();
+          const entry = typeof b?.code === "string" && oidcCodes.take(hash(b.code));
+          if (!entry || typeof b.verifier !== "string" || s256(b.verifier) !== entry.challenge)
+            fail(400, "This sign-in expired. Try again.");
+          if (entry.result.userId) {
+            const user = db.prepare("SELECT * FROM users WHERE id=?").get(entry.result.userId);
+            if (!user) fail(400, "This sign-in expired. Try again.");
+            return send(200, startSession(user));
+          }
+          return send(entry.status, entry.result);
+        }
+        fail(404, "Not found");
+      }
       if (
         req.method === "POST" &&
         ["/api/v1/register", "/api/v1/login"].includes(path)
       ) {
         const ipKey = ipBucketKey(clientIp(req, trustedProxyNets));
         takeLimit(`ip:${ipKey}`, 30);
+        if (path === "/api/v1/register" && oidc)
+          fail(403, `Create an account with ${oidc.name} instead.`);
+        if (!passwordLogin) fail(403, `Sign in with ${oidc.name} instead.`);
         const b = await body();
         if (!b || typeof b !== "object" || Array.isArray(b))
           fail(400, "Invalid request");
@@ -613,29 +811,19 @@ export function createApp({
             throw e;
           }
         } else {
+          // Accounts created through OIDC store "!" instead of a hash. They
+          // take the dummy-hash path and can never match.
+          const usable = /^[0-9a-f]{32}:[0-9a-f]{128}$/.test(user?.password ?? "");
           const [salt, stored] = (
-            user?.password || `${"0".repeat(32)}:${"0".repeat(128)}`
+            usable ? user.password : `${"0".repeat(32)}:${"0".repeat(128)}`
           ).split(":");
           const key = await scrypt(b.password, salt, 64);
-          if (!timingSafeEqual(key, Buffer.from(stored, "hex")) || !user) {
+          if (!timingSafeEqual(key, Buffer.from(stored, "hex")) || !usable) {
             takeLimit(accountKey, 10);
             fail(401, "Email or password is incorrect.");
           }
         }
-        const token = randomBytes(32).toString("hex");
-        db.prepare("DELETE FROM sessions WHERE expires<?").run(Date.now());
-        // Edit history and the idempotency journal are pruned on sign-in so
-        // long-running servers stay bounded: 90 days matches the sync
-        // operation-retry window and the browser's history coverage.
-        const retentionCutoff = Date.now() - 90 * 86400000;
-        db.prepare("DELETE FROM history WHERE created<?").run(retentionCutoff);
-        db.prepare("DELETE FROM operations WHERE created<?").run(retentionCutoff);
-        db.prepare("INSERT INTO sessions VALUES(?,?,?)").run(
-          hash(token),
-          user.id,
-          Date.now() + 90 * 86400000,
-        );
-        return send(200, { token, email, userId: user.id, username: user.username ?? null });
+        return send(200, startSession(user));
       }
       const token = req.headers.authorization?.replace(/^Bearer /, "");
       const session =
@@ -645,6 +833,14 @@ export function createApp({
           .get(hash(token), Date.now());
       if (!session) fail(401, "Session expired. Sign in again.");
       const userId = session.userId;
+      // Starts "Connect <OIDC_NAME> account". The client opens
+      // /api/v1/oidc/start with this intent, so the bearer token never
+      // goes into a URL.
+      if (oidc && req.method === "POST" && path === "/api/v1/oidc/link") {
+        const intent = randomToken();
+        linkIntents.put(hash(intent), { userId }, 10 * 60000);
+        return send(200, { intent });
+      }
       if (req.method === "POST" && path === "/api/v1/public") {
         const b = await body();
         if (!b || !["status", "create", "revoke"].includes(b.action))
@@ -725,7 +921,15 @@ export function createApp({
         const profile = db
           .prepare("SELECT photo FROM profiles WHERE userId=?")
           .get(userId);
-        return send(200, { photo: profile?.photo ?? null, username: db.prepare("SELECT username FROM users WHERE id=?").get(userId).username });
+        return send(200, {
+          photo: profile?.photo ?? null,
+          username: db.prepare("SELECT username FROM users WHERE id=?").get(userId).username,
+          ...(oidc ? {
+            linked: !!db
+              .prepare("SELECT 1 FROM identities WHERE issuer=? AND userId=?")
+              .get(oidc.issuer, userId),
+          } : {}),
+        });
       }
       if (req.method === "POST" && path === "/api/v1/logout") {
         db.prepare("DELETE FROM sessions WHERE token=?").run(hash(token));
