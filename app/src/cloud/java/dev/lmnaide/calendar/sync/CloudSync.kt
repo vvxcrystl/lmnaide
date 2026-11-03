@@ -270,7 +270,7 @@ class CloudSync(
     }
 
     /**
-     * Returns the address to open in a Custom Tab for "Continue with" or, with [link],
+     * Returns the address to open in a Custom Tab for "Sign in with" or, with [link],
      * "Connect account". The verifier stays in preferences, so the one-time code that comes
      * back to [finishOidc] works even if Android stopped the app in between.
      */

@@ -1,4 +1,4 @@
-// OpenID Connect relying party for "Continue with CrystlCloud" (or any
+// OpenID Connect relying party for "Sign in with CrystlCloud" (or any
 // compatible issuer). Uses only Node's built-in crypto and fetch.
 import { createHash, createPublicKey, randomBytes, verify } from "node:crypto";
 

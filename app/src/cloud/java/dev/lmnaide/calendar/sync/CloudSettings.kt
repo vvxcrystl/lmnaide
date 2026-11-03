@@ -219,7 +219,7 @@ fun CloudSettings() {
                         enabled = server.isNotBlank() && !state.busy,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Continue with $oidcName")
+                        Text("Sign in with $oidcName")
                     }
                 if (BuildConfig.DEBUG)
                     Text(

@@ -8,7 +8,7 @@ import dev.lmnaide.calendar.container
 import kotlinx.coroutines.launch
 
 /**
- * Receives lmnaide://oidc?code=… from the Custom Tab after "Continue with". It hands the
+ * Receives lmnaide://oidc?code=… from the Custom Tab after "Sign in with". It hands the
  * one-time code to [CloudSync.finishOidc], then returns to the existing MainActivity, which
  * closes the Custom Tab above it and keeps the user on the Settings screen.
  */

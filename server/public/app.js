@@ -18,7 +18,7 @@ const DAY = 86400000;
 const SVG = "http://www.w3.org/2000/svg";
 const publicToken = location.pathname.match(/^\/public\/([a-f0-9]{64})$/)?.[1] ?? null;
 const preferenceKey = publicToken ? "lmnaide.public.prefs" : "lmnaide.prefs";
-// Back from "Continue with" (see startOidc). The server put a one-time code
+// Back from "Sign in with" (see startOidc). The server put a one-time code
 // or an error in the hash. Restore the query the page had before leaving.
 const oidcReturn = publicToken ? null : new URLSearchParams(location.hash.slice(1));
 if (oidcReturn?.has("oidc") || oidcReturn?.has("oidc-error")) {
@@ -653,7 +653,7 @@ async function loadConfig() {
   $("login").hidden = !serverConfig.passwordLogin;
   $("register").hidden = !serverConfig.registration;
   $("oidc").hidden = !serverConfig.oidc;
-  if (serverConfig.oidc) $("oidc").textContent = "Continue with " + serverConfig.oidc.name;
+  if (serverConfig.oidc) $("oidc").textContent = "Sign in with " + serverConfig.oidc.name;
 }
 const base64url = (bytes) =>
   btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");

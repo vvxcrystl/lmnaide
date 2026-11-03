@@ -99,7 +99,7 @@ For a plain Node service, environment variables are:
 | `ACCOUNTS` | `oidc` | `oidc` signs in through CrystlCloud Accounts or another OpenID Connect issuer. `local` uses only lmnaide's own email and password accounts. See [Accounts](#accounts) |
 | `OIDC_ISSUER` | `https://accounts.crystlcloud.org/api/auth` | Issuer URL. Change it to use another OpenID Connect issuer |
 | `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | empty | The client registered with the issuer. Required unless `ACCOUNTS=local` |
-| `OIDC_NAME` | `CrystlCloud` | Button label: "Continue with `OIDC_NAME`" |
+| `OIDC_NAME` | `CrystlCloud` | Button label: "Sign in with `OIDC_NAME`" |
 | `PASSWORD_LOGIN` | `true` | With `oidc`, set `false` to hide password sign-in |
 | `CALENDAR_DOMAIN` | empty | Custom DNS hostname, e.g. `calendar.domain.com`; supplies the HTTPS origin for share links and configures Caddy in production Compose |
 | `PUBLIC_URL` | empty | Explicit HTTP(S) origin for share links; overrides `CALENDAR_DOMAIN` for plain Node hosting |
@@ -128,7 +128,7 @@ lmnaide signs in with **CrystlCloud Accounts** unless you set `ACCOUNTS=local`. 
    OIDC_CLIENT_SECRET=...
    ```
 
-The browser and the Android Cloud app then show **Continue with CrystlCloud**.
+The browser and the Android Cloud app then show **Sign in with CrystlCloud**.
 
 - New accounts come only from CrystlCloud. `ALLOW_REGISTRATION=false` stops new accounts too, so only connected accounts can sign in.
 - Password accounts made before the switch still sign in. To use CrystlCloud, sign in with the password, then choose **Connect CrystlCloud account** in Settings → Cloud sync or on the account card. lmnaide never matches accounts by email.

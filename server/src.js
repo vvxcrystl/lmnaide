@@ -268,7 +268,7 @@ export function createApp({
   // the quota is reached only deletion batches of live records are
   // accepted, so a full account can still free space. 0 lifts the quota.
   quotaBytes = quotaFromEnv(),
-  // "oidc", the default, adds "Continue with <OIDC_NAME>" through an
+  // "oidc", the default, adds "Sign in with <OIDC_NAME>" through an
   // OpenID Connect issuer, CrystlCloud Accounts unless OIDC_ISSUER says
   // otherwise. New accounts then come only from the issuer. "local" keeps
   // lmnaide's own email and password accounts and nothing else.
