@@ -319,6 +319,11 @@ export function createApp({
   // The display name from a connected OIDC account. Username stays lmnaide's own.
   if (!db.prepare("PRAGMA table_info(profiles)").all().some((c) => c.name === "name"))
     db.exec("ALTER TABLE profiles ADD COLUMN name TEXT");
+  // Refresh token, last picture URL and last profile sync for each linked
+  // account. The refresh token only works with OIDC_CLIENT_SECRET.
+  const identityColumns = db.prepare("PRAGMA table_info(identities)").all().map((c) => c.name);
+  for (const [column, type] of [["refreshToken", "TEXT"], ["picture", "TEXT"], ["synced", "INTEGER"]])
+    if (!identityColumns.includes(column)) db.exec(`ALTER TABLE identities ADD COLUMN ${column} ${type}`);
   if (
     !db
       .prepare("PRAGMA table_info(operations)")
@@ -451,7 +456,7 @@ export function createApp({
       if (linked)
         fail(409, `This ${oidc.name} account is already connected to another calendar account.`);
       try {
-        db.prepare("INSERT INTO identities VALUES(?,?,?,?)")
+        db.prepare("INSERT INTO identities(issuer,subject,userId,created) VALUES(?,?,?,?)")
           .run(oidc.issuer, subject, linkUserId, Date.now());
       } catch (e) {
         if (e.message.includes("UNIQUE"))
@@ -471,7 +476,7 @@ export function createApp({
     try {
       // "!" can never match a salt:hash pair, so password sign-in stays closed.
       db.prepare("INSERT INTO users(id,email,password) VALUES(?,?,'!')").run(userId, email);
-      db.prepare("INSERT INTO identities VALUES(?,?,?,?)")
+      db.prepare("INSERT INTO identities(issuer,subject,userId,created) VALUES(?,?,?,?)")
         .run(oidc.issuer, subject, userId, Date.now());
       db.exec("COMMIT");
     } catch (e) {
@@ -484,21 +489,64 @@ export function createApp({
   const isLinked = (userId) => !!oidc && !!db
     .prepare("SELECT 1 FROM identities WHERE issuer=? AND userId=?")
     .get(oidc.issuer, userId);
-  // A connected account's name and photo belong to the issuer. Every sign-in
-  // and connect copies them, so changes there show up at the next sign-in.
-  // A picture that can't be fetched keeps the current photo.
-  const syncProfile = async (userId, { name, picture }) => {
+  // A connected account's name and photo belong to the issuer. Sign-in,
+  // connect and profile refreshes copy them. The picture is only downloaded
+  // when its URL changes, and one that can't be fetched keeps the current photo.
+  const syncProfile = async (userId, { name, picture, refreshToken }) => {
+    const where = [oidc.issuer, userId];
+    const known = db.prepare("SELECT picture FROM identities WHERE issuer=? AND userId=?").get(...where);
     let photo;
-    try {
-      photo = await oidcClient.fetchPicture(picture);
-    } catch (e) {
-      console.error("OIDC picture download failed:", e.message);
+    if (!picture || picture !== known?.picture) {
+      try {
+        photo = await oidcClient.fetchPicture(picture);
+      } catch (e) {
+        console.error("OIDC picture download failed:", e.message);
+      }
     }
     db.prepare(
       "INSERT INTO profiles(userId,name) VALUES(?,?) ON CONFLICT(userId) DO UPDATE SET name=excluded.name",
     ).run(userId, name || null);
-    if (photo !== undefined)
+    if (photo !== undefined) {
       db.prepare("UPDATE profiles SET photo=? WHERE userId=?").run(photo, userId);
+      db.prepare("UPDATE identities SET picture=? WHERE issuer=? AND userId=?").run(picture || null, ...where);
+    }
+    if (refreshToken)
+      db.prepare("UPDATE identities SET refreshToken=? WHERE issuer=? AND userId=?").run(refreshToken, ...where);
+    db.prepare("UPDATE identities SET synced=? WHERE issuer=? AND userId=?").run(Date.now(), ...where);
+  };
+  // Re-reads a linked account's name and photo when its profile is opened,
+  // at most every 15 seconds, so a change at the issuer shows on reload.
+  // The issuer rotates refresh tokens and revokes them all if an old one is
+  // reused, so one refresh runs at a time per user and the new token is
+  // saved before anything else can fail.
+  const refreshing = new Map();
+  const refreshProfile = (userId) => {
+    if (!oidc || refreshing.has(userId)) return refreshing.get(userId);
+    const row = db
+      .prepare("SELECT subject,refreshToken,synced FROM identities WHERE issuer=? AND userId=?")
+      .get(oidc.issuer, userId);
+    if (!row?.refreshToken || Date.now() - (row.synced ?? 0) < 15000) return;
+    const where = [oidc.issuer, row.subject];
+    const run = (async () => {
+      try {
+        const tokens = await oidcClient.refresh(row.refreshToken);
+        db.prepare("UPDATE identities SET refreshToken=? WHERE issuer=? AND subject=?").run(tokens.refreshToken, ...where);
+        const info = await oidcClient.userinfo(tokens.accessToken);
+        if (info.subject !== row.subject) throw new Error("userinfo sub does not match the linked account");
+        await syncProfile(userId, info);
+      } catch (e) {
+        // A revoked token stops refreshes until the next sign-in. Other
+        // failures wait out the interval instead of retrying every request.
+        if (e.revoked)
+          db.prepare("UPDATE identities SET refreshToken=NULL WHERE issuer=? AND subject=?").run(...where);
+        db.prepare("UPDATE identities SET synced=? WHERE issuer=? AND subject=?").run(Date.now(), ...where);
+        console.error("OIDC profile refresh failed:", e.message);
+      } finally {
+        refreshing.delete(userId);
+      }
+    })();
+    refreshing.set(userId, run);
+    return run;
   };
   const publicDir = join(dirname(fileURLToPath(import.meta.url)), "public");
   const server = createServer(async (req, res) => {
@@ -948,6 +996,7 @@ export function createApp({
             "INSERT INTO profiles(userId,photo) VALUES(?,?) ON CONFLICT(userId) DO UPDATE SET photo=excluded.photo",
           ).run(userId, photo);
         } else if (req.method !== "GET") fail(404, "Not found");
+        else await refreshProfile(userId);
         const profile = db
           .prepare("SELECT photo,name FROM profiles WHERE userId=?")
           .get(userId);

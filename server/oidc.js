@@ -69,7 +69,9 @@ export function createOidcClient(config) {
     const res = await fetch(url, { ...init, signal: AbortSignal.timeout(10000) });
     const data = await res.json().catch(() => null);
     if (!res.ok || !data || typeof data !== "object")
-      throw new Error(`OIDC request to ${new URL(url).pathname} failed with ${res.status}`);
+      throw Object.assign(new Error(`OIDC request to ${new URL(url).pathname} failed with ${res.status}`), {
+        oauthError: data?.error,
+      });
     return data;
   };
   const metadata = async () => {
@@ -88,6 +90,24 @@ export function createOidcClient(config) {
     }
     throw new Error("ID token was signed with an unknown key");
   };
+  const token = async (params) => {
+    const basic = Buffer.from(
+      `${encodeURIComponent(config.clientId)}:${encodeURIComponent(config.clientSecret)}`,
+    ).toString("base64");
+    return getJson((await metadata()).token_endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${basic}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams(params),
+    });
+  };
+  const profileFrom = (info) => ({
+    email: typeof info.email === "string" ? info.email.trim().toLowerCase() : "",
+    name: typeof info.name === "string" ? info.name.trim().slice(0, 100) : "",
+    picture: typeof info.picture === "string" ? info.picture : "",
+  });
 
   return {
     async authorizeUrl({ state, nonce, verifier }) {
@@ -96,7 +116,11 @@ export function createOidcClient(config) {
         response_type: "code",
         client_id: config.clientId,
         redirect_uri: config.redirectUri,
-        scope: "openid profile email",
+        // offline_access gets a refresh token, so name and photo can be
+        // re-read later without another sign-in. Only asked where offered.
+        scope: (await metadata()).scopes_supported?.includes("offline_access")
+          ? "openid profile email offline_access"
+          : "openid profile email",
         state,
         nonce,
         code_challenge: s256(verifier),
@@ -108,21 +132,11 @@ export function createOidcClient(config) {
     /** Swaps the code for tokens, verifies the ID token, then reads the profile from userinfo. */
     async signIn({ code, verifier, nonce }) {
       const meta = await metadata();
-      const basic = Buffer.from(
-        `${encodeURIComponent(config.clientId)}:${encodeURIComponent(config.clientSecret)}`,
-      ).toString("base64");
-      const tokens = await getJson(meta.token_endpoint, {
-        method: "POST",
-        headers: {
-          Authorization: `Basic ${basic}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: new URLSearchParams({
-          grant_type: "authorization_code",
-          code,
-          redirect_uri: config.redirectUri,
-          code_verifier: verifier,
-        }),
+      const tokens = await token({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: config.redirectUri,
+        code_verifier: verifier,
       });
       if (typeof tokens.id_token !== "string" || typeof tokens.access_token !== "string")
         throw new Error("Token response is missing id_token or access_token");
@@ -133,10 +147,37 @@ export function createOidcClient(config) {
       if (info.sub !== claims.sub) throw new Error("userinfo sub does not match the ID token");
       return {
         subject: claims.sub,
-        email: typeof info.email === "string" ? info.email.trim().toLowerCase() : "",
-        name: typeof info.name === "string" ? info.name.trim().slice(0, 100) : "",
-        picture: typeof info.picture === "string" ? info.picture : "",
+        ...profileFrom(info),
+        refreshToken: typeof tokens.refresh_token === "string" ? tokens.refresh_token : null,
       };
+    },
+
+    /**
+     * Swaps a refresh token for an access token. The issuer may rotate the
+     * refresh token, so store the returned one before doing anything else.
+     * A revoked token throws with `revoked` set.
+     */
+    async refresh(refreshToken) {
+      let tokens;
+      try {
+        tokens = await token({ grant_type: "refresh_token", refresh_token: refreshToken });
+      } catch (e) {
+        if (e.oauthError === "invalid_grant") e.revoked = true;
+        throw e;
+      }
+      if (typeof tokens.access_token !== "string") throw new Error("Token response is missing access_token");
+      return {
+        accessToken: tokens.access_token,
+        refreshToken: typeof tokens.refresh_token === "string" ? tokens.refresh_token : refreshToken,
+      };
+    },
+
+    /** The current subject, name and picture for an access token. */
+    async userinfo(accessToken) {
+      const info = await getJson((await metadata()).userinfo_endpoint, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      return { subject: info.sub, ...profileFrom(info) };
     },
 
     /**

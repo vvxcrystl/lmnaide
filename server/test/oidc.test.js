@@ -13,7 +13,9 @@ async function fakeIssuer(t) {
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const codes = new Map();
   const access = new Map();
-  const issuer = { next: { sub: "sub-1", email: "new@example.com" } };
+  const refreshTokens = new Map();
+  // `accounts` holds each subject's current profile, so tests can change it at the issuer.
+  const issuer = { next: { sub: "sub-1", email: "new@example.com" }, accounts: {}, refreshes: 0 };
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, issuer.url);
     const json = (data, status = 200) => {
@@ -27,6 +29,7 @@ async function fakeIssuer(t) {
         token_endpoint: issuer.url + "/token",
         userinfo_endpoint: issuer.url + "/userinfo",
         jwks_uri: issuer.url + "/jwks",
+        scopes_supported: ["openid", "profile", "email", "offline_access"],
       });
     if (url.pathname === "/jwks")
       return json({ keys: [{ ...publicKey.export({ format: "jwk" }), kid: "k1", alg: "EdDSA" }] });
@@ -42,6 +45,18 @@ async function fakeIssuer(t) {
       let raw = "";
       for await (const chunk of req) raw += chunk;
       const form = new URLSearchParams(raw);
+      if (form.get("grant_type") === "refresh_token") {
+        // Rotates like Better Auth: an old token is rejected.
+        const sub = refreshTokens.get(form.get("refresh_token"));
+        refreshTokens.delete(form.get("refresh_token"));
+        if (!sub) return json({ error: "invalid_grant" }, 400);
+        issuer.refreshes++;
+        const accessToken = b64(randomBytes(16));
+        const refreshToken = b64(randomBytes(16));
+        access.set(accessToken, sub);
+        refreshTokens.set(refreshToken, sub);
+        return json({ access_token: accessToken, refresh_token: refreshToken, token_type: "Bearer" });
+      }
       const grant = codes.get(form.get("code"));
       codes.delete(form.get("code"));
       const challenge = createHash("sha256").update(form.get("code_verifier") ?? "").digest("base64url");
@@ -63,16 +78,19 @@ async function fakeIssuer(t) {
       const input = b64(JSON.stringify({ alg: "EdDSA", kid: "k1" })) + "." + b64(JSON.stringify(claims));
       const signature = sign(null, Buffer.from(input), grant.badSignature ? generateKeyPairSync("ed25519").privateKey : privateKey);
       const accessToken = b64(randomBytes(16));
-      access.set(accessToken, { sub: grant.sub, email: grant.email, name: grant.name, picture: grant.picture });
-      return json({ access_token: accessToken, token_type: "Bearer", id_token: input + "." + b64(signature) });
+      issuer.accounts[grant.sub] = { sub: grant.sub, email: grant.email, name: grant.name, picture: grant.picture };
+      access.set(accessToken, grant.sub);
+      const refreshToken = grant.params.get("scope").split(" ").includes("offline_access") ? b64(randomBytes(16)) : undefined;
+      if (refreshToken) refreshTokens.set(refreshToken, grant.sub);
+      return json({ access_token: accessToken, refresh_token: refreshToken, token_type: "Bearer", id_token: input + "." + b64(signature) });
     }
     if (url.pathname.startsWith("/photos/")) {
       res.writeHead(200, { "Content-Type": "image/jpeg" });
       return res.end("photo-" + url.pathname.slice("/photos/".length));
     }
     if (url.pathname === "/userinfo") {
-      const info = access.get(req.headers.authorization?.replace(/^Bearer /, ""));
-      return info ? json(info) : json({ error: "invalid_token" }, 401);
+      const sub = access.get(req.headers.authorization?.replace(/^Bearer /, ""));
+      return sub ? json(issuer.accounts[sub]) : json({ error: "invalid_token" }, 401);
     }
     json({ error: "not found" }, 404);
   });
@@ -197,6 +215,25 @@ test("a connected account's name and photo come from the issuer", async (t) => {
   assert.deepEqual([profile.name, profile.photo], ["Ada", jpeg("photo-a")]);
   issuer.next = { ...issuer.next, picture: undefined };
   assert.equal((await api("profile", undefined, (await signIn()).token)).photo, null);
+});
+
+test("opening the profile re-reads name and photo from the issuer", async (t) => {
+  const { app, issuer, api, signIn } = await harness(t);
+  const jpeg = (text) => "data:image/jpeg;base64," + Buffer.from(text).toString("base64");
+  issuer.next = { sub: "sub-1", email: "new@example.com", name: "Ada", picture: issuer.url + "/photos/a" };
+  const { token } = await signIn();
+  // Changed at the issuer, with no new lmnaide sign-in.
+  issuer.accounts["sub-1"] = { ...issuer.accounts["sub-1"], name: "Ada L", picture: issuer.url + "/photos/b" };
+  assert.equal((await api("profile", undefined, token)).name, "Ada", "refreshes wait 15 seconds after a sync");
+  const expire = () => app.db.prepare("UPDATE identities SET synced=0").run();
+  expire();
+  // Two at once share one refresh, since a reused refresh token is rejected.
+  const [profile] = await Promise.all([api("profile", undefined, token), api("profile", undefined, token)]);
+  assert.deepEqual([profile.name, profile.photo, issuer.refreshes], ["Ada L", jpeg("photo-b"), 1]);
+  // The rotated token keeps working.
+  issuer.accounts["sub-1"].name = "Ada Lovelace";
+  expire();
+  assert.equal((await api("profile", undefined, token)).name, "Ada Lovelace");
 });
 
 test("the callback rejects bad state, foreign browsers and tampered ID tokens", async (t) => {
