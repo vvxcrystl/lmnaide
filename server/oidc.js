@@ -172,6 +172,15 @@ export function createOidcClient(config) {
       };
     },
 
+    /** Whether the issuer hands out refresh tokens for offline_access. */
+    async offersRefresh() {
+      try {
+        return !!(await metadata()).scopes_supported?.includes("offline_access");
+      } catch {
+        return false;
+      }
+    },
+
     /** The current subject, name and picture for an access token. */
     async userinfo(accessToken) {
       const info = await getJson((await metadata()).userinfo_endpoint, {

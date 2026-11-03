@@ -1003,7 +1003,18 @@ export function createApp({
         return send(200, {
           photo: profile?.photo ?? null,
           username: db.prepare("SELECT username FROM users WHERE id=?").get(userId).username,
-          ...(oidc ? { name: profile?.name ?? null, linked: isLinked(userId) } : {}),
+          ...(oidc ? await (async () => {
+            const link = db
+              .prepare("SELECT refreshToken FROM identities WHERE issuer=? AND userId=?")
+              .get(oidc.issuer, userId);
+            return {
+              name: profile?.name ?? null,
+              linked: !!link,
+              // A link made before lmnaide kept refresh tokens can't pick up
+              // changes. The web app renews it with one sign-in round trip.
+              renew: !!link && !link.refreshToken && (await oidcClient.offersRefresh()),
+            };
+          })() : {}),
         });
       }
       if (req.method === "POST" && path === "/api/v1/logout") {

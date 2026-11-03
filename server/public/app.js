@@ -5291,6 +5291,11 @@ async function loadProfile() {
     ({ photo, username } = profile);
     displayName = profile.name ?? null;
     linked = profile.linked === true;
+    // Once per tab, so an issuer that never sends a refresh token can't loop.
+    if (profile.renew && !sessionStorage.getItem("oidcRenewed")) {
+      sessionStorage.setItem("oidcRenewed", "1");
+      if (await startOidc(false, true)) return;
+    }
   } catch (error) {
     if (generation !== sessionGeneration || error.stale) return;
     photo = null;

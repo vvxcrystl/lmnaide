@@ -234,6 +234,10 @@ test("opening the profile re-reads name and photo from the issuer", async (t) =>
   issuer.accounts["sub-1"].name = "Ada Lovelace";
   expire();
   assert.equal((await api("profile", undefined, token)).name, "Ada Lovelace");
+  // A link from before refresh tokens asks the web app to renew it with a sign-in.
+  assert.equal((await api("profile", undefined, token)).renew, false);
+  app.db.prepare("UPDATE identities SET refreshToken=NULL").run();
+  assert.equal((await api("profile", undefined, token)).renew, true);
 });
 
 test("the callback rejects bad state, foreign browsers and tampered ID tokens", async (t) => {
