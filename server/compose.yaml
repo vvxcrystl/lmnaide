@@ -11,6 +11,7 @@ services:
       OIDC_CLIENT_ID: "${OIDC_CLIENT_ID:-}"
       OIDC_CLIENT_SECRET: "${OIDC_CLIENT_SECRET:-}"
       OIDC_NAME: "${OIDC_NAME:-}"
+      OIDC_ACCOUNT_URL: "${OIDC_ACCOUNT_URL:-}"
       PASSWORD_LOGIN: "${PASSWORD_LOGIN:-true}"
     restart: unless-stopped
     healthcheck:

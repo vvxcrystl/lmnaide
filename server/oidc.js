@@ -20,7 +20,7 @@ export const CRYSTLCLOUD_ISSUER = "https://accounts.crystlcloud.org/api/auth";
  * OIDC is the default, so a server without its client settings stops with
  * instructions instead of starting with no way to sign in.
  */
-export function oidcConfig({ accounts, issuer, clientId, clientSecret, name, publicUrl }) {
+export function oidcConfig({ accounts, issuer, clientId, clientSecret, name, accountUrl, publicUrl }) {
   if (accounts === "local") return null;
   if (accounts !== "oidc") throw new Error("ACCOUNTS must be oidc or local");
   issuer ||= CRYSTLCLOUD_ISSUER;
@@ -46,11 +46,18 @@ export function oidcConfig({ accounts, issuer, clientId, clientSecret, name, pub
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   if (url.protocol !== "https:" && !(local && url.protocol === "http:"))
     throw new Error("OIDC_ISSUER must use https");
+  // CrystlCloud Accounts (Better Auth) serves its issuer at /api/auth and the
+  // account page at the root. Other issuers set OIDC_ACCOUNT_URL to get the
+  // "Manage your account" button.
+  if (!accountUrl && url.pathname.replace(/\/$/, "") === "/api/auth") accountUrl = url.origin + "/";
+  if (accountUrl && !["http:", "https:"].includes(new URL(accountUrl).protocol))
+    throw new Error("OIDC_ACCOUNT_URL must be an http(s) address");
   return {
     issuer: issuer.replace(/\/$/, ""),
     clientId,
     clientSecret,
     name: name || "CrystlCloud",
+    accountUrl: accountUrl || null,
     redirectUri: new URL("/api/v1/oidc/callback", publicUrl).href,
   };
 }

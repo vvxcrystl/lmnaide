@@ -36,7 +36,13 @@ data class SyncState(
 )
 
 /** The sign-in options a server offers, from GET /api/v1/config. */
-data class ServerConfig(val passwordLogin: Boolean, val registration: Boolean, val oidcName: String?)
+data class ServerConfig(
+    val passwordLogin: Boolean,
+    val registration: Boolean,
+    val oidcName: String?,
+    /** The issuer's account page, for "Manage your account". */
+    val accountUrl: String? = null,
+)
 
 /** Items made on this device while signed out, waiting for the user to choose whether to sync them. */
 data class ImportPrompt(val events: Int, val tasks: Int, val calendars: Int, val email: String) {
@@ -255,6 +261,8 @@ class CloudSync(
             passwordLogin = result.optBoolean("passwordLogin", true),
             registration = result.optBoolean("registration", true),
             oidcName = result.optJSONObject("oidc")?.optString("name")?.takeIf { it.isNotBlank() },
+            accountUrl = result.optJSONObject("oidc")?.optString("accountUrl")
+                ?.takeIf { it.startsWith("https://") || it.startsWith("http://") },
         )
     }
 

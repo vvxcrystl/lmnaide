@@ -241,7 +241,7 @@ test("one-time codes need the client's verifier and work once", async (t) => {
 test("OIDC mode reports its options and closes password registration", async (t) => {
   const { api } = await harness(t, { passwordLogin: false });
   assert.deepEqual(await api("config"), {
-    status: 200, passwordLogin: false, registration: false, oidc: { name: "CrystlCloud" },
+    status: 200, passwordLogin: false, registration: false, oidc: { name: "CrystlCloud", accountUrl: null },
   });
   assert.equal((await api("register", { email: "a@example.com", password: "password123" })).status, 403);
   assert.equal((await api("login", { email: "a@example.com", password: "password123" })).status, 403);
@@ -283,4 +283,5 @@ test("CrystlCloud is the default, and a server without its client stops with ins
   const config = oidcConfig({ accounts: "oidc", clientId: "id", clientSecret: "s", publicUrl: "https://cal.example.org" });
   assert.equal(config.issuer, CRYSTLCLOUD_ISSUER);
   assert.equal(config.name, "CrystlCloud");
+  assert.equal(config.accountUrl, "https://accounts.crystlcloud.org/");
 });

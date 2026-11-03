@@ -277,12 +277,13 @@ export function createApp({
   oidcClientId = process.env.OIDC_CLIENT_ID || "",
   oidcClientSecret = process.env.OIDC_CLIENT_SECRET || "",
   oidcName = process.env.OIDC_NAME || "",
+  oidcAccountUrl = process.env.OIDC_ACCOUNT_URL || "",
   passwordLogin = process.env.PASSWORD_LOGIN !== "false",
 } = {}) {
   publicUrl = resolvePublicUrl({ publicUrl, domain });
   const oidc = oidcConfig({
     accounts, issuer: oidcIssuer, clientId: oidcClientId,
-    clientSecret: oidcClientSecret, name: oidcName, publicUrl,
+    clientSecret: oidcClientSecret, name: oidcName, accountUrl: oidcAccountUrl, publicUrl,
   });
   if (!oidc && !passwordLogin)
     throw new Error("PASSWORD_LOGIN=false needs ACCOUNTS=oidc, or nobody could sign in");
@@ -666,7 +667,7 @@ export function createApp({
         return send(200, {
           passwordLogin,
           registration: passwordRegistration,
-          oidc: oidc ? { name: oidc.name } : null,
+          oidc: oidc ? { name: oidc.name, accountUrl: oidc.accountUrl } : null,
         });
       if (!oidc && path.startsWith("/api/v1/oidc/")) fail(404, "Not found");
       if (oidc && path.startsWith("/api/v1/oidc/") && path !== "/api/v1/oidc/link") {

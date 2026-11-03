@@ -111,13 +111,18 @@ fun CloudSettings() {
                     ) { Text("Save") }
                 }
                 if (oidcName != null) {
-                    if (state.linked)
+                    if (state.linked) {
                         Text(
                             "Signs in with $oidcName",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                    else
+                        config?.accountUrl?.let { url ->
+                            OutlinedButton(onClick = { openCustomTab(context, url) }) {
+                                Text("Manage your $oidcName account")
+                            }
+                        }
+                    } else
                         OutlinedButton(onClick = { openOidc(link = true) }, enabled = !state.busy) {
                             Text("Connect $oidcName account")
                         }

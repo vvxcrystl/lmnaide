@@ -727,6 +727,8 @@ async function finishOidc(code) {
   }
 }
 $("oidc").onclick = () => startOidc(false);
+// Name, photo and password live on the issuer's account page, in a new tab.
+const openIssuerAccount = () => window.open(serverConfig.oidc.accountUrl, "_blank", "noopener");
 const connectButton = () =>
   h("button", {
     type: "button",
@@ -4463,6 +4465,13 @@ function renderSettings({ statusOnly = false } = {}) {
         serverConfig.oidc && (linked
           ? h("p", { class: "body-small variant", text: "Signs in with " + serverConfig.oidc.name })
           : h("div", { class: "actions" }, connectButton())),
+        linked && serverConfig.oidc?.accountUrl && h("div", { class: "actions" },
+          h("button", {
+            type: "button",
+            class: "outlined",
+            text: "Manage your " + serverConfig.oidc.name + " account",
+            onclick: openIssuerAccount,
+          })),
         h("p", { class: "body-small variant", text: location.origin }),
         h("p", {
             id: "last-sync",
@@ -5346,6 +5355,12 @@ function renderAccount() {
         { type: "button", onclick: () => startOidc(true) },
         icon(I.cloud),
         "Connect " + serverConfig.oidc.name + " account",
+      ),
+      linked && serverConfig.oidc?.accountUrl && h(
+        "button",
+        { type: "button", onclick: openIssuerAccount },
+        icon(I.cloud),
+        "Manage your " + serverConfig.oidc.name + " account",
       ),
       h(
         "button",
