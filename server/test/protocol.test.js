@@ -44,7 +44,7 @@ const change = (kind, id, data, baseVersion = 0, deleted = false, operationId = 
 });
 
 async function harness(t, options = {}) {
-  const app = createApp({ dbPath: ":memory:", ...options });
+  const app = createApp({ accounts: "local", dbPath: ":memory:", ...options });
   await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   t.after(() => app.close());
   const base = `http://127.0.0.1:${app.server.address().port}`;
@@ -272,13 +272,13 @@ test("history index is added idempotently and serves the history query plan", as
   oldDb.exec("CREATE TABLE history(id TEXT PRIMARY KEY,userId TEXT NOT NULL,kind TEXT NOT NULL,recordId TEXT NOT NULL,data TEXT,deleted INTEGER NOT NULL,created INTEGER NOT NULL,reason TEXT NOT NULL)");
   oldDb.close();
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  let app = createApp({ dbPath });
+  let app = createApp({ accounts: "local", dbPath });
   const indexes = () => app.db.prepare("PRAGMA index_list(history)").all().map((row) => row.name);
   assert(indexes().includes("history_user_created"));
   const plan = app.db.prepare("EXPLAIN QUERY PLAN SELECT * FROM history WHERE userId=? ORDER BY created DESC LIMIT 200").all("user");
   assert(plan.some((row) => row.detail.includes("history_user_created")), JSON.stringify(plan));
   app.close();
-  app = createApp({ dbPath });
+  app = createApp({ accounts: "local", dbPath });
   assert.equal(indexes().filter((name) => name === "history_user_created").length, 1);
   app.close();
 });

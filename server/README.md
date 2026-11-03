@@ -10,16 +10,16 @@ Use Node.js 24 or later. There are no npm runtime dependencies or external datab
 
 ```sh
 cd server
-npm start
+ACCOUNTS=local npm start
 ```
 
-Open **http://localhost:3000**, create an account, then sign in to that account on your other devices. Data is stored in `server/data/calendar.sqlite` by default.
+Open **http://localhost:3000**, create an account, then sign in to that account on your other devices. `ACCOUNTS=local` uses lmnaide's own accounts, which is the quickest way to try it. Without it, the server expects CrystlCloud settings. See [Accounts](#accounts). Data is stored in `server/data/calendar.sqlite` by default.
 
 Or use Docker:
 
 ```sh
 cd server
-docker compose up --build -d
+ACCOUNTS=local docker compose up --build -d
 ```
 
 The Docker data volume survives container replacement. `docker compose down` keeps it; `docker compose down -v` removes it.
@@ -84,7 +84,7 @@ calendar.domain.com {
 }
 ```
 
-The proxy supplies HTTPS; Node listens on HTTP internally. `CALENDAR_DOMAIN` configures public links and does not obtain certificates itself. Plain `npm start` does not load `.env`; export the variables through your service manager or use `node --env-file=.env src.js`. Set `PUBLIC_URL` instead when the external origin needs an explicit port, for example `https://calendar.domain.com:8443`.
+The proxy supplies HTTPS; Node listens on HTTP internally. `CALENDAR_DOMAIN` configures public links and does not obtain certificates itself. Plain `npm start` does not load `.env`; export the variables, including the [Accounts](#accounts) settings, through your service manager or use `node --env-file=.env src.js`. Set `PUBLIC_URL` instead when the external origin needs an explicit port, for example `https://calendar.domain.com:8443`.
 
 After creating the accounts you need, set `ALLOW_REGISTRATION=false` in `.env` and rerun the production command. Existing accounts can still sign in.
 
@@ -96,9 +96,9 @@ For a plain Node service, environment variables are:
 | `HOST` | `0.0.0.0` | Listen interface; use `127.0.0.1` behind a host reverse proxy |
 | `DB_PATH` | `./data/calendar.sqlite` | Persistent SQLite file, relative to the working directory |
 | `ALLOW_REGISTRATION` | `true` | Set exactly `false` to disable new accounts |
-| `ACCOUNTS` | `local` | `local` for lmnaide's own email and password accounts, or `oidc` to add sign-in through an OpenID Connect issuer. See [Accounts](#accounts) |
-| `OIDC_ISSUER` | empty | Issuer URL, such as `https://accounts.crystlcloud.org/api/auth`. Required for `oidc` |
-| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | empty | The client registered with the issuer. Required for `oidc` |
+| `ACCOUNTS` | `oidc` | `oidc` signs in through CrystlCloud Accounts or another OpenID Connect issuer. `local` uses only lmnaide's own email and password accounts. See [Accounts](#accounts) |
+| `OIDC_ISSUER` | `https://accounts.crystlcloud.org/api/auth` | Issuer URL. Change it to use another OpenID Connect issuer |
+| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | empty | The client registered with the issuer. Required unless `ACCOUNTS=local` |
 | `OIDC_NAME` | `CrystlCloud` | Button label: "Continue with `OIDC_NAME`" |
 | `PASSWORD_LOGIN` | `true` | With `oidc`, set `false` to hide password sign-in |
 | `CALENDAR_DOMAIN` | empty | Custom DNS hostname, e.g. `calendar.domain.com`; supplies the HTTPS origin for share links and configures Caddy in production Compose |
@@ -110,38 +110,42 @@ For a simple consistent backup, stop the calendar service and copy the whole dat
 
 ## Accounts
 
-Choose one of two account modes when you set up the server.
+lmnaide signs in with **CrystlCloud Accounts** unless you set `ACCOUNTS=local`. Without its client settings, the server stops at startup and says what to set.
 
-**Local accounts** (`ACCOUNTS=local`, the default). People create an account with an email and password on the sign-in screen or in the Android app. Nothing else is needed.
+### CrystlCloud Accounts (default)
 
-**Sign in with CrystlCloud** (`ACCOUNTS=oidc`). The browser and the Android Cloud app show **Continue with CrystlCloud**. It works with CrystlCloud Accounts or any OpenID Connect issuer that supports the authorization code flow with PKCE and `client_secret_basic`. The ID token can be signed with EdDSA (Ed25519), RS256 or ES256. In this mode:
+1. Register lmnaide once. In the crystl-cloud-accounts checkout on the accounts server, run this with your calendar's address:
 
-- New accounts come only from the issuer. Password registration is closed. `ALLOW_REGISTRATION=false` also stops the issuer from creating new accounts, so only connected accounts can sign in.
-- Existing password accounts keep working. To use CrystlCloud, sign in with the password, then choose **Connect CrystlCloud account** in Settings → Cloud sync or on the account card. Accounts are never matched by email, so an issuer account whose email belongs to an unconnected password account is refused until its owner connects it.
+   ```sh
+   npm run client -- add "lmnaide" https://calendar.domain.com/api/v1/oidc/callback --owner you@example.com --uri https://calendar.domain.com
+   ```
+
+2. Copy the client ID and secret it prints into `.env`. The secret is shown only once.
+
+   ```sh
+   CALENDAR_DOMAIN=calendar.domain.com
+   OIDC_CLIENT_ID=...
+   OIDC_CLIENT_SECRET=...
+   ```
+
+The browser and the Android Cloud app then show **Continue with CrystlCloud**.
+
+- New accounts come only from CrystlCloud. `ALLOW_REGISTRATION=false` stops new accounts too, so only connected accounts can sign in.
+- Password accounts made before the switch still sign in. To use CrystlCloud, sign in with the password, then choose **Connect CrystlCloud account** in Settings → Cloud sync or on the account card. lmnaide never matches accounts by email.
 - Once everyone has connected, `PASSWORD_LOGIN=false` hides password sign-in.
-- Signing out stays local to lmnaide and doesn't sign you out of the issuer.
+- Signing out of lmnaide doesn't sign you out of CrystlCloud.
 
-To set it up with CrystlCloud Accounts, register lmnaide once on the accounts server. The redirect URI is this server's public address plus `/api/v1/oidc/callback`:
+The Android app needs no registration of its own. It opens the same server sign-in in a Custom Tab and returns to the app through `lmnaide://oidc` with a one-time code. The code only works with a secret the app kept.
 
-```sh
-# In the crystl-cloud-accounts checkout on the accounts server
-npm run client -- add "lmnaide" https://calendar.domain.com/api/v1/oidc/callback --owner you@example.com --uri https://calendar.domain.com
-```
+To use another OpenID Connect issuer, set `OIDC_ISSUER` to it and `OIDC_NAME` to the name on the button. The issuer must support the authorization code flow with PKCE and `client_secret_basic`, and sign ID tokens with EdDSA, RS256 or ES256.
 
-Copy the client ID and secret it prints (the secret is shown once) into `.env`:
+For a test accounts server on `http://localhost`, register with `--native` and set `PUBLIC_URL=http://localhost:PORT`. Other issuers must use HTTPS.
 
-```sh
-ACCOUNTS=oidc
-OIDC_ISSUER=https://accounts.crystlcloud.org/api/auth
-OIDC_CLIENT_ID=...
-OIDC_CLIENT_SECRET=...
-```
+Sign-ins in progress are kept in memory for 10 minutes, so restarting the server cancels them.
 
-`CALENDAR_DOMAIN` or `PUBLIC_URL` must be set, because the callback address is built from it. The Android app needs no registration of its own: it opens the same server flow in a Custom Tab, and the server sends it back to the app through `lmnaide://oidc` with a one-time code. The code only works with a secret the app kept, so another app that catches the link can't use it.
+### Local accounts
 
-For local testing against an accounts server on `http://localhost`, register with `--native`, which allows `http://localhost` redirect URIs, and use `PUBLIC_URL=http://localhost:PORT`. Issuers other than localhost must use HTTPS.
-
-The server keeps sign-ins in progress in memory for 10 minutes, so a restart only cancels sign-ins that haven't finished.
+Set `ACCOUNTS=local` to use only lmnaide's own email and password accounts. People create an account on the sign-in screen or in the Android app, and nothing else needs setting up.
 
 ## What syncs
 
@@ -190,7 +194,7 @@ From the repository root:
 ./gradlew testCloudDebugUnitTest testOfflineDebugUnitTest lintCloudDebug lintOfflineDebug
 ```
 
-For the real device suite, run the server on port 3000 and create a **dedicated test account** first. The test installs only the Cloud app/test package and creates test calendar records in that account:
+For the real device suite, run the server on port 3000 with `ACCOUNTS=local` and create a **dedicated test account** first. The test installs only the Cloud app/test package and creates test calendar records in that account:
 
 ```sh
 export CLOUD_TEST_EMAIL='your-test-account@example.com'

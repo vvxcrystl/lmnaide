@@ -11,7 +11,7 @@ const calendar = {
 };
 
 async function start(t) {
-  const app = createApp({ dbPath: ":memory:" });
+  const app = createApp({ accounts: "local", dbPath: ":memory:" });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
   t.after(() => app.close());
   const base = "http://127.0.0.1:" + app.server.address().port;

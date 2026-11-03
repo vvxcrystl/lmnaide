@@ -13,17 +13,35 @@ const ALGORITHMS = {
   ES256: (data, key, sig) => verify("sha256", data, { key, dsaEncoding: "ieee-p1363" }, sig),
 };
 
-/** Reads and checks the OIDC settings. Returns null when the server uses local accounts only. */
+export const CRYSTLCLOUD_ISSUER = "https://accounts.crystlcloud.org/api/auth";
+
+/**
+ * Reads and checks the OIDC settings. Returns null for ACCOUNTS=local.
+ * OIDC is the default, so a server without its client settings stops with
+ * instructions instead of starting with no way to sign in.
+ */
 export function oidcConfig({ accounts, issuer, clientId, clientSecret, name, publicUrl }) {
-  if (!accounts || accounts === "local") return null;
-  if (accounts !== "oidc") throw new Error("ACCOUNTS must be local or oidc");
+  if (accounts === "local") return null;
+  if (accounts !== "oidc") throw new Error("ACCOUNTS must be oidc or local");
+  issuer ||= CRYSTLCLOUD_ISSUER;
   const missing = [
-    ["OIDC_ISSUER", issuer],
     ["OIDC_CLIENT_ID", clientId],
     ["OIDC_CLIENT_SECRET", clientSecret],
     ["PUBLIC_URL or CALENDAR_DOMAIN", publicUrl],
   ].filter(([, value]) => !value).map(([key]) => key);
-  if (missing.length) throw new Error(`ACCOUNTS=oidc needs ${missing.join(", ")}`);
+  if (missing.length) {
+    const callback = (publicUrl || "https://calendar.example.com") + "/api/v1/oidc/callback";
+    const register = issuer === CRYSTLCLOUD_ISSUER
+      ? `Register lmnaide with CrystlCloud Accounts. In its checkout, run:\n` +
+        `       npm run client -- add "lmnaide" ${callback} --owner you@example.com\n`
+      : `Register lmnaide with ${issuer}, using the redirect URI ${callback}.\n`;
+    throw new Error(
+      `lmnaide signs in with CrystlCloud Accounts unless ACCOUNTS=local, but ${missing.join(", ")} ${missing.length > 1 ? "are" : "is"} not set. Either:\n` +
+        `  1. ${register}` +
+        `     Then set OIDC_CLIENT_ID and OIDC_CLIENT_SECRET to the values it prints, and CALENDAR_DOMAIN or PUBLIC_URL to this server's public address.\n` +
+        `  2. Or set ACCOUNTS=local to use lmnaide's own email and password accounts.`,
+    );
+  }
   const url = new URL(issuer);
   const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
   if (url.protocol !== "https:" && !(local && url.protocol === "http:"))

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createApp } from "../src.js";
 
 async function harness(t, options = {}) {
-  const app = createApp({ dbPath: ":memory:", ...options });
+  const app = createApp({ accounts: "local", dbPath: ":memory:", ...options });
   await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   t.after(() => app.close());
   const base = `http://127.0.0.1:${app.server.address().port}`;

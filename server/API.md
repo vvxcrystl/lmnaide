@@ -6,7 +6,7 @@ The calendar API operates on the signed-in account's calendars, events, and task
 
 `POST /api/v1/login` accepts `{"email":"you@example.com","password":"your password"}` and returns a `token`. Every calendar API request requires `Authorization: Bearer TOKEN`. A missing, expired, or revoked token returns `401`.
 
-On a server with `ACCOUNTS=oidc`, accounts created through the issuer have no password, so scripts can't use `/api/v1/login` for them. `GET /api/v1/config` reports `passwordLogin`, `registration` and `oidc` (`null`, or `{"name": "CrystlCloud"}`).
+On a server that signs in with CrystlCloud, the default, accounts created through CrystlCloud have no password, so scripts can't use `/api/v1/login` for them. `GET /api/v1/config` reports `passwordLogin`, `registration` and `oidc` (`null`, or `{"name": "CrystlCloud"}`).
 
 Tokens last 90 days. A script can sign in separately to obtain its own session. `POST /api/v1/logout` with that token revokes that session. Production requests use the server's HTTPS address.
 

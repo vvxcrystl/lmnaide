@@ -268,10 +268,11 @@ export function createApp({
   // the quota is reached only deletion batches of live records are
   // accepted, so a full account can still free space. 0 lifts the quota.
   quotaBytes = quotaFromEnv(),
-  // "local" keeps lmnaide's own email/password accounts. "oidc" adds
-  // "Continue with <OIDC_NAME>" through an OpenID Connect issuer such as
-  // CrystlCloud Accounts; new accounts then come only from the issuer.
-  accounts = process.env.ACCOUNTS || "local",
+  // "oidc", the default, adds "Continue with <OIDC_NAME>" through an
+  // OpenID Connect issuer, CrystlCloud Accounts unless OIDC_ISSUER says
+  // otherwise. New accounts then come only from the issuer. "local" keeps
+  // lmnaide's own email and password accounts and nothing else.
+  accounts = process.env.ACCOUNTS || "oidc",
   oidcIssuer = process.env.OIDC_ISSUER || "",
   oidcClientId = process.env.OIDC_CLIENT_ID || "",
   oidcClientSecret = process.env.OIDC_CLIENT_SECRET || "",
@@ -1543,7 +1544,14 @@ export function createApp({
   };
 }
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const app = createApp();
+  let app;
+  try {
+    app = createApp();
+  } catch (error) {
+    // Configuration mistakes print as plain instructions, without a stack trace.
+    console.error(error.message);
+    process.exit(1);
+  }
   const port = Number(process.env.PORT || 3000);
   app.server.listen(port, process.env.HOST || "0.0.0.0", () =>
     console.log(`calendar server listening on ${port}`),

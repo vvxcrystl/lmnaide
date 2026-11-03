@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { createHash, generateKeyPairSync, randomBytes, sign } from "node:crypto";
 import { createApp } from "../src.js";
+import { CRYSTLCLOUD_ISSUER, oidcConfig } from "../oidc.js";
 
 const b64 = (value) => Buffer.from(value).toString("base64url");
 
@@ -218,7 +219,7 @@ test("OIDC mode reports its options and closes password registration", async (t)
 });
 
 test("local accounts mode keeps password sign-in and has no OIDC routes", async (t) => {
-  const app = createApp({ dbPath: ":memory:" });
+  const app = createApp({ accounts: "local", dbPath: ":memory:" });
   await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   t.after(() => app.close());
   const base = `http://127.0.0.1:${app.server.address().port}/api/v1/`;
@@ -231,6 +232,26 @@ test("local accounts mode keeps password sign-in and has no OIDC routes", async 
     body: JSON.stringify({ email: "a@example.com", password: "password123" }),
   });
   assert.equal(registered.status, 200);
-  assert.throws(() => createApp({ dbPath: ":memory:", passwordLogin: false }), /PASSWORD_LOGIN/);
-  assert.throws(() => createApp({ dbPath: ":memory:", accounts: "oidc" }), /OIDC_ISSUER/);
+  assert.throws(() => createApp({ accounts: "local", dbPath: ":memory:", passwordLogin: false }), /PASSWORD_LOGIN/);
+});
+
+test("CrystlCloud is the default, and a server without its client stops with instructions", () => {
+  const keys = ["ACCOUNTS", "OIDC_ISSUER", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "PUBLIC_URL", "CALENDAR_DOMAIN"];
+  const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  for (const key of keys) delete process.env[key];
+  try {
+    assert.throws(() => createApp({ dbPath: ":memory:" }), (e) =>
+      e.message.includes("OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, PUBLIC_URL or CALENDAR_DOMAIN are not set") &&
+      e.message.includes('npm run client -- add "lmnaide" https://calendar.example.com/api/v1/oidc/callback') &&
+      e.message.includes("ACCOUNTS=local"));
+    // With the address known, the command shows this server's own callback.
+    assert.throws(() => createApp({ dbPath: ":memory:", domain: "cal.example.org", oidcClientId: "id" }), (e) =>
+      e.message.includes("OIDC_CLIENT_SECRET is not set") &&
+      e.message.includes("https://cal.example.org/api/v1/oidc/callback"));
+  } finally {
+    for (const key of keys) if (saved[key] !== undefined) process.env[key] = saved[key];
+  }
+  const config = oidcConfig({ accounts: "oidc", clientId: "id", clientSecret: "s", publicUrl: "https://cal.example.org" });
+  assert.equal(config.issuer, CRYSTLCLOUD_ISSUER);
+  assert.equal(config.name, "CrystlCloud");
 });

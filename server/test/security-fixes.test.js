@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 async function harness(t, options = {}) {
-  const app = createApp({ dbPath: ":memory:", ...options });
+  const app = createApp({ accounts: "local", dbPath: ":memory:", ...options });
   await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   t.after(() => app.close());
   const base = `http://127.0.0.1:${app.server.address().port}`;
@@ -872,7 +872,7 @@ test("legacy operation journals are backfilled, not wiped, on upgrade", async (t
   );
   legacy.close();
 
-  const app = createApp({ dbPath });
+  const app = createApp({ accounts: "local", dbPath });
   await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   t.after(() => app.close());
 

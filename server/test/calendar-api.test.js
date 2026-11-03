@@ -10,7 +10,7 @@ async function harness(t, options = {}) {
   let app;
   let base;
   const start = async () => {
-    app = createApp({ dbPath: ":memory:", ...options });
+    app = createApp({ accounts: "local", dbPath: ":memory:", ...options });
     await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
     base = `http://127.0.0.1:${app.server.address().port}/api/v1/`;
   };

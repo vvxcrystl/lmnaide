@@ -15,7 +15,7 @@ test("usernames migrate, persist, validate and remain private", async (t) => {
   let app;
   let base;
   const start = async () => {
-    app = createApp({ dbPath });
+    app = createApp({ accounts: "local", dbPath });
     await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
     base = "http://127.0.0.1:" + app.server.address().port;
   };

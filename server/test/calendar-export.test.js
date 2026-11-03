@@ -70,7 +70,7 @@ test("repeat patterns and inclusive end days use the DTSTART value type", () => 
 });
 
 test("anonymous downloads are live, private, and revoked along with the shared link", async (t) => {
-  const app = createApp({ dbPath: ":memory:" });
+  const app = createApp({ accounts: "local", dbPath: ":memory:" });
   await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
   t.after(() => app.close());
   const base = "http://127.0.0.1:" + app.server.address().port;

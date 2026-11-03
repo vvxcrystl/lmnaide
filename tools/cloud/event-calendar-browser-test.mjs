@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createApp } from "../../server/src.js";
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || "playwright");
-const app = createApp({ dbPath: ":memory:" });
+const app = createApp({ accounts: "local", dbPath: ":memory:" });
 await new Promise((resolve) => app.server.listen(0, "127.0.0.1", resolve));
 const base = "http://127.0.0.1:" + app.server.address().port;
 const artifacts = join(tmpdir(), "lmnaide-event-calendar-check");

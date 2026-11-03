@@ -19,7 +19,7 @@ test("Public link combines calendars, strips private details, updates live and r
   const dbPath = join(dir, "calendar.sqlite");
   let app, base;
   const start = async () => {
-    app = createApp({ dbPath, publicUrl: "https://calendar.example.com" });
+    app = createApp({ accounts: "local", dbPath, publicUrl: "https://calendar.example.com" });
     await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
     base = "http://127.0.0.1:" + app.server.address().port;
   };
@@ -109,7 +109,7 @@ test("Public link combines calendars, strips private details, updates live and r
 });
 
 test("calendar publicDetails accepts only booleans and defaults to private", async (t) => {
-  const app = createApp({ dbPath: ":memory:" });
+  const app = createApp({ accounts: "local", dbPath: ":memory:" });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
   t.after(() => app.close());
   const base = "http://127.0.0.1:" + app.server.address().port;

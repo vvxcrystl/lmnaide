@@ -39,7 +39,7 @@ const change = (
   operationId = crypto.randomUUID(),
 ) => ({ kind, id, data, baseVersion, deleted, operationId });
 async function harness(t, options = {}) {
-  const app = createApp({ dbPath: ":memory:", ...options });
+  const app = createApp({ accounts: "local", dbPath: ":memory:", ...options });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
   t.after(() => app.close());
   const base = "http://127.0.0.1:" + app.server.address().port;
@@ -286,7 +286,7 @@ test("database and sessions survive server restart", async (t) => {
   const dir = mkdtempSync(join(tmpdir(), "calendar-sync-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const path = join(dir, "test.sqlite");
-  let app = createApp({ dbPath: path });
+  let app = createApp({ accounts: "local", dbPath: path });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
   let base = "http://127.0.0.1:" + app.server.address().port;
   const auth = await (
@@ -324,7 +324,7 @@ test("database and sessions survive server restart", async (t) => {
     })
   ).json();
   await app.close();
-  app = createApp({ dbPath: path });
+  app = createApp({ accounts: "local", dbPath: path });
   await new Promise((r) => app.server.listen(0, "127.0.0.1", r));
   t.after(() => app.close());
   base = "http://127.0.0.1:" + app.server.address().port;

@@ -5,7 +5,7 @@ services:
     environment:
       CALENDAR_DOMAIN: "${CALENDAR_DOMAIN:?Set CALENDAR_DOMAIN to your hostname}"
       ALLOW_REGISTRATION: "${ALLOW_REGISTRATION:-true}"
-      ACCOUNTS: "${ACCOUNTS:-local}"
+      ACCOUNTS: "${ACCOUNTS:-oidc}"
       OIDC_ISSUER: "${OIDC_ISSUER:-}"
       OIDC_CLIENT_ID: "${OIDC_CLIENT_ID:-}"
       OIDC_CLIENT_SECRET: "${OIDC_CLIENT_SECRET:-}"
