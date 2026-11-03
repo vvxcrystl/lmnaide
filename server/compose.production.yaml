@@ -5,6 +5,12 @@ services:
     environment:
       CALENDAR_DOMAIN: "${CALENDAR_DOMAIN:?Set CALENDAR_DOMAIN to your hostname}"
       ALLOW_REGISTRATION: "${ALLOW_REGISTRATION:-true}"
+      ACCOUNTS: "${ACCOUNTS:-local}"
+      OIDC_ISSUER: "${OIDC_ISSUER:-}"
+      OIDC_CLIENT_ID: "${OIDC_CLIENT_ID:-}"
+      OIDC_CLIENT_SECRET: "${OIDC_CLIENT_SECRET:-}"
+      OIDC_NAME: "${OIDC_NAME:-}"
+      PASSWORD_LOGIN: "${PASSWORD_LOGIN:-true}"
       TRUSTED_PROXIES: "172.30.0.0/24"
     networks: [calendar-proxy]
     restart: unless-stopped

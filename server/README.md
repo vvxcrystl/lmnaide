@@ -96,12 +96,52 @@ For a plain Node service, environment variables are:
 | `HOST` | `0.0.0.0` | Listen interface; use `127.0.0.1` behind a host reverse proxy |
 | `DB_PATH` | `./data/calendar.sqlite` | Persistent SQLite file, relative to the working directory |
 | `ALLOW_REGISTRATION` | `true` | Set exactly `false` to disable new accounts |
+| `ACCOUNTS` | `local` | `local` for lmnaide's own email and password accounts, or `oidc` to add sign-in through an OpenID Connect issuer. See [Accounts](#accounts) |
+| `OIDC_ISSUER` | empty | Issuer URL, such as `https://accounts.crystlcloud.org/api/auth`. Required for `oidc` |
+| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | empty | The client registered with the issuer. Required for `oidc` |
+| `OIDC_NAME` | `CrystlCloud` | Button label: "Continue with `OIDC_NAME`" |
+| `PASSWORD_LOGIN` | `true` | With `oidc`, set `false` to hide password sign-in |
 | `CALENDAR_DOMAIN` | empty | Custom DNS hostname, e.g. `calendar.domain.com`; supplies the HTTPS origin for share links and configures Caddy in production Compose |
 | `PUBLIC_URL` | empty | Explicit HTTP(S) origin for share links; overrides `CALENDAR_DOMAIN` for plain Node hosting |
 | `TRUSTED_PROXIES` | `127.0.0.1,::1` | Comma-separated proxy IPs or CIDRs allowed to supply `X-Forwarded-For`; only use addresses that cannot be reached by untrusted clients. Production Compose trusts its private Caddy network (`172.30.0.0/24`). IPv6 sources share their `/64` prefix in per-IP limits. |
 | `STORAGE_QUOTA_BYTES` | `268435456` (256 MiB) | Per-account ceiling over records and the sync journal; edit history is separately capped per account. Deleting records frees space; set to 0 to lift the quota. |
 
 For a simple consistent backup, stop the calendar service and copy the whole data directory or Docker data volume, including SQLite's WAL files, then restart. Restore with the service stopped. Keep the data volume when updating the server.
+
+## Accounts
+
+Choose one of two account modes when you set up the server.
+
+**Local accounts** (`ACCOUNTS=local`, the default). People create an account with an email and password on the sign-in screen or in the Android app. Nothing else is needed.
+
+**Sign in with CrystlCloud** (`ACCOUNTS=oidc`). The browser and the Android Cloud app show **Continue with CrystlCloud**. It works with CrystlCloud Accounts or any OpenID Connect issuer that supports the authorization code flow with PKCE and `client_secret_basic`. The ID token can be signed with EdDSA (Ed25519), RS256 or ES256. In this mode:
+
+- New accounts come only from the issuer. Password registration is closed. `ALLOW_REGISTRATION=false` also stops the issuer from creating new accounts, so only connected accounts can sign in.
+- Existing password accounts keep working. To use CrystlCloud, sign in with the password, then choose **Connect CrystlCloud account** in Settings → Cloud sync or on the account card. Accounts are never matched by email, so an issuer account whose email belongs to an unconnected password account is refused until its owner connects it.
+- Once everyone has connected, `PASSWORD_LOGIN=false` hides password sign-in.
+- Signing out stays local to lmnaide and doesn't sign you out of the issuer.
+
+To set it up with CrystlCloud Accounts, register lmnaide once on the accounts server. The redirect URI is this server's public address plus `/api/v1/oidc/callback`:
+
+```sh
+# In the crystl-cloud-accounts checkout on the accounts server
+npm run client -- add "lmnaide" https://calendar.domain.com/api/v1/oidc/callback --owner you@example.com --uri https://calendar.domain.com
+```
+
+Copy the client ID and secret it prints (the secret is shown once) into `.env`:
+
+```sh
+ACCOUNTS=oidc
+OIDC_ISSUER=https://accounts.crystlcloud.org/api/auth
+OIDC_CLIENT_ID=...
+OIDC_CLIENT_SECRET=...
+```
+
+`CALENDAR_DOMAIN` or `PUBLIC_URL` must be set, because the callback address is built from it. The Android app needs no registration of its own: it opens the same server flow in a Custom Tab, and the server sends it back to the app through `lmnaide://oidc` with a one-time code. The code only works with a secret the app kept, so another app that catches the link can't use it.
+
+For local testing against an accounts server on `http://localhost`, register with `--native`, which allows `http://localhost` redirect URIs, and use `PUBLIC_URL=http://localhost:PORT`. Issuers other than localhost must use HTTPS.
+
+The server keeps sign-ins in progress in memory for 10 minutes, so a restart only cancels sign-ins that haven't finished.
 
 ## What syncs
 
@@ -133,7 +173,7 @@ The browser requires a connection for saving and refreshes every 10 seconds whil
 
 If two devices edit the same record from the same version, the first accepted version stays current. The later edit is saved in **Edit history** on the browser, where you can restore it. Older accepted versions are saved there too. Edit history and the sync operation journal are pruned at sign-in once older than 90 days, and the server keeps at most the latest 10,000 entries of each per account. A retried operation the server no longer has journaled (90-day prune or the 10,000-row cap) re-applies as a fresh operation: unchanged records hit the identical no-op path and changed records go to history as conflicts, so nothing is lost. If an unsent Android edit races with a remote calendar deletion, the app preserves it in a **Recovered edits** calendar and queues that copy for sync. The browser lists the latest 200 history entries. Tombstones prevent an old offline edit from silently resurrecting a deleted record. Restoring an event whose calendar was deleted requires restoring the calendar first.
 
-Passwords are salted and hashed with scrypt. Sessions last 90 days, are stored as hashes on the server, and are revoked on online sign-out. Android encrypts the session token with Android Keystore and excludes the Cloud app's database/preferences from device backup/transfer, so cloned devices do not share sync identities. The server stores readable calendar data in its own database; this is not end-to-end encryption.
+Passwords are salted and hashed with scrypt. Accounts created through an OIDC issuer have no password. The server stores the issuer and its subject ID next to the lmnaide user ID and checks the ID token's signature, issuer, audience, expiry and nonce on every sign-in. Sessions last 90 days, are stored as hashes on the server, and are revoked on online sign-out. Android encrypts the session token with Android Keystore and excludes the Cloud app's database/preferences from device backup/transfer, so cloned devices do not share sync identities. The server stores readable calendar data in its own database; this is not end-to-end encryption.
 
 ## Tests
 
