@@ -127,7 +127,33 @@ export function createOidcClient(config) {
       return {
         subject: claims.sub,
         email: typeof info.email === "string" ? info.email.trim().toLowerCase() : "",
+        name: typeof info.name === "string" ? info.name.trim().slice(0, 100) : "",
+        picture: typeof info.picture === "string" ? info.picture : "",
       };
+    },
+
+    /**
+     * Downloads the account's picture as a data URL. Returns null when the
+     * account has none, and undefined when it can't be used. Only pictures on
+     * the issuer's own origin are fetched, so a crafted claim can't point the
+     * server at another address.
+     */
+    async fetchPicture(url) {
+      if (!url) return null;
+      let parsed;
+      try {
+        parsed = new URL(url);
+      } catch {
+        return undefined;
+      }
+      if (parsed.origin !== new URL(config.issuer).origin) return undefined;
+      const res = await fetch(parsed, { redirect: "error", signal: AbortSignal.timeout(10000) });
+      const type = res.headers.get("content-type")?.split(";")[0].trim();
+      if (!res.ok || !["image/jpeg", "image/png", "image/webp"].includes(type)) return undefined;
+      if (Number(res.headers.get("content-length")) > 512 * 1024) return undefined;
+      const bytes = Buffer.from(await res.arrayBuffer());
+      if (bytes.length > 512 * 1024) return undefined;
+      return `data:${type};base64,${bytes.toString("base64")}`;
     },
 
     async verifyIdToken(token, nonce) {

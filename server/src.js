@@ -315,6 +315,9 @@ export function createApp({
   if (!db.prepare("PRAGMA table_info(users)").all().some((c) => c.name === "username"))
     db.exec("ALTER TABLE users ADD COLUMN username TEXT COLLATE NOCASE");
   db.exec("CREATE UNIQUE INDEX IF NOT EXISTS user_username ON users(username COLLATE NOCASE)");
+  // The display name from a connected OIDC account. Username stays lmnaide's own.
+  if (!db.prepare("PRAGMA table_info(profiles)").all().some((c) => c.name === "name"))
+    db.exec("ALTER TABLE profiles ADD COLUMN name TEXT");
   if (
     !db
       .prepare("PRAGMA table_info(operations)")
@@ -476,6 +479,25 @@ export function createApp({
       throw e;
     }
     return { userId };
+  };
+  const isLinked = (userId) => !!oidc && !!db
+    .prepare("SELECT 1 FROM identities WHERE issuer=? AND userId=?")
+    .get(oidc.issuer, userId);
+  // A connected account's name and photo belong to the issuer. Every sign-in
+  // and connect copies them, so changes there show up at the next sign-in.
+  // A picture that can't be fetched keeps the current photo.
+  const syncProfile = async (userId, { name, picture }) => {
+    let photo;
+    try {
+      photo = await oidcClient.fetchPicture(picture);
+    } catch (e) {
+      console.error("OIDC picture download failed:", e.message);
+    }
+    db.prepare(
+      "INSERT INTO profiles(userId,name) VALUES(?,?) ON CONFLICT(userId) DO UPDATE SET name=excluded.name",
+    ).run(userId, name || null);
+    if (photo !== undefined)
+      db.prepare("UPDATE profiles SET photo=? WHERE userId=?").run(photo, userId);
   };
   const publicDir = join(dirname(fileURLToPath(import.meta.url)), "public");
   const server = createServer(async (req, res) => {
@@ -718,7 +740,9 @@ export function createApp({
               console.error("OIDC sign-in failed:", e.message);
               fail(401, `Could not verify your ${oidc.name} sign-in. Try again.`);
             }
-            return finish(200, resolveIdentity(identity, flow.linkUserId));
+            const result = resolveIdentity(identity, flow.linkUserId);
+            await syncProfile(result.userId ?? flow.linkUserId, identity);
+            return finish(200, result);
           } catch (e) {
             if (!e.status) throw e;
             return finish(e.status, { error: e.message });
@@ -909,6 +933,8 @@ export function createApp({
             (typeof photo !== "string" || photo.length > 200000 ||
               !/^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(photo)))
             fail(400, "Use a JPEG, PNG or WebP image under 150 KB.");
+          if (hasPhoto && isLinked(userId))
+            fail(409, `Change your photo in your ${oidc.name} account.`);
           if (hasUsername) {
             try {
               db.prepare("UPDATE users SET username=? WHERE id=?").run(username, userId);
@@ -918,20 +944,16 @@ export function createApp({
             }
           }
           if (hasPhoto) db.prepare(
-            "INSERT INTO profiles VALUES(?,?) ON CONFLICT(userId) DO UPDATE SET photo=excluded.photo",
+            "INSERT INTO profiles(userId,photo) VALUES(?,?) ON CONFLICT(userId) DO UPDATE SET photo=excluded.photo",
           ).run(userId, photo);
         } else if (req.method !== "GET") fail(404, "Not found");
         const profile = db
-          .prepare("SELECT photo FROM profiles WHERE userId=?")
+          .prepare("SELECT photo,name FROM profiles WHERE userId=?")
           .get(userId);
         return send(200, {
           photo: profile?.photo ?? null,
           username: db.prepare("SELECT username FROM users WHERE id=?").get(userId).username,
-          ...(oidc ? {
-            linked: !!db
-              .prepare("SELECT 1 FROM identities WHERE issuer=? AND userId=?")
-              .get(oidc.issuer, userId),
-          } : {}),
+          ...(oidc ? { name: profile?.name ?? null, linked: isLinked(userId) } : {}),
         });
       }
       if (req.method === "POST" && path === "/api/v1/logout") {

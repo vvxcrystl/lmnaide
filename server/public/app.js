@@ -5236,8 +5236,10 @@ function openQuickAdd({ date } = {}) {
 }
 
 /* ---------- Profile photo and account card ---------- */
-let photo = null, username = null;
-const initial = () => (username || email || "?").trim().charAt(0).toUpperCase();
+// For an account connected to an issuer, name and photo come from there.
+let photo = null, username = null, displayName = null;
+const shownName = () => displayName || username || (email || "").split("@")[0];
+const initial = () => (displayName || username || email || "?").trim().charAt(0).toUpperCase();
 /** A stable color for the letter avatar, picked from the event colors by the email address. */
 function avatarColor() {
   let hash = 0;
@@ -5268,7 +5270,7 @@ function avatar(size) {
 }
 function renderAvatar() {
   $("avatar").replaceChildren(avatar(32));
-  $("avatar").title = username || email || "Account";
+  $("avatar").title = displayName || username || email || "Account";
   if ($("account").open) renderAccount();
 }
 async function loadProfile() {
@@ -5278,6 +5280,7 @@ async function loadProfile() {
     const profile = await api("profile");
     if (generation !== sessionGeneration) return;
     ({ photo, username } = profile);
+    displayName = profile.name ?? null;
     linked = profile.linked === true;
   } catch (error) {
     if (generation !== sessionGeneration || error.stale) return;
@@ -5296,23 +5299,29 @@ function renderAccount() {
       class: "icon account-close",
     }),
     h("p", { class: "account-email body-medium", text: email || "" }),
-    h(
-      "button",
-      {
-        type: "button",
-        class: "account-photo",
-        "aria-label": photo ? "Change profile photo" : "Add profile photo",
-        title: photo ? "Change profile photo" : "Add profile photo",
-        onclick: () => $("photo-input").click(),
-      },
-      avatar(80),
-      h("span", { class: "camera" }, icon(I.camera)),
-    ),
+    linked
+      ? h("div", { class: "account-photo" }, avatar(80))
+      : h(
+          "button",
+          {
+            type: "button",
+            class: "account-photo",
+            "aria-label": photo ? "Change profile photo" : "Add profile photo",
+            title: photo ? "Change profile photo" : "Add profile photo",
+            onclick: () => $("photo-input").click(),
+          },
+          avatar(80),
+          h("span", { class: "camera" }, icon(I.camera)),
+        ),
     h("p", {
       class: "account-hello title-large",
-      text: "Hi, " + (username || (email || "").split("@")[0]) + "!",
+      text: "Hi, " + shownName() + "!",
     }),
-    h(
+    // replaceChildren would print false, so optional parts are spread in.
+    ...(linked ? [h("p", {
+      class: "body-small variant account-source",
+      text: "Your name and photo come from your " + serverConfig.oidc.name + " account.",
+    })] : [h(
       "div",
       { class: "account-actions" },
       h("button", {
@@ -5328,7 +5337,7 @@ function renderAccount() {
           text: "Remove photo",
           onclick: () => setPhoto(null),
         }),
-    ),
+    )]),
     h(
       "div",
       { class: "account-links" },

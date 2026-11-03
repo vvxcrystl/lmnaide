@@ -63,8 +63,12 @@ async function fakeIssuer(t) {
       const input = b64(JSON.stringify({ alg: "EdDSA", kid: "k1" })) + "." + b64(JSON.stringify(claims));
       const signature = sign(null, Buffer.from(input), grant.badSignature ? generateKeyPairSync("ed25519").privateKey : privateKey);
       const accessToken = b64(randomBytes(16));
-      access.set(accessToken, { sub: grant.sub, email: grant.email });
+      access.set(accessToken, { sub: grant.sub, email: grant.email, name: grant.name, picture: grant.picture });
       return json({ access_token: accessToken, token_type: "Bearer", id_token: input + "." + b64(signature) });
+    }
+    if (url.pathname.startsWith("/photos/")) {
+      res.writeHead(200, { "Content-Type": "image/jpeg" });
+      return res.end("photo-" + url.pathname.slice("/photos/".length));
     }
     if (url.pathname === "/userinfo") {
       const info = access.get(req.headers.authorization?.replace(/^Bearer /, ""));
@@ -175,6 +179,24 @@ test("an existing user links explicitly and is never matched by email", async (t
   issuer.next = { sub: "sub-other", email: "other@example.com" };
   const { intent: second } = await api("oidc/link", {}, session);
   assert.equal((await signIn({ link: second })).status, 409);
+});
+
+test("a connected account's name and photo come from the issuer", async (t) => {
+  const { issuer, api, signIn } = await harness(t);
+  const jpeg = (text) => "data:image/jpeg;base64," + Buffer.from(text).toString("base64");
+  issuer.next = { sub: "sub-1", email: "new@example.com", name: "Ada Lovelace", picture: issuer.url + "/photos/a" };
+  const { token } = await signIn();
+  let profile = await api("profile", undefined, token);
+  assert.equal(profile.name, "Ada Lovelace");
+  assert.equal(profile.photo, jpeg("photo-a"));
+  assert.equal((await api("profile", { photo: null }, token)).status, 409);
+
+  // Changes at the issuer show at the next sign-in. Pictures on other origins are never fetched.
+  issuer.next = { ...issuer.next, name: "Ada", picture: "http://169.254.169.254/latest/meta-data" };
+  profile = await api("profile", undefined, (await signIn()).token);
+  assert.deepEqual([profile.name, profile.photo], ["Ada", jpeg("photo-a")]);
+  issuer.next = { ...issuer.next, picture: undefined };
+  assert.equal((await api("profile", undefined, (await signIn()).token)).photo, null);
 });
 
 test("the callback rejects bad state, foreign browsers and tampered ID tokens", async (t) => {

@@ -2555,6 +2555,11 @@ input.time-field.on {
 .account-hello {
   padding: 12px 0 16px;
 }
+.account-source {
+  margin-top: -8px;
+  padding: 0 24px 16px;
+  text-align: center;
+}
 .account-actions {
   display: flex;
   gap: 8px;

@@ -133,6 +133,7 @@ Opening the calendar in a browser then goes straight to the CrystlCloud sign-in 
 - New accounts come only from CrystlCloud. `ALLOW_REGISTRATION=false` stops new accounts too, so only connected accounts can sign in.
 - Password accounts made before the switch still sign in, at `/?password` in the browser. To use CrystlCloud, sign in with the password, then choose **Connect CrystlCloud account** in Settings → Cloud sync or on the account card. lmnaide never matches accounts by email.
 - Once everyone has connected, `PASSWORD_LOGIN=false` hides password sign-in.
+- A connected account's name and photo come from CrystlCloud. Each sign-in copies them, so a change there shows in lmnaide the next time you sign in. Photos can't be changed in lmnaide for these accounts. Usernames stay lmnaide's own. Only pictures hosted on the issuer's own address are copied.
 - Signing out of lmnaide doesn't sign you out of CrystlCloud.
 
 The Android app needs no registration of its own. It opens the same server sign-in in a Custom Tab and returns to the app through `lmnaide://oidc` with a one-time code. The code only works with a secret the app kept.
