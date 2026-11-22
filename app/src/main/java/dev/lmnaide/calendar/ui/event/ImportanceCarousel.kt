@@ -62,10 +62,10 @@ internal fun ImportanceCarousel(selected: Importance?, onSelect: (Importance?) -
     val currentSelected by rememberUpdatedState(selected)
     val currentOnSelect by rememberUpdatedState(onSelect)
 
-    // When the pager comes to rest away from the selection, a swipe picks where it landed.
-    // Anything else, like a touch that stopped a slide or a TalkBack scroll, slides back to the
-    // selection, so the middle option and the selection always match. TalkBack picks by
-    // double-tapping an option instead.
+    // When the pager comes to rest away from the selection, a drag since the last change picks
+    // where it landed. Anything else, such as a TalkBack scroll, slides back to the selection, so
+    // at rest the middle option and the selection always match. TalkBack picks by double-tapping
+    // an option instead.
     val scope = rememberCoroutineScope()
     var swiped by remember { mutableStateOf(false) }
     LaunchedEffect(pager) {
