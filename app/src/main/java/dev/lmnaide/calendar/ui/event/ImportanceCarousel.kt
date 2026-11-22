@@ -25,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -43,6 +44,8 @@ import androidx.compose.ui.unit.dp
 import dev.lmnaide.calendar.data.Importance
 import dev.lmnaide.calendar.ui.common.ColorDot
 import dev.lmnaide.calendar.ui.common.contentColor
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 private val Options = listOf<Importance?>(null) + Importance.entries
@@ -59,28 +62,34 @@ internal fun ImportanceCarousel(selected: Importance?, onSelect: (Importance?) -
     val currentSelected by rememberUpdatedState(selected)
     val currentOnSelect by rememberUpdatedState(onSelect)
 
-    // Settling on an option picks it, whether by a swipe or a TalkBack scroll. The exception is a
-    // slide the app starts after a tap or a change from outside: until it reaches [slideTarget],
-    // pages it settles on along the way pick nothing, so they can't overwrite a newer tap.
-    var slideTarget by remember { mutableStateOf<Int?>(null) }
+    // When the pager comes to rest away from the selection, a swipe picks where it landed.
+    // Anything else, like a touch that stopped a slide or a TalkBack scroll, slides back to the
+    // selection, so the middle option and the selection always match. TalkBack picks by
+    // double-tapping an option instead.
+    val scope = rememberCoroutineScope()
+    var swiped by remember { mutableStateOf(false) }
     LaunchedEffect(pager) {
-        pager.interactionSource.interactions.collect { if (it is DragInteraction.Start) slideTarget = null }
+        pager.interactionSource.interactions.collect { if (it is DragInteraction.Start) swiped = true }
     }
     LaunchedEffect(pager) {
-        snapshotFlow { pager.settledPage }.collect { page ->
-            slideTarget?.let { target ->
-                if (page == target) slideTarget = null
-                return@collect
+        snapshotFlow { if (pager.isScrollInProgress) null else pager.currentPage }
+            .filterNotNull()
+            .collect { page ->
+                val selectedPage = Options.indexOf(currentSelected)
+                when {
+                    page == selectedPage -> Unit
+                    swiped -> currentOnSelect(Options[page])
+                    else -> scope.launch { pager.animateScrollToPage(selectedPage) }
+                }
+                swiped = false
             }
-            if (Options[page] != currentSelected) currentOnSelect(Options[page])
-        }
     }
+    // A tap or a change from outside slides the new selection into the middle.
     LaunchedEffect(selected) {
         val target = Options.indexOf(selected)
         if (target != pager.currentPage || pager.currentPageOffsetFraction != 0f) {
-            slideTarget = target
+            swiped = false
             pager.animateScrollToPage(target)
-            if (pager.settledPage == target) slideTarget = null
         }
     }
 
