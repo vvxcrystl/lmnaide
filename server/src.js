@@ -106,6 +106,10 @@ const enums = {
   recurrence: ["NONE", "DAILY", "WEEKDAYS", "WEEKLY", "MONTHLY", "YEARLY"],
   kind: ["EVENT", "TASK"],
 };
+const validReminders = (value) =>
+  Array.isArray(value) &&
+  value.length <= 100 &&
+  value.every((minutes) => Number.isSafeInteger(minutes) && minutes >= 0 && minutes <= 525600);
 function validate(change) {
   if (
     !change ||
@@ -147,6 +151,8 @@ function validate(change) {
       !enums.importance.includes(d.defaultImportance)
     )
       fail(400, "Invalid importance");
+    if (d.defaultReminders !== undefined && !validReminders(d.defaultReminders))
+      fail(400, "Invalid defaultReminders");
     return {
       name: d.name,
       color: d.color,
@@ -155,6 +161,8 @@ function validate(change) {
       defaultImportance: d.defaultImportance ?? null,
       // Omit false to preserve legacy operation fingerprints and identical seed records.
       ...(d.publicDetails === true ? { publicDetails: true } : {}),
+      // Omitted means new events follow each device's default notification.
+      ...(d.defaultReminders !== undefined ? { defaultReminders: d.defaultReminders } : {}),
     };
   }
   text("title", 1000);
@@ -200,14 +208,7 @@ function validate(change) {
       )
     )
       fail(400, `Invalid ${key}`);
-  if (
-    !Array.isArray(d.reminders) ||
-    d.reminders.length > 100 ||
-    !d.reminders.every(
-      (minutes) => Number.isSafeInteger(minutes) && minutes >= 0 && minutes <= 525600,
-    )
-  )
-    fail(400, "Invalid reminders");
+  if (!validReminders(d.reminders)) fail(400, "Invalid reminders");
   // Device-specific contact lookup URIs never leave the device.
   return Object.fromEntries(
     [

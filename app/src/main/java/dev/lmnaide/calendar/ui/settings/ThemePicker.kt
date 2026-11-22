@@ -186,7 +186,8 @@ private fun ThemeCard(theme: AppTheme, selected: Boolean, dark: Boolean, onClick
     val context = LocalContext.current
     SelectableCard(selected, onClick, modifier) {
         Column(Modifier.padding(horizontal = 8.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Orb(theme.colorScheme(dark, context))
+            val scheme = theme.colorScheme(dark, context)
+            Orb(scheme, glow = scheme.tertiary.takeIf { theme == AppTheme.CHRISTMAS })
             Spacer(Modifier.height(10.dp))
             Text(
                 theme.label,
@@ -198,9 +199,12 @@ private fun ThemeCard(theme: AppTheme, selected: Boolean, dark: Boolean, onClick
     }
 }
 
-/** A glass-like sphere in a theme's colors: background at the edge, accent blooming from a corner. */
+/**
+ * A glass-like sphere in a theme's colors: background at the edge, accent blooming from a corner.
+ * A [glow] blooms from the opposite corner, for themes with two signature colors.
+ */
 @Composable
-private fun Orb(scheme: ColorScheme) {
+private fun Orb(scheme: ColorScheme, glow: Color? = null) {
     Canvas(Modifier.size(44.dp).clip(CircleShape)) {
         drawRect(scheme.background)
         drawRect(
@@ -212,6 +216,17 @@ private fun Orb(scheme: ColorScheme) {
                 radius = size.width * 0.9f,
             ),
         )
+        if (glow != null) {
+            drawRect(
+                Brush.radialGradient(
+                    0f to glow,
+                    0.6f to glow.copy(alpha = 0.5f),
+                    1f to Color.Transparent,
+                    center = Offset(size.width * 0.2f, size.height * 0.3f),
+                    radius = size.width * 0.7f,
+                ),
+            )
+        }
         drawRect(
             Brush.radialGradient(
                 0f to Color.White.copy(alpha = if (scheme.background.luminanceIsLight()) 0.8f else 0.28f),

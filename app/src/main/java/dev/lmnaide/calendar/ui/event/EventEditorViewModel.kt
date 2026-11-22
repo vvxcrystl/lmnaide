@@ -89,6 +89,7 @@ class EventEditorViewModel(
     private val instanceId: Long = handle["instance"] ?: Routes.NO_VALUE
     private val initialDate: Long = handle["date"] ?: Routes.NO_VALUE
     private val initialMinute: Int = handle["minute"] ?: -1
+    private val initialDuration: Int = handle["duration"] ?: -1
     private val initialAllDay: Boolean = handle["allDay"] ?: false
     private val initialTask: Boolean = handle["task"] ?: false
     private val settings = settingsRepository.settings.value
@@ -155,7 +156,7 @@ class EventEditorViewModel(
             date == now.toLocalDate() && now.hour < 23 -> date.atTime(now.hour + 1, 0)
             else -> date.atTime(9, 0)
         }
-        val end = start.plusMinutes(settings.defaultDurationMinutes.toLong())
+        val end = start.plusMinutes((if (initialDuration > 0) initialDuration else settings.defaultDurationMinutes).toLong())
         val calendar = calendars.firstOrNull { it.id == initialCalendar }
             ?: calendars.firstOrNull { it.id == settings.defaultCalendarId }
             ?: calendars.first()
@@ -169,7 +170,7 @@ class EventEditorViewModel(
             calendarId = calendar.id,
             importance = calendar.defaultImportance,
             // Tasks remind when they're due; events use the default notification.
-            reminders = if (initialTask) listOf(0) else listOfNotNull(settings.defaultReminderMinutes),
+            reminders = if (initialTask) listOf(0) else calendar.newEventReminders(settings.defaultReminderMinutes),
             kind = if (initialTask) EventKind.TASK else EventKind.EVENT,
         )
         sharedDraft?.let { draft ->
@@ -185,7 +186,7 @@ class EventEditorViewModel(
                 recurrence = draft.recurrence,
                 recurrenceUntil = draft.recurrenceUntil,
                 kind = draft.kind,
-                reminders = if (draft.kind == EventKind.TASK) listOf(0) else listOfNotNull(settings.defaultReminderMinutes),
+                reminders = if (draft.kind == EventKind.TASK) listOf(0) else calendar.newEventReminders(settings.defaultReminderMinutes),
             )
         }
         if (initialText.isBlank()) return blank
@@ -237,11 +238,17 @@ class EventEditorViewModel(
         )
     }
 
-    /** A new item follows its calendar's default importance, unless it was set by hand. */
+    /** A new item follows its calendar's default importance and notifications, unless they were set by hand. */
     fun setCalendar(calendar: CalendarEntity) = update { s ->
         val old = calendars.value.firstOrNull { it.id == s.calendarId }
         val follows = isNew && s.importance == old?.defaultImportance
-        s.copy(calendarId = calendar.id, importance = if (follows) calendar.defaultImportance else s.importance)
+        val appDefault = settings.defaultReminderMinutes
+        val remindersFollow = isNew && !s.isTask && old != null && s.reminders == old.newEventReminders(appDefault).distinct().sorted()
+        s.copy(
+            calendarId = calendar.id,
+            importance = if (follows) calendar.defaultImportance else s.importance,
+            reminders = if (remindersFollow) calendar.newEventReminders(appDefault).distinct().sorted() else s.reminders,
+        )
     }
 
     /** Switching between event and task keeps the date and time, and picks sensible reminders. */

@@ -572,6 +572,7 @@ class CloudSync(
                                 .put("publicDetails", c.publicDetails)
                                 .put("keywords", c.keywords)
                                 .put("defaultImportance", c.defaultImportance?.name ?: JSONObject.NULL)
+                                .apply { c.defaultReminders?.let { put("defaultReminders", JSONArray(it)) } }
                         }
                     else
                         events[row.localId]?.let { e ->
@@ -815,6 +816,8 @@ class CloudSync(
                                 keywords = d.getString("keywords"),
                                 defaultImportance =
                                     d.nullString("defaultImportance")?.let(Importance::valueOf),
+                                defaultReminders =
+                                    d.optJSONArray("defaultReminders")?.let { a -> (0 until a.length()).map(a::getInt) },
                             )
                         // Deleted local records need to be inserted again when history is restored.
                         val exists = db.calendarDao().getAll().any { it.id == localId }

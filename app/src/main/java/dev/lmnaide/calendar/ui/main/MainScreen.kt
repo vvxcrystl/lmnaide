@@ -101,6 +101,7 @@ import dev.lmnaide.calendar.ui.common.rememberNow
 import dev.lmnaide.calendar.container
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.time.Duration
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -108,11 +109,12 @@ import java.time.YearMonth
 @Composable
 fun MainScreen(
     onOpenEvent: (EventLink) -> Unit,
-    onCreateEvent: (date: LocalDate, minute: Int, allDay: Boolean, task: Boolean) -> Unit,
+    onCreateEvent: (date: LocalDate, minute: Int, durationMinutes: Int) -> Unit,
     onMoreOptions: (date: LocalDate, task: Boolean, text: String, calendarId: Long?, people: String) -> Unit,
     onSearch: () -> Unit,
     onSettings: () -> Unit,
     onManageCalendars: () -> Unit,
+    onEditCalendar: (Long) -> Unit,
     viewModel: MainViewModel = viewModel(factory = MainViewModel.Factory),
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -172,6 +174,7 @@ fun MainScreen(
                 },
                 onToggleCalendar = viewModel::toggleCalendar,
                 onManageCalendars = { closeDrawerThen(onManageCalendars) },
+                onEditCalendar = { calendar -> closeDrawerThen { onEditCalendar(calendar.id) } },
                 onSettings = { closeDrawerThen(onSettings) },
             )
         },
@@ -305,7 +308,11 @@ fun MainScreen(
                                         onVisibleRange = onVisibleRange,
                                         onOpenEvent = openEvent,
                                         onOpenDay = openDay,
-                                        onCreateAt = { onCreateEvent(it.toLocalDate(), it.hour * 60 + it.minute, false, false) },
+                                        onCreateAt = { onCreateEvent(it.toLocalDate(), it.hour * 60 + it.minute, -1) },
+                                        defaultMinutes = settings.defaultDurationMinutes,
+                                        onCreateRange = { start, end ->
+                                            onCreateEvent(start.toLocalDate(), start.hour * 60 + start.minute, Duration.between(start, end).toMinutes().toInt())
+                                        },
                                     )
                                 }
                             }

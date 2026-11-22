@@ -19,7 +19,7 @@ class EventIndex(
         visibleEvents
             .flatMap { event ->
                 val calendar = calendarsById.getValue(event.calendarId)
-                RecurrenceExpander.expand(event, event.color ?: calendar.color, calendar.name, from, to)
+                RecurrenceExpander.expand(event, event.displayColor(calendar.color), calendar.name, from, to)
             }
             .sortedWith(OccurrenceOrder)
 
@@ -51,7 +51,7 @@ class EventIndex(
     /** The next occurrence from [today] for a series, or the first one if none are upcoming. */
     fun representative(event: EventEntity, today: LocalDate): Occurrence? {
         val calendar = calendarsById[event.calendarId] ?: return null
-        val color = event.color ?: calendar.color
+        val color = event.displayColor(calendar.color)
         val first = event.localStart().toLocalDate()
         return RecurrenceExpander.first(event, color, calendar.name, today, today.plusYears(5))
             ?: RecurrenceExpander.first(event, color, calendar.name, first, first.plusDays(1))

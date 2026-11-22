@@ -32,8 +32,12 @@ data class CalendarEntity(
     @ColumnInfo(defaultValue = "") val keywords: String = "",
     /** Importance given to new items in this calendar, like High for work. */
     val defaultImportance: Importance? = null,
+    /** Minutes before the start for new events in this calendar. Null follows the app's default notification. */
+    val defaultReminders: List<Int>? = null,
 ) {
     val keywordList: List<String> get() = keywords.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
+    fun newEventReminders(appDefault: Int?): List<Int> = defaultReminders ?: listOfNotNull(appDefault)
 }
 
 /**
@@ -81,6 +85,9 @@ data class EventEntity(
     @ColumnInfo(defaultValue = "0") val createdProgrammatically: Boolean = false,
 ) {
     val isTask: Boolean get() = kind == EventKind.TASK
+
+    /** The color picked for the event, else its importance color, else its calendar's. */
+    fun displayColor(calendarColor: Int): Int = color ?: importance?.argb ?: calendarColor
 
     fun localStart(zone: ZoneId = ZoneId.systemDefault()): LocalDateTime = toLocal(start, allDay, zone)
 

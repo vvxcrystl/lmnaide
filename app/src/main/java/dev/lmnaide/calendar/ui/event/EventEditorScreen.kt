@@ -10,15 +10,11 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import dev.lmnaide.calendar.data.EventKind
 import dev.lmnaide.calendar.data.Importance
-import dev.lmnaide.calendar.ui.common.contentColor
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -88,6 +84,7 @@ import dev.lmnaide.calendar.ui.common.EventColors
 import dev.lmnaide.calendar.ui.common.Fmt
 import dev.lmnaide.calendar.ui.common.Motion
 import dev.lmnaide.calendar.ui.common.rememberLastNonNull
+import dev.lmnaide.calendar.ui.common.AddReminderDialog
 import dev.lmnaide.calendar.ui.common.OptionsDialog
 import dev.lmnaide.calendar.ui.common.TimePickerModal
 import java.time.LocalDate
@@ -96,7 +93,7 @@ private enum class EditorDialog {
     StartDate, StartTime, EndDate, EndTime, Repeat, RepeatEnd, RepeatUntil, Reminder, Calendar, Color, Scope, Discard
 }
 
-private val TimedReminders = listOf(0, 5, 10, 15, 30, 60, 120, 24 * 60, 7 * 24 * 60)
+internal val TimedReminders = listOf(0, 5, 10, 15, 30, 60, 120, 24 * 60, 7 * 24 * 60)
 private val AllDayReminders = listOf(0, 24 * 60, 7 * 24 * 60)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -145,7 +142,10 @@ fun EventEditorScreen(
         if (state == null) return@Scaffold
         val today = remember { LocalDate.now() }
         val calendar = calendars.firstOrNull { it.id == state.calendarId }
-        val eventColor = state.color ?: calendar?.color
+        // Without a color of its own, an event takes its importance color, then its calendar's.
+        val defaultColor = state.importance?.argb ?: calendar?.color
+        val defaultColorLabel = if (state.importance != null) "Importance color" else "Calendar color"
+        val eventColor = state.color ?: defaultColor
 
         Column(
             Modifier
@@ -270,7 +270,7 @@ fun EventEditorScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     eventColor?.let { ColorDot(Color(it), Modifier.padding(end = 12.dp)) }
                     Text(
-                        if (state.color == null) "Calendar color" else EventColors.labelFor(state.color),
+                        if (state.color == null) defaultColorLabel else EventColors.labelFor(state.color),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -320,17 +320,14 @@ fun EventEditorScreen(
                 { until -> viewModel.update { it.copy(recurrenceUntil = maxOf(until, it.startDate)) } },
                 { dialog = null },
             )
-            EditorDialog.Reminder -> {
-                val options = (if (state.allDay) AllDayReminders else TimedReminders) - state.reminders.toSet()
-                OptionsDialog(
-                    title = "Notification",
-                    options = options,
-                    selected = null,
-                    label = { Fmt.reminder(it, state.allDay, use24h) },
-                    onSelect = { minutes -> viewModel.update { it.copy(reminders = (it.reminders + minutes).sorted()) } },
-                    onDismiss = { dialog = null },
-                )
-            }
+            EditorDialog.Reminder -> AddReminderDialog(
+                presets = if (state.allDay) AllDayReminders else TimedReminders,
+                existing = state.reminders,
+                allDay = state.allDay,
+                use24h = use24h,
+                onAdd = { minutes -> viewModel.update { it.copy(reminders = (it.reminders + minutes).sorted()) } },
+                onDismiss = { dialog = null },
+            )
             EditorDialog.Calendar -> OptionsDialog(
                 title = "Calendar",
                 options = calendars,
@@ -344,8 +341,8 @@ fun EventEditorScreen(
                 title = "Event color",
                 options = listOf<EventColors?>(null) + EventColors.entries,
                 selected = EventColors.entries.firstOrNull { it.argb == state.color },
-                label = { it?.label ?: "Calendar color" },
-                leading = { ColorDot(it?.color ?: Color(calendar?.color ?: 0)) },
+                label = { it?.label ?: defaultColorLabel },
+                leading = { ColorDot(it?.color ?: Color(defaultColor ?: 0)) },
                 onSelect = { picked -> viewModel.update { it.copy(color = picked?.argb) } },
                 onDismiss = { dialog = null },
             )
@@ -401,32 +398,11 @@ private fun KindSelector(kind: EventKind, onSelect: (EventKind) -> Unit) {
 }
 
 /** None, then Low, Medium and High, each marked with its color. */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun ImportanceSelector(importance: Importance?, label: String = "Importance", showClockNote: Boolean = true, onSelect: (Importance?) -> Unit) {
     Column {
         Text(label, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            (listOf<Importance?>(null) + Importance.entries).forEach { option ->
-                FilterChip(
-                    selected = importance == option,
-                    onClick = { onSelect(option) },
-                    label = { Text(option?.label ?: "None") },
-                    leadingIcon = option?.let { { ColorDot(Color(it.argb), size = 10.dp) } },
-                    shape = CircleShape,
-                    border = null,
-                    colors = if (option != null) {
-                        FilterChipDefaults.filterChipColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                            selectedContainerColor = Color(option.argb),
-                            selectedLabelColor = Color(option.argb).contentColor(),
-                        )
-                    } else {
-                        FilterChipDefaults.filterChipColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
-                    },
-                )
-            }
-        }
+        ImportanceCarousel(importance, onSelect)
         val hint = when (importance) {
             Importance.LOW -> "Reminders arrive silently"
             Importance.MEDIUM -> "Standard reminders with sound"

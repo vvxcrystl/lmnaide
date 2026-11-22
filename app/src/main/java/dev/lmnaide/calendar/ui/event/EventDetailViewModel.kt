@@ -59,7 +59,7 @@ class EventDetailViewModel(
             baseStart
         }
         val length = Duration.between(baseStart, maxOf(event.localEnd(), baseStart))
-        return Occurrence(event, start, start.plus(length), event.color ?: calendar?.color ?: 0, calendar?.name.orEmpty())
+        return Occurrence(event, start, start.plus(length), event.displayColor(calendar?.color ?: 0), calendar?.name.orEmpty())
     }
 
     /** When a high-importance occurrence's Clock alarm can be requested, if at all. */

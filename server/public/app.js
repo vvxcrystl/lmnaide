@@ -788,6 +788,15 @@ function invalidClientChange(c) {
       !["LOW", "MEDIUM", "HIGH"].includes(d.defaultImportance)
     )
       return "Invalid default importance";
+    if (
+      d.defaultReminders !== undefined &&
+      !(
+        Array.isArray(d.defaultReminders) &&
+        d.defaultReminders.length <= 100 &&
+        d.defaultReminders.every((m) => Number.isSafeInteger(m) && m >= 0 && m <= 525600)
+      )
+    )
+      return "Invalid default notifications";
     return null;
   }
   const minDay = MIN_EVENT_TIME / DAY;
@@ -1037,6 +1046,9 @@ function sanitizeIncomingRecord(r) {
               ["LOW", "MEDIUM", "HIGH"].includes(d.defaultImportance)
                 ? d.defaultImportance
                 : null,
+            ...(Array.isArray(d.defaultReminders)
+              ? { defaultReminders: listMinutes(d.defaultReminders) }
+              : {}),
           }
         : {
             title: text(d.title, 1000),

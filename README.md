@@ -19,7 +19,7 @@ Created in [T3 Code](https://t3.codes). [DESIGN.md](DESIGN.md) covers the design
 
 ### Views
 
-The app has five views: Schedule, Day, 3 days, Week and Month. Swipe left or right to change the period. Tap the month name for a date picker, and tap the date button in the top bar to jump back to today.
+The app has five views: Schedule, Day, 3 days, Week and Month. Swipe left or right to change the period. In Day, 3 days and Week, tap an empty hour to add an event there, or press and hold, then drag, to pick the start and end in 15-minute steps. Tap the month name for a date picker, and tap the date button in the top bar to jump back to today.
 
 Overlapping events sit side by side, and multi-day events stretch across the days they cover. Past events are dimmed, and a line marks the current time.
 
@@ -80,7 +80,9 @@ Mark any event or task as Low (green), Medium (yellow) or High (red). Each level
 | Medium | Normal sound, with a Snooze button. |
 | High   | A reminder 30 minutes before, strong vibration and an extra alert at the start or due time. It repeats every 5 minutes, up to 3 times, until you tap Got it, snooze, open the event or finish the task. |
 
-Each calendar can also have a default importance, which new events on that calendar start with.
+An event without a color of its own shows in its importance color, or in its calendar's color when it has no importance. Swipe the importance row in the editor to pick a level.
+
+Each calendar can also have a default importance, which new events on that calendar start with. It can also have its own default notifications, such as 1 day and 1 hour before for Work. New events on that calendar start with all of them. Pick a preset or choose Custom… to enter any number of minutes, hours, days or weeks, up to a year. The event editor's Add notification has the same Custom… option. Calendars without their own list use the default notification from Settings.
 
 Each event can have several reminders. They use exact alarms, so they fire on time, and the app reschedules them after a reboot or a time zone change.
 
@@ -90,7 +92,7 @@ Check Clock to confirm the alarm: receiving apps can require confirmation, and A
 
 ### Calendars
 
-Create, rename, recolor and delete calendars from Manage calendars. Show or hide each one from the drawer. A Holidays calendar comes preloaded with Canadian holidays.
+Create, rename, recolor and delete calendars from Manage calendars. Show or hide each one from the drawer, and long-press one there to edit it. A Holidays calendar comes preloaded with Canadian holidays.
 
 ### Search
 
@@ -98,13 +100,13 @@ Search matches event titles, locations and descriptions.
 
 ### Home-screen widget
 
-The Calendar agenda widget shows upcoming days with date badges, colored event cards, open tasks and importance dots. Tap a card to open the event, or tap + to add one. The widget resizes, scrolls and follows the app's light or dark setting. It updates when events, tasks, calendar visibility or settings change.
+The Calendar agenda widget shows upcoming days with date badges, colored event cards, open tasks by name and importance dots. Tap a card to open the event, or tap + to add one. The widget resizes, scrolls and follows the app's light or dark setting. It updates when events, tasks, calendar visibility or settings change.
 
 To add it, long-press your home screen, open Widgets and pick Calendar agenda.
 
 ### Themes and settings
 
-Choose System, Light or Dark, then pick one of eight themes: Material You (colors from your wallpaper, the default), Lemonade, Jet Black, Blush, Amethyst, Forest, Ocean or Ember. Jet Black is always dark.
+Choose System, Light or Dark, then pick one of nine themes: Material You (colors from your wallpaper, the default), Lemonade, Jet Black, Blush, Amethyst, Forest, Ocean, Ember or Christmas. Jet Black is always dark. Christmas adds light snowfall over the app.
 
 <p>
   <img src="assets/screenshots/themes-settings.png" width="24%" alt="Theme picker in Settings">
@@ -113,7 +115,7 @@ Choose System, Light or Dark, then pick one of eight themes: Material You (color
   <img src="assets/screenshots/theme-jet-black.png" width="24%" alt="The drawer in the Jet Black theme">
 </p>
 
-Settings also covers the first day of the week, 24-hour time, and the default calendar, event length and reminder.
+Settings is split into pages, like Android's own Settings. General covers the first day of the week, 24-hour time, and the default calendar, event length and reminder. Appearance holds the themes, and Sync (Cloud build only) holds cloud sync and public calendar details.
 
 ## Building
 

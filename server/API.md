@@ -74,7 +74,7 @@ curl "$CALENDAR_URL/api/v1/calendars" \
 	-d '{"name":"Automation","id":"automation"}'
 ```
 
-`name` is required. Optional fields are `id`, `color`, `visible`, `keywords`, and `defaultImportance`. Defaults are a blue color, visible, empty keywords, and no default importance. An omitted `id` receives a generated UUID. IDs accept 1–200 characters, excluding the path segments `.` and `..`. An existing ID, including a deleted record's ID, returns `409`.
+`name` is required. Optional fields are `id`, `color`, `visible`, `keywords`, `defaultImportance`, and `defaultReminders`. `defaultReminders` is an array of up to 100 minute offsets (0 to 525600) for new events; omit it to follow each device's default notification. Defaults are a blue color, visible, empty keywords, and no default importance. An omitted `id` receives a generated UUID. IDs accept 1–200 characters, excluding the path segments `.` and `..`. An existing ID, including a deleted record's ID, returns `409`.
 
 ### Create an event
 

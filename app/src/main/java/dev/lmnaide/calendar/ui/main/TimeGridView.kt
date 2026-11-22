@@ -10,6 +10,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -48,6 +49,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -57,7 +59,9 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -75,6 +79,7 @@ import dev.lmnaide.calendar.ui.common.rememberLastNonNull
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -83,6 +88,7 @@ private val GutterWidth = 52.dp
 private val HourHeight = 56.dp
 private val LaneHeight = 22.dp
 private const val COLLAPSED_LANES = 2
+private const val SELECT_STEP = 15
 
 /** Day, 3-day and week views: an hourly grid paged horizontally by [days]. */
 @Composable
@@ -98,12 +104,16 @@ fun TimeGridView(
     onOpenEvent: (Occurrence) -> Unit,
     onOpenDay: (LocalDate) -> Unit,
     onCreateAt: (LocalDateTime) -> Unit,
+    onCreateRange: (start: LocalDateTime, end: LocalDateTime) -> Unit,
+    defaultMinutes: Int,
 ) {
     val today = now.toLocalDate()
-    val paging = remember(days, weekStart) {
-        val anchor = if (days == 7) selectedDate.with(TemporalAdjusters.previousOrSame(weekStart)) else selectedDate
-        DayPaging(anchor, days)
+    // Saved with the pager's page, so coming back from another screen shows the same days instead
+    // of counting the restored page from a new anchor.
+    val anchorDay = rememberSaveable(days, weekStart) {
+        (if (days == 7) selectedDate.with(TemporalAdjusters.previousOrSame(weekStart)) else selectedDate).toEpochDay()
     }
+    val paging = remember(anchorDay, days) { DayPaging(LocalDate.ofEpochDay(anchorDay), days) }
     val pagerState = rememberPagerState(initialPage = paging.pageOf(selectedDate)) { PAGE_COUNT }
     PagerDateSync(pagerState, selectedDate, today, paging::pageOf, paging::rangeOf, onSelectDate, onVisibleRange)
 
@@ -137,6 +147,9 @@ fun TimeGridView(
             onToggleAllDay = { allDayExpanded = !allDayExpanded },
             onSlotTap = { slot -> draftSlot = slot },
             onCreateAt = { draftSlot = null; onCreateAt(it) },
+            onSelectStart = { draftSlot = null },
+            onCreateRange = onCreateRange,
+            defaultMinutes = defaultMinutes,
             onOpenEvent = onOpenEvent,
             onOpenDay = onOpenDay,
         )
@@ -156,6 +169,9 @@ private fun TimeGridPage(
     onToggleAllDay: () -> Unit,
     onSlotTap: (LocalDateTime) -> Unit,
     onCreateAt: (LocalDateTime) -> Unit,
+    onSelectStart: () -> Unit,
+    onCreateRange: (LocalDateTime, LocalDateTime) -> Unit,
+    defaultMinutes: Int,
     onOpenEvent: (Occurrence) -> Unit,
     onOpenDay: (LocalDate) -> Unit,
 ) {
@@ -203,6 +219,9 @@ private fun TimeGridPage(
                         draftSlot = draftSlot?.takeIf { it.toLocalDate() == date },
                         onSlotTap = onSlotTap,
                         onCreateAt = onCreateAt,
+                        onSelectStart = onSelectStart,
+                        onCreateRange = onCreateRange,
+                        defaultMinutes = defaultMinutes,
                         onOpenEvent = onOpenEvent,
                         modifier = Modifier
                             .weight(1f)
@@ -347,18 +366,69 @@ private fun DayColumn(
     draftSlot: LocalDateTime?,
     onSlotTap: (LocalDateTime) -> Unit,
     onCreateAt: (LocalDateTime) -> Unit,
+    onSelectStart: () -> Unit,
+    onCreateRange: (LocalDateTime, LocalDateTime) -> Unit,
+    defaultMinutes: Int,
     onOpenEvent: (Occurrence) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Press and hold, then drag, to pick a stretch of time in 15-minute steps.
+    var selection by remember { mutableStateOf<IntRange?>(null) }
+    val haptics = LocalHapticFeedback.current
+    val placed = remember(occurrences, date) { layoutDay(occurrences, date) }
+    val currentPlaced by rememberUpdatedState(placed)
+    val currentDefaultMinutes by rememberUpdatedState(defaultMinutes)
+    val currentDraftSlot by rememberUpdatedState(draftSlot)
     BoxWithConstraints(
-        modifier.pointerInput(date) {
-            detectTapGestures { offset ->
-                val hour = (offset.y / HourHeight.toPx()).toInt().coerceIn(0, 23)
-                onSlotTap(date.atTime(hour, 0))
+        modifier
+            .pointerInput(date) {
+                detectTapGestures { offset ->
+                    val hour = (offset.y / HourHeight.toPx()).toInt().coerceIn(0, 23)
+                    onSlotTap(date.atTime(hour, 0))
+                }
             }
-        },
+            .pointerInput(date) {
+                fun minuteAt(y: Float) = (y / HourHeight.toPx() * 60).toInt().coerceIn(0, 24 * 60 - 1)
+                val lastSlot = 24 * 60 / SELECT_STEP - 1
+                var anchor = 0
+                var dragged = false
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { offset ->
+                        // Holding an event leaves it alone; only empty time starts a selection.
+                        val minute = minuteAt(offset.y)
+                        val onEvent = currentPlaced.any { p ->
+                            val width = size.width.toFloat() / p.columns
+                            minute in p.startMin until p.endMin && offset.x >= width * p.column && offset.x < width * (p.column + p.span)
+                        }
+                        // The tapped "New event" box is tapped, not held.
+                        val onDraft = currentDraftSlot?.let { minute / 60 == it.hour } == true
+                        if (onEvent || onDraft) return@detectDragGesturesAfterLongPress
+                        anchor = minute / SELECT_STEP
+                        dragged = false
+                        // Until you drag, the selection is the usual event length.
+                        val slots = (currentDefaultMinutes / SELECT_STEP).coerceAtLeast(1)
+                        selection = anchor..minOf(anchor + slots - 1, lastSlot)
+                        onSelectStart()
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    },
+                    onDrag = { change, _ ->
+                        if (selection == null) return@detectDragGesturesAfterLongPress
+                        change.consume()
+                        val slot = minuteAt(change.position.y) / SELECT_STEP
+                        dragged = dragged || slot != anchor
+                        if (dragged) selection = minOf(anchor, slot)..maxOf(anchor, slot)
+                    },
+                    onDragEnd = {
+                        selection?.let { slots ->
+                            val day = date.atStartOfDay()
+                            onCreateRange(day.plusMinutes(slots.first * SELECT_STEP.toLong()), day.plusMinutes((slots.last + 1) * SELECT_STEP.toLong()))
+                        }
+                        selection = null
+                    },
+                    onDragCancel = { selection = null },
+                )
+            },
     ) {
-        val placed = remember(occurrences, date) { layoutDay(occurrences, date) }
         placed.forEach { p ->
             val columnWidth = maxWidth / p.columns
             val height = minutesToDp(p.endMin - p.startMin)
@@ -420,6 +490,34 @@ private fun DayColumn(
                         modifier = Modifier.padding(start = 2.dp, top = 1.dp),
                     )
                 }
+            }
+        }
+
+        selection?.let { slots ->
+            val startMin = slots.first * SELECT_STEP
+            val endMin = (slots.last + 1) * SELECT_STEP
+            // Narrow week columns and short stretches have no room for the times; the box shows it.
+            val labelHeight = with(LocalDensity.current) { MaterialTheme.typography.labelMedium.lineHeight.toDp() } + 6.dp
+            val showTimes = maxWidth >= 96.dp && minutesToDp(endMin - startMin) >= labelHeight
+            Box(
+                Modifier
+                    .offset(y = minutesToDp(startMin))
+                    .fillMaxWidth()
+                    .height(minutesToDp(endMin - startMin))
+                    .padding(horizontal = 2.dp, vertical = 1.dp)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
+                    .border(1.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+            ) {
+                if (!showTimes) return@Box
+                val midnight = LocalTime.MIDNIGHT
+                Text(
+                    Fmt.timeRange(midnight.plusMinutes(startMin.toLong()), midnight.plusMinutes(endMin.toLong()), use24h),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
             }
         }
 

@@ -22,7 +22,8 @@ enum class AppTheme(val label: String) {
     AMETHYST("Amethyst"),
     FOREST("Forest"),
     OCEAN("Ocean"),
-    EMBER("Ember");
+    EMBER("Ember"),
+    CHRISTMAS("Christmas");
 
     /** Material You uses baseline colors before Android 12. */
     val isAvailable: Boolean get() = true
@@ -52,6 +53,18 @@ enum class AppTheme(val label: String) {
             FOREST -> if (useDark) palette(true, 0xFF6FD39B, 0xFF0F1511) else palette(false, 0xFF2E7D52, 0xFFF7F8F1)
             OCEAN -> if (useDark) palette(true, 0xFF63B3F0, 0xFF0C1519) else palette(false, 0xFF1F6FB8, 0xFFF5F9FC)
             EMBER -> if (useDark) palette(true, 0xFFFFA06B, 0xFF17100D) else palette(false, 0xFFB5532A, 0xFFFFF8F4)
+            // Candy-cane red over pine green instead of the usual hue-shifted tertiary.
+            CHRISTMAS -> if (useDark) {
+                palette(true, 0xFFFF5154, 0xFF0D1410).copy(
+                    tertiary = Color(0xFF6FCF8E), onTertiary = Color(0xFF00391B),
+                    tertiaryContainer = Color(0xFF1C4A2E), onTertiaryContainer = Color(0xFFC8F2D4),
+                )
+            } else {
+                palette(false, 0xFFFF5154, 0xFFFFF8F7).copy(
+                    tertiary = Color(0xFF1E7A46), onTertiary = Color.White,
+                    tertiaryContainer = Color(0xFFCDEBD6), onTertiaryContainer = Color(0xFF00210E),
+                )
+            }
         }
     }
 }
