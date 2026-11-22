@@ -191,7 +191,8 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
             SettingsScreen(
                 page = entry.arguments?.getString("page")?.let { name -> SettingsPage.entries.firstOrNull { it.name == name } },
                 onBack = { nav.popFrom(entry) },
-                onOpenPage = { nav.navigate(Routes.settings(it)) },
+                // Only from the resumed screen, so a second quick tap doesn't open a page twice.
+                onOpenPage = { if (entry.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) nav.navigate(Routes.settings(it)) },
                 onManageCalendars = { nav.navigate(Routes.calendars()) },
             )
         }
