@@ -2,6 +2,16 @@ package dev.lmnaide.calendar.ui.settings
 
 import android.os.Build
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Cloud
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -9,8 +19,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,20 +31,17 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -86,8 +91,12 @@ class SettingsViewModel(
 
 private enum class SettingsDialog { WeekStart, Duration, Reminder, DefaultCalendar }
 
-/** Sync only exists in the Cloud build. */
-private enum class SettingsTab(val label: String) { General("General"), Appearance("Appearance"), Sync("Sync") }
+/** A page of Settings. Sync only exists in the Cloud build. */
+enum class SettingsPage(val label: String, val summary: String, val icon: ImageVector) {
+    General("General", "Week start, 24-hour time, new event defaults", Icons.Outlined.Tune),
+    Appearance("Appearance", "Color scheme and theme", Icons.Outlined.Palette),
+    Sync("Sync", "Cloud sync and public calendar details", Icons.Outlined.Cloud),
+}
 
 private val Durations = listOf(15, 30, 45, 60, 90, 120)
 private val Reminders = listOf<Int?>(null, 0, 5, 10, 15, 30, 60, 24 * 60)
@@ -95,7 +104,9 @@ private val Reminders = listOf<Int?>(null, 0, 5, 10, 15, 30, 60, 24 * 60)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    page: SettingsPage?,
     onBack: () -> Unit,
+    onOpenPage: (SettingsPage) -> Unit,
     onManageCalendars: () -> Unit,
     viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory),
 ) {
@@ -107,104 +118,92 @@ fun SettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text(page?.label ?: "Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
                 },
             )
         },
     ) { padding ->
-        val tabs = SettingsTab.entries.filter { it != SettingsTab.Sync || BuildConfig.CLOUD_ENABLED }
-        val pager = rememberPagerState { tabs.size }
-        val scope = rememberCoroutineScope()
         Column(
             Modifier
                 .padding(padding)
-                .fillMaxSize(),
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
         ) {
-            PrimaryTabRow(selectedTabIndex = pager.currentPage, containerColor = MaterialTheme.colorScheme.surface) {
-                tabs.forEachIndexed { index, tab ->
-                    Tab(
-                        selected = pager.currentPage == index,
-                        onClick = { scope.launch { pager.animateScrollToPage(index) } },
-                        text = { Text(tab.label) },
+            when (page) {
+                // Like Android's own Settings: one page per topic, listed here.
+                null -> {
+                    Section(title = null) {
+                        SettingsPage.entries.filter { it != SettingsPage.Sync || BuildConfig.CLOUD_ENABLED }.forEach { entry ->
+                            PageRow(entry) { onOpenPage(entry) }
+                        }
+                    }
+                    Section(title = null) {
+                        ClickRow(title = "Version", value = BuildConfig.VERSION_NAME, onClick = null)
+                    }
+                }
+                SettingsPage.General -> {
+                    Section("Calendar") {
+                        ClickRow(
+                            title = "Start of the week",
+                            value = settings.weekStartOverride?.fullName()
+                                ?: "Locale default (${WeekFields.of(LocalConfiguration.current.locales[0]).firstDayOfWeek.fullName()})",
+                            onClick = { dialog = SettingsDialog.WeekStart },
+                        )
+                        RowDivider()
+                        SwitchRow(
+                            title = "24-hour time",
+                            subtitle = Fmt.time(LocalTime.of(15, 30), settings.use24Hour),
+                            checked = settings.use24Hour,
+                            onCheckedChange = { on -> viewModel.update { it.copy(use24Hour = on) } },
+                        )
+                        RowDivider()
+                        ClickRow(title = "Manage calendars", value = "${calendars.size} calendars", onClick = onManageCalendars, chevron = true)
+                    }
+
+                    Section("New events") {
+                        ClickRow(
+                            title = "Default calendar",
+                            value = defaultCalendar?.name.orEmpty(),
+                            onClick = { dialog = SettingsDialog.DefaultCalendar },
+                        )
+                        RowDivider()
+                        ClickRow(
+                            title = "Default duration",
+                            value = Fmt.duration(settings.defaultDurationMinutes),
+                            onClick = { dialog = SettingsDialog.Duration },
+                        )
+                        RowDivider()
+                        ClickRow(
+                            title = "Default notification",
+                            value = reminderLabel(settings.defaultReminderMinutes),
+                            onClick = { dialog = SettingsDialog.Reminder },
+                        )
+                    }
+                }
+                // The top bar already names the page.
+                SettingsPage.Appearance -> Section(title = null) {
+                    ThemePicker(
+                        themeMode = settings.themeMode,
+                        appTheme = settings.appTheme,
+                        onThemeMode = { mode -> viewModel.update { it.copy(themeMode = mode) } },
+                        onAppTheme = { theme -> viewModel.update { it.copy(appTheme = theme) } },
                     )
                 }
-            }
-            HorizontalPager(state = pager, verticalAlignment = Alignment.Top, modifier = Modifier.weight(1f)) { page ->
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp)
-                        .padding(bottom = 24.dp),
-                ) {
-                    when (tabs[page]) {
-                        SettingsTab.General -> {
-                            Section("Calendar") {
-                                ClickRow(
-                                    title = "Start of the week",
-                                    value = settings.weekStartOverride?.fullName()
-                                        ?: "Locale default (${WeekFields.of(LocalConfiguration.current.locales[0]).firstDayOfWeek.fullName()})",
-                                    onClick = { dialog = SettingsDialog.WeekStart },
-                                )
-                                RowDivider()
-                                SwitchRow(
-                                    title = "24-hour time",
-                                    subtitle = Fmt.time(LocalTime.of(15, 30), settings.use24Hour),
-                                    checked = settings.use24Hour,
-                                    onCheckedChange = { on -> viewModel.update { it.copy(use24Hour = on) } },
-                                )
-                                RowDivider()
-                                ClickRow(title = "Manage calendars", value = "${calendars.size} calendars", onClick = onManageCalendars, chevron = true)
-                            }
-
-                            Section("New events") {
-                                ClickRow(
-                                    title = "Default calendar",
-                                    value = defaultCalendar?.name.orEmpty(),
-                                    onClick = { dialog = SettingsDialog.DefaultCalendar },
-                                )
-                                RowDivider()
-                                ClickRow(
-                                    title = "Default duration",
-                                    value = Fmt.duration(settings.defaultDurationMinutes),
-                                    onClick = { dialog = SettingsDialog.Duration },
-                                )
-                                RowDivider()
-                                ClickRow(
-                                    title = "Default notification",
-                                    value = reminderLabel(settings.defaultReminderMinutes),
-                                    onClick = { dialog = SettingsDialog.Reminder },
-                                )
-                            }
-
-                            Section("About") {
-                                ClickRow(title = "Version", value = BuildConfig.VERSION_NAME, onClick = null)
-                            }
-                        }
-                        // The tab already names it.
-                        SettingsTab.Appearance -> Section(title = null) {
-                            ThemePicker(
-                                themeMode = settings.themeMode,
-                                appTheme = settings.appTheme,
-                                onThemeMode = { mode -> viewModel.update { it.copy(themeMode = mode) } },
-                                onAppTheme = { theme -> viewModel.update { it.copy(appTheme = theme) } },
+                SettingsPage.Sync -> {
+                    dev.lmnaide.calendar.sync.CloudSettings()
+                    Section("Public calendar details") {
+                        calendars.forEachIndexed { index, calendar ->
+                            if (index > 0) RowDivider()
+                            SwitchRow(
+                                title = calendar.name,
+                                subtitle = "Share details publicly. Off shows only busy times.",
+                                checked = calendar.publicDetails,
+                                onCheckedChange = { viewModel.shareDetails(calendar, it) },
                             )
-                        }
-                        SettingsTab.Sync -> {
-                            dev.lmnaide.calendar.sync.CloudSettings()
-                            Section("Public calendar details") {
-                                calendars.forEachIndexed { index, calendar ->
-                                    if (index > 0) RowDivider()
-                                    SwitchRow(
-                                        title = calendar.name,
-                                        subtitle = "Share details publicly. Off shows only busy times.",
-                                        checked = calendar.publicDetails,
-                                        onCheckedChange = { viewModel.shareDetails(calendar, it) },
-                                    )
-                                }
-                            }
                         }
                     }
                 }
@@ -275,6 +274,34 @@ private fun Section(title: String?, content: @Composable () -> Unit) {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column { content() }
+    }
+}
+
+/** A page's icon in a tinted circle, its name and what's on it, as in Android's Settings. */
+@Composable
+private fun PageRow(page: SettingsPage, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+        ) {
+            Icon(page.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
+        }
+        Spacer(Modifier.width(16.dp))
+        Column(Modifier.weight(1f)) {
+            Text(page.label, style = MaterialTheme.typography.bodyLarge)
+            Text(page.summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

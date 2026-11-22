@@ -115,7 +115,7 @@ Choose System, Light or Dark, then pick one of nine themes: Material You (colors
   <img src="assets/screenshots/theme-jet-black.png" width="24%" alt="The drawer in the Jet Black theme">
 </p>
 
-Settings has three tabs. General covers the first day of the week, 24-hour time, and the default calendar, event length and reminder. Appearance holds the themes, and Sync (Cloud build only) holds cloud sync and public calendar details.
+Settings is split into pages, like Android's own Settings. General covers the first day of the week, 24-hour time, and the default calendar, event length and reminder. Appearance holds the themes, and Sync (Cloud build only) holds cloud sync and public calendar details.
 
 ## Building
 

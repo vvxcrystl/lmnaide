@@ -194,7 +194,7 @@ A colored square, the title in headlineSmall, then when it happens, the repeat r
 
 ### Settings
 
-Three tabs: General, Appearance and Sync. Sync only exists in the Cloud build. Swipe between them or tap a tab. Each tab holds grouped surfaces with a 16dp radius on surfaceContainerLow, with primary titleSmall section labels.
+Laid out like Android's own Settings. The first screen lists the pages General, Appearance and Sync, each with its icon in a 40dp primaryContainer circle, its name and a one-line summary, then the version. Sync only exists in the Cloud build. Tapping a page slides it in with its name in the top bar. Pages hold grouped surfaces with a 16dp radius on surfaceContainerLow, with primary titleSmall section labels.
 
 ### Home screen widget (`widget/`)
 

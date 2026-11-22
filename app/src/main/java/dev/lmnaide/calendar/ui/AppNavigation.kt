@@ -28,6 +28,7 @@ import dev.lmnaide.calendar.ui.event.EventDetailScreen
 import dev.lmnaide.calendar.ui.event.EventEditorScreen
 import dev.lmnaide.calendar.ui.main.MainScreen
 import dev.lmnaide.calendar.ui.search.SearchScreen
+import dev.lmnaide.calendar.ui.settings.SettingsPage
 import dev.lmnaide.calendar.ui.settings.SettingsScreen
 import kotlinx.coroutines.flow.StateFlow
 import java.time.LocalDate
@@ -38,7 +39,7 @@ data class EventLink(val eventId: Long, val instanceId: Long)
 object Routes {
     const val MAIN = "main"
     const val SEARCH = "search"
-    const val SETTINGS = "settings"
+    const val SETTINGS = "settings?page={page}"
     const val CALENDARS = "calendars?edit={edit}"
     const val EVENT = "event/{eventId}/{instance}"
     const val EDIT = "edit?eventId={eventId}&instance={instance}&date={date}&minute={minute}&duration={duration}&allDay={allDay}&task={task}&text={text}&calendar={calendar}&people={people}&sharedEvent={sharedEvent}"
@@ -46,6 +47,9 @@ object Routes {
     const val NO_VALUE = Long.MIN_VALUE
 
     fun event(link: EventLink) = "event/${link.eventId}/${link.instanceId}"
+
+    /** Settings, or one of its pages. */
+    fun settings(page: SettingsPage? = null) = if (page == null) "settings" else "settings?page=${page.name}"
 
     /** Manage calendars, with [edit]'s dialog already open when given. */
     fun calendars(edit: Long? = null) = if (edit == null) "calendars" else "calendars?edit=$edit"
@@ -132,7 +136,7 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
                 onCreateEvent = { date, minute, duration -> nav.navigate(Routes.newEvent(date, minute, duration)) },
                 onMoreOptions = { date, task, text, calendarId, people -> nav.navigate(Routes.newEvent(date, task = task, text = text, calendarId = calendarId, people = people)) },
                 onSearch = { nav.navigate(Routes.SEARCH) },
-                onSettings = { nav.navigate(Routes.SETTINGS) },
+                onSettings = { nav.navigate(Routes.settings()) },
                 onManageCalendars = { nav.navigate(Routes.calendars()) },
                 onEditCalendar = { nav.navigate(Routes.calendars(it)) },
             )
@@ -180,8 +184,16 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
         composable(Routes.SEARCH) { entry ->
             SearchScreen(onBack = { nav.popFrom(entry) }, onOpenEvent = { nav.navigate(Routes.event(it)) })
         }
-        composable(Routes.SETTINGS) { entry ->
-            SettingsScreen(onBack = { nav.popFrom(entry) }, onManageCalendars = { nav.navigate(Routes.calendars()) })
+        composable(
+            Routes.SETTINGS,
+            arguments = listOf(navArgument("page") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { entry ->
+            SettingsScreen(
+                page = entry.arguments?.getString("page")?.let { name -> SettingsPage.entries.firstOrNull { it.name == name } },
+                onBack = { nav.popFrom(entry) },
+                onOpenPage = { nav.navigate(Routes.settings(it)) },
+                onManageCalendars = { nav.navigate(Routes.calendars()) },
+            )
         }
         composable(
             Routes.CALENDARS,
