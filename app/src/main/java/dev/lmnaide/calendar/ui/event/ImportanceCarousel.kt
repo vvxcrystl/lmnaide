@@ -1,6 +1,8 @@
 package dev.lmnaide.calendar.ui.event
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -21,7 +23,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,16 +59,24 @@ internal fun ImportanceCarousel(selected: Importance?, onSelect: (Importance?) -
     val currentSelected by rememberUpdatedState(selected)
     val currentOnSelect by rememberUpdatedState(onSelect)
 
-    // Settling on an option picks it.
+    // Only a swipe picks the option it settles on. Slides the app starts, after a tap or a change
+    // from outside, just follow the selection and never pick anything themselves.
+    val dragged by pager.interactionSource.collectIsDraggedAsState()
+    var swiped by remember { mutableStateOf(false) }
+    LaunchedEffect(dragged) { if (dragged) swiped = true }
     LaunchedEffect(pager) {
         snapshotFlow { pager.settledPage }.collect { page ->
+            if (!swiped) return@collect
+            swiped = false
             if (Options[page] != currentSelected) currentOnSelect(Options[page])
         }
     }
-    // A change from outside, like switching calendars, slides the new option into the middle.
     LaunchedEffect(selected) {
         val target = Options.indexOf(selected)
-        if (target != pager.currentPage && !pager.isScrollInProgress) pager.animateScrollToPage(target)
+        if (target != pager.currentPage || pager.currentPageOffsetFraction != 0f) {
+            swiped = false
+            pager.animateScrollToPage(target)
+        }
     }
 
     BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -124,7 +137,14 @@ internal fun ImportanceCarousel(selected: Importance?, onSelect: (Importance?) -
                         .background(lerp(idle, active, focus))
                         .padding(horizontal = 12.dp),
                 ) {
-                    if (option != null) ColorDot(Color(option.argb), size = 10.dp, modifier = Modifier.padding(end = 8.dp))
+                    // Ringed as it reaches the middle, so it still shows on a pill filled with its own color.
+                    if (option != null) {
+                        ColorDot(
+                            Color(option.argb),
+                            size = 10.dp,
+                            modifier = Modifier.padding(end = 8.dp).border(1.dp, activeText.copy(alpha = focus), CircleShape),
+                        )
+                    }
                     Text(
                         option?.label ?: "None",
                         style = MaterialTheme.typography.labelLarge,

@@ -122,7 +122,10 @@ fun ManageCalendarsScreen(
     var editRequest by rememberSaveable { mutableStateOf(editCalendarId) }
     LaunchedEffect(calendars, editRequest) {
         val id = editRequest ?: return@LaunchedEffect
-        if (editing == null) editing = calendars.firstOrNull { it.id == id }
+        if (editing != null || calendars.isEmpty()) return@LaunchedEffect
+        editing = calendars.firstOrNull { it.id == id }
+        // Deleted before the screen opened: drop the request, so a later close doesn't leave the screen.
+        if (editing == null) editRequest = null
     }
     val closeEditor = {
         editing = null

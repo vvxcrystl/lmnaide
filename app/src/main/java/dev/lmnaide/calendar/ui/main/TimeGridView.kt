@@ -378,6 +378,7 @@ private fun DayColumn(
     val placed = remember(occurrences, date) { layoutDay(occurrences, date) }
     val currentPlaced by rememberUpdatedState(placed)
     val currentDefaultMinutes by rememberUpdatedState(defaultMinutes)
+    val currentDraftSlot by rememberUpdatedState(draftSlot)
     BoxWithConstraints(
         modifier
             .pointerInput(date) {
@@ -399,7 +400,9 @@ private fun DayColumn(
                             val width = size.width.toFloat() / p.columns
                             minute in p.startMin until p.endMin && offset.x >= width * p.column && offset.x < width * (p.column + p.span)
                         }
-                        if (onEvent) return@detectDragGesturesAfterLongPress
+                        // The tapped "New event" box is tapped, not held.
+                        val onDraft = currentDraftSlot?.let { minute / 60 == it.hour } == true
+                        if (onEvent || onDraft) return@detectDragGesturesAfterLongPress
                         anchor = minute / SELECT_STEP
                         dragged = false
                         // Until you drag, the selection is the usual event length.
@@ -491,10 +494,10 @@ private fun DayColumn(
         }
 
         selection?.let { slots ->
-            // Narrow week columns have no room for the times; the box shows the stretch.
-            val showTimes = maxWidth >= 96.dp
             val startMin = slots.first * SELECT_STEP
             val endMin = (slots.last + 1) * SELECT_STEP
+            // Narrow week columns and short stretches have no room for the times; the box shows it.
+            val showTimes = maxWidth >= 96.dp && endMin - startMin >= 30
             Box(
                 Modifier
                     .offset(y = minutesToDp(startMin))
