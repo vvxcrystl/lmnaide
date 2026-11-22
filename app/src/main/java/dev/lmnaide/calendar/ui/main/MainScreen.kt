@@ -86,6 +86,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -232,7 +233,9 @@ fun MainScreen(
                     )
                 },
                 floatingActionButton = { CreateButton(onClick = { quickAddOpen = true }) },
-                floatingActionButtonPosition = if (settings.leftHanded) FabPosition.Start else FabPosition.End,
+                // Right to left already puts the end on the left, so only left to right moves it.
+                floatingActionButtonPosition =
+                    if (settings.leftHanded && LocalLayoutDirection.current == LayoutDirection.Ltr) FabPosition.Start else FabPosition.End,
                 snackbarHost = { SnackbarHost(snackbars) },
             ) { padding ->
                 // Content runs behind the navigation bar and fades out there instead of stopping above it.

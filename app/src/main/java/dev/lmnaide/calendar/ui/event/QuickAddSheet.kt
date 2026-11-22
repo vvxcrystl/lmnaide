@@ -101,6 +101,7 @@ import dev.lmnaide.calendar.ui.common.Motion
 import dev.lmnaide.calendar.ui.common.rememberLastNonNull
 import dev.lmnaide.calendar.ui.common.rememberNow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -203,7 +204,8 @@ fun QuickAddSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             // Left-handed puts the chips and Save on the left, within reach of the thumb.
-            val leftHanded = settings.leftHanded
+            // Right to left already puts them there, so only left to right swaps them.
+            val leftHanded = settings.leftHanded && LocalLayoutDirection.current == LayoutDirection.Ltr
             Row(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, if (leftHanded) Alignment.Start else Alignment.End),
                 modifier = Modifier.fillMaxWidth(),
