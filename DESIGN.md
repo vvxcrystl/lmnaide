@@ -153,12 +153,15 @@ The month name sits top-left in headlineSmall Medium ink. Decoration never overl
 
 A 56dp FAB with a 16dp radius on surfaceContainerHigh, carrying Google's four-color plus (red `#EA4335`, blue `#4285F4`, green `#34A853`, yellow `#FBBC04`). Tapping it opens **Event** and **Task** as pill-shaped extended FABs in primaryContainer above it, with a 32% scrim behind them. While open, the FAB turns primary and shows ×.
 
+The FAB sits bottom right. Settings → General → Left-handed moves it to bottom left.
+
 ### Quick add (`ui/event/QuickAddSheet.kt`)
 
 A modal bottom sheet with one large headlineSmall input ("What, and when?" / "What needs doing, and by when?"):
 - **Event / Task chips** at the top right. The wording picks one ("by Friday" means a task) until you tap a chip.
 - **A live preview** below the input: the title, when, repeat, and which calendar it will go into and why. With no input, scrollable example chips appear instead. If the input can't be understood, a muted row says what's missing.
 - **Actions:** "More options" (text button) on the left, "Save" (filled) on the right. The keyboard's Done key also saves.
+- **Left-handed** swaps the sides: the chips and Save move to the left, and More options moves to the right.
 
 ### Navigation drawer
 

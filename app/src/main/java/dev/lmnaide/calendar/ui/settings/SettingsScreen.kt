@@ -93,7 +93,7 @@ private enum class SettingsDialog { WeekStart, Duration, Reminder, DefaultCalend
 
 /** A page of Settings. Sync only exists in the Cloud build. */
 enum class SettingsPage(val label: String, val summary: String, val icon: ImageVector) {
-    General("General", "Week start, 24-hour time, new event defaults", Icons.Outlined.Tune),
+    General("General", "Week start, 24-hour time, left-handed layout, new event defaults", Icons.Outlined.Tune),
     Appearance("Appearance", "Color scheme and theme", Icons.Outlined.Palette),
     Sync("Sync", "Cloud sync and public calendar details", Icons.Outlined.Cloud),
 }
@@ -159,6 +159,13 @@ fun SettingsScreen(
                             subtitle = Fmt.time(LocalTime.of(15, 30), settings.use24Hour),
                             checked = settings.use24Hour,
                             onCheckedChange = { on -> viewModel.update { it.copy(use24Hour = on) } },
+                        )
+                        RowDivider()
+                        SwitchRow(
+                            title = "Left-handed",
+                            subtitle = "Put the create button and Save on the left",
+                            checked = settings.leftHanded,
+                            onCheckedChange = { on -> viewModel.update { it.copy(leftHanded = on) } },
                         )
                         RowDivider()
                         ClickRow(title = "Manage calendars", value = "${calendars.size} calendars", onClick = onManageCalendars, chevron = true)

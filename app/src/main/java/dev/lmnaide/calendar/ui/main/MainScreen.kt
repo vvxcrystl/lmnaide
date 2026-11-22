@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FabPosition
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -231,6 +232,7 @@ fun MainScreen(
                     )
                 },
                 floatingActionButton = { CreateButton(onClick = { quickAddOpen = true }) },
+                floatingActionButtonPosition = if (settings.leftHanded) FabPosition.Start else FabPosition.End,
                 snackbarHost = { SnackbarHost(snackbars) },
             ) { padding ->
                 // Content runs behind the navigation bar and fades out there instead of stopping above it.
