@@ -88,6 +88,7 @@ import dev.lmnaide.calendar.ui.common.EventColors
 import dev.lmnaide.calendar.ui.common.Fmt
 import dev.lmnaide.calendar.ui.common.Motion
 import dev.lmnaide.calendar.ui.common.rememberLastNonNull
+import dev.lmnaide.calendar.ui.common.AddReminderDialog
 import dev.lmnaide.calendar.ui.common.OptionsDialog
 import dev.lmnaide.calendar.ui.common.TimePickerModal
 import java.time.LocalDate
@@ -96,7 +97,7 @@ private enum class EditorDialog {
     StartDate, StartTime, EndDate, EndTime, Repeat, RepeatEnd, RepeatUntil, Reminder, Calendar, Color, Scope, Discard
 }
 
-private val TimedReminders = listOf(0, 5, 10, 15, 30, 60, 120, 24 * 60, 7 * 24 * 60)
+internal val TimedReminders = listOf(0, 5, 10, 15, 30, 60, 120, 24 * 60, 7 * 24 * 60)
 private val AllDayReminders = listOf(0, 24 * 60, 7 * 24 * 60)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -320,17 +321,14 @@ fun EventEditorScreen(
                 { until -> viewModel.update { it.copy(recurrenceUntil = maxOf(until, it.startDate)) } },
                 { dialog = null },
             )
-            EditorDialog.Reminder -> {
-                val options = (if (state.allDay) AllDayReminders else TimedReminders) - state.reminders.toSet()
-                OptionsDialog(
-                    title = "Notification",
-                    options = options,
-                    selected = null,
-                    label = { Fmt.reminder(it, state.allDay, use24h) },
-                    onSelect = { minutes -> viewModel.update { it.copy(reminders = (it.reminders + minutes).sorted()) } },
-                    onDismiss = { dialog = null },
-                )
-            }
+            EditorDialog.Reminder -> AddReminderDialog(
+                presets = if (state.allDay) AllDayReminders else TimedReminders,
+                existing = state.reminders,
+                allDay = state.allDay,
+                use24h = use24h,
+                onAdd = { minutes -> viewModel.update { it.copy(reminders = (it.reminders + minutes).sorted()) } },
+                onDismiss = { dialog = null },
+            )
             EditorDialog.Calendar -> OptionsDialog(
                 title = "Calendar",
                 options = calendars,

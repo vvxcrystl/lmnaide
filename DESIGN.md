@@ -8,7 +8,7 @@ How lmnaide Calendar looks, behaves and speaks, and why. Read this before changi
 
 The project started out styled after T3 Chat (a magenta accent, plum-tinted neutrals, a sidebar with a "New event" button). That looked too bland next to the system, so it moved to Google's style. Don't bring the T3-era styling back.
 
-Settings → Appearance also offers optional named themes (Material You, Lemonade, Jet Black, Blush, Amethyst, Forest, Ocean, Ember), each with a light and dark scheme except Jet Black, which keeps all surfaces pure black in every appearance mode. They only recolor the chrome through the same Material 3 roles; layout, shapes and Google Sans typography don't change per theme. The default is Material You, using dynamic colors on Android 12 and later and the GM3 baseline on older versions. Schemes for the named themes are generated from one accent and one background in `ui/theme/AppThemes.kt`.
+Settings → Appearance also offers optional named themes (Material You, Lemonade, Jet Black, Blush, Amethyst, Forest, Ocean, Ember, Christmas), each with a light and dark scheme except Jet Black, which keeps all surfaces pure black in every appearance mode. They only recolor the chrome through the same Material 3 roles; layout, shapes and Google Sans typography don't change per theme. The default is Material You, using dynamic colors on Android 12 and later and the GM3 baseline on older versions. Schemes for the named themes are generated from one accent and one background in `ui/theme/AppThemes.kt`. Christmas is the one theme that adds something: a `#FF5154` red with a pine-green tertiary, and light snowfall over the app (`ui/theme/Snowfall.kt`).
 
 ## Principles
 
@@ -219,7 +219,7 @@ Motion only answers a person's action, and each animation shows where something 
 
 Transitions between two full layouts (views, screens, months) fade through: the old one is gone in 90 ms before the new one fades in, so two grids of text never overlap. Durations and easing come from `ui/common/Motion.kt` and stay at 400 ms or less. Compose follows the system animation scale, so turning animations off in developer or accessibility settings turns these off too.
 
-There are no entrance animations, no scroll-triggered effects and no looping motion.
+There are no entrance animations, no scroll-triggered effects and no looping motion, except the Christmas theme's snowfall, which only shows when someone picks that theme and holds still when system animations are off.
 
 ## Notifications
 

@@ -643,3 +643,19 @@ test("a phone joining web-seeded calendars acknowledges identical seeds without 
     "My personal calendar",
   );
 });
+test("calendar default notifications sync and are validated", async (t) => {
+  const { api, token } = await harness(t);
+  const saved = await api(
+    "sync",
+    { cursor: 0, changes: [change("calendar", "work", { ...calendar, defaultReminders: [60, 1440] })] },
+    token,
+  );
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.records[0].data.defaultReminders, [60, 1440]);
+  const bad = await api(
+    "sync",
+    { cursor: 0, changes: [change("calendar", "bad", { ...calendar, defaultReminders: [-5] })] },
+    token,
+  );
+  assert.equal(bad.status, 400);
+});

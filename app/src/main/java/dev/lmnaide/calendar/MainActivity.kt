@@ -21,6 +21,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.lmnaide.calendar.ui.CalendarNavHost
 import dev.lmnaide.calendar.ui.EventLink
 import dev.lmnaide.calendar.ui.theme.CalendarTheme
+import dev.lmnaide.calendar.ui.theme.AppTheme
+import dev.lmnaide.calendar.ui.theme.Snowfall
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import androidx.core.content.edit
 import androidx.lifecycle.Lifecycle
@@ -54,6 +58,7 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(LocalThemeReveal provides themeReveal) {
                 CalendarTheme(darkTheme = dark, theme = settings.appTheme) {
                     CalendarNavHost(pendingLink = pendingLink, onLinkHandled = { pendingLink.value = null }, pendingEditor = pendingEditor, onEditorHandled = { pendingEditor.value = null })
+                    if (settings.appTheme == AppTheme.CHRISTMAS) Snowfall(Modifier.fillMaxSize())
                 }
             }
         }

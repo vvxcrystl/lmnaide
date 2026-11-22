@@ -169,7 +169,7 @@ class EventEditorViewModel(
             calendarId = calendar.id,
             importance = calendar.defaultImportance,
             // Tasks remind when they're due; events use the default notification.
-            reminders = if (initialTask) listOf(0) else listOfNotNull(settings.defaultReminderMinutes),
+            reminders = if (initialTask) listOf(0) else calendar.newEventReminders(settings.defaultReminderMinutes),
             kind = if (initialTask) EventKind.TASK else EventKind.EVENT,
         )
         sharedDraft?.let { draft ->
@@ -185,7 +185,7 @@ class EventEditorViewModel(
                 recurrence = draft.recurrence,
                 recurrenceUntil = draft.recurrenceUntil,
                 kind = draft.kind,
-                reminders = if (draft.kind == EventKind.TASK) listOf(0) else listOfNotNull(settings.defaultReminderMinutes),
+                reminders = if (draft.kind == EventKind.TASK) listOf(0) else calendar.newEventReminders(settings.defaultReminderMinutes),
             )
         }
         if (initialText.isBlank()) return blank
@@ -237,11 +237,17 @@ class EventEditorViewModel(
         )
     }
 
-    /** A new item follows its calendar's default importance, unless it was set by hand. */
+    /** A new item follows its calendar's default importance and notifications, unless they were set by hand. */
     fun setCalendar(calendar: CalendarEntity) = update { s ->
         val old = calendars.value.firstOrNull { it.id == s.calendarId }
         val follows = isNew && s.importance == old?.defaultImportance
-        s.copy(calendarId = calendar.id, importance = if (follows) calendar.defaultImportance else s.importance)
+        val appDefault = settings.defaultReminderMinutes
+        val remindersFollow = isNew && !s.isTask && old != null && s.reminders == old.newEventReminders(appDefault).distinct().sorted()
+        s.copy(
+            calendarId = calendar.id,
+            importance = if (follows) calendar.defaultImportance else s.importance,
+            reminders = if (remindersFollow) calendar.newEventReminders(appDefault).distinct().sorted() else s.reminders,
+        )
     }
 
     /** Switching between event and task keeps the date and time, and picks sensible reminders. */

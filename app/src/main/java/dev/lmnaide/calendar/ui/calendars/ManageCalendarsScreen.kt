@@ -52,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -66,12 +67,27 @@ import dev.lmnaide.calendar.ui.common.EventColors
 import dev.lmnaide.calendar.ui.common.appViewModelFactory
 import dev.lmnaide.calendar.ui.common.contentColor
 import dev.lmnaide.calendar.ui.event.ImportanceSelector
+import dev.lmnaide.calendar.ui.event.TimedReminders
+import dev.lmnaide.calendar.ui.common.Fmt
+import dev.lmnaide.calendar.ui.common.AddReminderDialog
+import dev.lmnaide.calendar.data.Settings
+import dev.lmnaide.calendar.data.SettingsRepository
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.outlined.Notifications
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.InputChip
+import androidx.compose.material3.InputChipDefaults
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class ManageCalendarsViewModel(private val repository: CalendarRepository) : ViewModel() {
+class ManageCalendarsViewModel(private val repository: CalendarRepository, settingsRepository: SettingsRepository) : ViewModel() {
+    val settings: StateFlow<Settings> = settingsRepository.settings
+
     val calendars: StateFlow<List<CalendarEntity>> = repository.calendars
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -84,7 +100,7 @@ class ManageCalendarsViewModel(private val repository: CalendarRepository) : Vie
     }
 
     companion object {
-        val Factory = appViewModelFactory { container, _ -> ManageCalendarsViewModel(container.repository) }
+        val Factory = appViewModelFactory { container, _ -> ManageCalendarsViewModel(container.repository, container.settings) }
     }
 }
 
@@ -95,6 +111,7 @@ fun ManageCalendarsScreen(
     viewModel: ManageCalendarsViewModel = viewModel(factory = ManageCalendarsViewModel.Factory),
 ) {
     val calendars by viewModel.calendars.collectAsStateWithLifecycle()
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<CalendarEntity?>(null) }
     var deleting by remember { mutableStateOf<CalendarEntity?>(null) }
 
@@ -170,6 +187,7 @@ fun ManageCalendarsScreen(
     editing?.let { calendar ->
         CalendarDialog(
             initial = calendar,
+            settings = settings,
             onSave = { viewModel.save(it); editing = null },
             onDismiss = { editing = null },
         )
@@ -187,18 +205,19 @@ fun ManageCalendarsScreen(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> Unit, onDismiss: () -> Unit) {
+private fun CalendarDialog(initial: CalendarEntity, settings: Settings, onSave: (CalendarEntity) -> Unit, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf(initial.name) }
     var color by remember { mutableStateOf(initial.color) }
     var keywords by remember { mutableStateOf(initial.keywords) }
     var importance by remember { mutableStateOf(initial.defaultImportance) }
+    var reminders by remember { mutableStateOf(initial.defaultReminders) }
     var publicDetails by remember { mutableStateOf(initial.publicDetails) }
     val normalizedKeywords = keywords.split(',').map { it.trim() }.filter { it.isNotEmpty() }.joinToString(", ")
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(if (initial.id == 0L) "New calendar" else "Edit calendar") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(20.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it.take(SyncLimits.CALENDAR_NAME) },
@@ -216,6 +235,13 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
                     modifier = Modifier.fillMaxWidth(),
                 )
                 ImportanceSelector(importance, label = "Default importance") { importance = it }
+                DefaultRemindersSelector(
+                    reminders = reminders,
+                    appDefault = settings.defaultReminderMinutes,
+                    accent = Color(color),
+                    use24h = settings.use24Hour,
+                    onChange = { reminders = it },
+                )
                 if (dev.lmnaide.calendar.BuildConfig.CLOUD_ENABLED) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
@@ -263,10 +289,82 @@ private fun CalendarDialog(initial: CalendarEntity, onSave: (CalendarEntity) -> 
         },
         confirmButton = {
             TextButton(
-                onClick = { onSave(initial.copy(name = name.trim(), color = color, keywords = normalizedKeywords, defaultImportance = importance, publicDetails = publicDetails)) },
+                onClick = { onSave(initial.copy(name = name.trim(), color = color, keywords = normalizedKeywords, defaultImportance = importance, defaultReminders = reminders, publicDetails = publicDetails)) },
                 enabled = SyncLimits.validCalendar(name.trim(), normalizedKeywords),
             ) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/**
+ * Notifications that new events in this calendar start with. Null follows the app's default
+ * notification until one is added or removed here.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DefaultRemindersSelector(
+    reminders: List<Int>?,
+    appDefault: Int?,
+    accent: Color,
+    use24h: Boolean,
+    onChange: (List<Int>?) -> Unit,
+) {
+    val shown = (reminders ?: listOfNotNull(appDefault)).distinct().sorted()
+    var picking by remember { mutableStateOf(false) }
+    Column {
+        Text("Default notifications", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(bottom = 8.dp))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.animateContentSize(Motion.move()),
+        ) {
+            shown.forEach { minutes ->
+                InputChip(
+                    selected = false,
+                    onClick = { onChange(shown - minutes) },
+                    label = { Text(Fmt.reminder(minutes, allDay = false, use24h = use24h)) },
+                    leadingIcon = { Icon(Icons.Outlined.Notifications, contentDescription = null, tint = accent, modifier = Modifier.size(18.dp)) },
+                    trailingIcon = { Icon(Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(16.dp)) },
+                    shape = CircleShape,
+                    border = null,
+                    // A wash of the calendar's color ties these to the swatch picked below.
+                    colors = InputChipDefaults.inputChipColors(containerColor = accent.copy(alpha = 0.18f).compositeOver(MaterialTheme.colorScheme.surfaceContainerHigh)),
+                )
+            }
+            if (shown.size < SyncLimits.REMINDERS) {
+                AssistChip(
+                    onClick = { picking = true },
+                    label = { Text("Add") },
+                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    shape = CircleShape,
+                )
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+            Text(
+                when {
+                    reminders == null -> "Same as your default notification in Settings"
+                    shown.isEmpty() -> "New events in this calendar won't notify you"
+                    else -> "New events in this calendar start with these"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            if (reminders != null) {
+                TextButton(onClick = { onChange(null) }) { Text("Use Settings") }
+            }
+        }
+    }
+    if (picking) {
+        AddReminderDialog(
+            presets = TimedReminders,
+            existing = shown,
+            allDay = false,
+            use24h = use24h,
+            onAdd = { minutes -> onChange((shown + minutes).sorted()) },
+            onDismiss = { picking = false },
+        )
+    }
 }

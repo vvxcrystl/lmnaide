@@ -32,8 +32,12 @@ data class CalendarEntity(
     @ColumnInfo(defaultValue = "") val keywords: String = "",
     /** Importance given to new items in this calendar, like High for work. */
     val defaultImportance: Importance? = null,
+    /** Minutes before the start for new events in this calendar. Null follows the app's default notification. */
+    val defaultReminders: List<Int>? = null,
 ) {
     val keywordList: List<String> get() = keywords.split(',').map { it.trim() }.filter { it.isNotEmpty() }
+
+    fun newEventReminders(appDefault: Int?): List<Int> = defaultReminders ?: listOfNotNull(appDefault)
 }
 
 /**

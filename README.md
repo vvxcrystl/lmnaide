@@ -80,7 +80,7 @@ Mark any event or task as Low (green), Medium (yellow) or High (red). Each level
 | Medium | Normal sound, with a Snooze button. |
 | High   | A reminder 30 minutes before, strong vibration and an extra alert at the start or due time. It repeats every 5 minutes, up to 3 times, until you tap Got it, snooze, open the event or finish the task. |
 
-Each calendar can also have a default importance, which new events on that calendar start with.
+Each calendar can also have a default importance, which new events on that calendar start with. It can also have its own default notifications, such as 1 day and 1 hour before for Work. New events on that calendar start with all of them. Pick a preset or choose Custom… to enter any number of minutes, hours, days or weeks, up to a year. The event editor's Add notification has the same Custom… option. Calendars without their own list use the default notification from Settings.
 
 Each event can have several reminders. They use exact alarms, so they fire on time, and the app reschedules them after a reboot or a time zone change.
 
@@ -104,7 +104,7 @@ To add it, long-press your home screen, open Widgets and pick Calendar agenda.
 
 ### Themes and settings
 
-Choose System, Light or Dark, then pick one of eight themes: Material You (colors from your wallpaper, the default), Lemonade, Jet Black, Blush, Amethyst, Forest, Ocean or Ember. Jet Black is always dark.
+Choose System, Light or Dark, then pick one of nine themes: Material You (colors from your wallpaper, the default), Lemonade, Jet Black, Blush, Amethyst, Forest, Ocean, Ember or Christmas. Jet Black is always dark. Christmas adds light snowfall over the app.
 
 <p>
   <img src="assets/screenshots/themes-settings.png" width="24%" alt="Theme picker in Settings">

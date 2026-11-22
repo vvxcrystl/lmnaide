@@ -52,7 +52,7 @@ class QuickAddViewModel(
                         allDay = draft.allDay,
                         recurrence = draft.recurrence,
                         // Tasks remind when they're due; events use the default notification.
-                        reminders = if (task) listOf(0) else listOfNotNull(settings.value.defaultReminderMinutes),
+                        reminders = if (task) listOf(0) else calendar.newEventReminders(settings.value.defaultReminderMinutes),
                         kind = if (task) EventKind.TASK else EventKind.EVENT,
                         importance = importance,
                         people = people,
