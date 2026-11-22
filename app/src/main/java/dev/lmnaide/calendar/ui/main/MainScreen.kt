@@ -309,6 +309,7 @@ fun MainScreen(
                                         onOpenEvent = openEvent,
                                         onOpenDay = openDay,
                                         onCreateAt = { onCreateEvent(it.toLocalDate(), it.hour * 60 + it.minute, -1) },
+                                        defaultMinutes = settings.defaultDurationMinutes,
                                         onCreateRange = { start, end ->
                                             onCreateEvent(start.toLocalDate(), start.hour * 60 + start.minute, Duration.between(start, end).toMinutes().toInt())
                                         },

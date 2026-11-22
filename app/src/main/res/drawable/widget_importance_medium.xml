@@ -12,8 +12,8 @@
         android:pathData="M9,3.5 A6,6 0,1 1,9,15.5 A6,6 0,1 1,9,3.5" />
     <path android:fillColor="#18000000"
         android:pathData="M9,4 A5.5,5.5 0,1 1,9,15 A5.5,5.5 0,1 1,9,4" />
-    <!-- A white ring keeps the dot visible on a card in the same importance color. -->
-    <path android:fillColor="#FFFFFF"
+    <!-- A dark ring keeps the dot visible on a card in the same importance color, as the card's text is dark there. -->
+    <path android:fillColor="#1F1F1F"
         android:pathData="M9,2 A6,6 0,1 1,9,14 A6,6 0,1 1,9,2" />
     <path android:fillColor="#FBBB00"
         android:pathData="M9,3 A5,5 0,1 1,9,13 A5,5 0,1 1,9,3" />

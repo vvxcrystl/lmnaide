@@ -181,6 +181,9 @@ internal fun rowView(context: Context, row: AgendaRow): RemoteViews {
         0xFF7986CB.toInt() -> R.drawable.widget_color_lavender
         0xFF8E24AA.toInt() -> R.drawable.widget_color_grape
         0xFF616161.toInt() -> R.drawable.widget_color_graphite
+        Importance.LOW.argb -> R.drawable.widget_color_importance_low
+        Importance.MEDIUM.argb -> R.drawable.widget_color_importance_medium
+        Importance.HIGH.argb -> R.drawable.widget_color_importance_high
         else -> R.drawable.widget_color_peacock
     })
     val luminance = Color.red(color)*0.299 + Color.green(color)*0.587 + Color.blue(color)*0.114

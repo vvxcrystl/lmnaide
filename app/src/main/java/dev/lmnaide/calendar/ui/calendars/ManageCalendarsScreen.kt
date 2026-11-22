@@ -118,12 +118,19 @@ fun ManageCalendarsScreen(
     var editing by remember { mutableStateOf<CalendarEntity?>(null) }
     var deleting by remember { mutableStateOf<CalendarEntity?>(null) }
     // Long-pressing a calendar in the drawer opens it here for editing, and closing returns there.
+    // The request stays saved until then, so the dialog comes back after a rotation.
     var editRequest by rememberSaveable { mutableStateOf(editCalendarId) }
-    LaunchedEffect(calendars) {
+    LaunchedEffect(calendars, editRequest) {
         val id = editRequest ?: return@LaunchedEffect
-        calendars.firstOrNull { it.id == id }?.let { editing = it; editRequest = null }
+        if (editing == null) editing = calendars.firstOrNull { it.id == id }
     }
-    val closeEditor = { editing = null; if (editCalendarId != null) onBack() }
+    val closeEditor = {
+        editing = null
+        if (editRequest != null) {
+            editRequest = null
+            onBack()
+        }
+    }
 
     Scaffold(
         topBar = {
