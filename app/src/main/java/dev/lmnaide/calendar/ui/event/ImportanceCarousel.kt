@@ -2,7 +2,7 @@ package dev.lmnaide.calendar.ui.event
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.interaction.collectIsDraggedAsState
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -59,23 +59,28 @@ internal fun ImportanceCarousel(selected: Importance?, onSelect: (Importance?) -
     val currentSelected by rememberUpdatedState(selected)
     val currentOnSelect by rememberUpdatedState(onSelect)
 
-    // Only a swipe picks the option it settles on. Slides the app starts, after a tap or a change
-    // from outside, just follow the selection and never pick anything themselves.
-    val dragged by pager.interactionSource.collectIsDraggedAsState()
-    var swiped by remember { mutableStateOf(false) }
-    LaunchedEffect(dragged) { if (dragged) swiped = true }
+    // Settling on an option picks it, whether by a swipe or a TalkBack scroll. The exception is a
+    // slide the app starts after a tap or a change from outside: until it reaches [slideTarget],
+    // pages it settles on along the way pick nothing, so they can't overwrite a newer tap.
+    var slideTarget by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(pager) {
+        pager.interactionSource.interactions.collect { if (it is DragInteraction.Start) slideTarget = null }
+    }
     LaunchedEffect(pager) {
         snapshotFlow { pager.settledPage }.collect { page ->
-            if (!swiped) return@collect
-            swiped = false
+            slideTarget?.let { target ->
+                if (page == target) slideTarget = null
+                return@collect
+            }
             if (Options[page] != currentSelected) currentOnSelect(Options[page])
         }
     }
     LaunchedEffect(selected) {
         val target = Options.indexOf(selected)
         if (target != pager.currentPage || pager.currentPageOffsetFraction != 0f) {
-            swiped = false
+            slideTarget = target
             pager.animateScrollToPage(target)
+            if (pager.settledPage == target) slideTarget = null
         }
     }
 

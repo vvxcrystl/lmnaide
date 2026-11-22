@@ -497,7 +497,8 @@ private fun DayColumn(
             val startMin = slots.first * SELECT_STEP
             val endMin = (slots.last + 1) * SELECT_STEP
             // Narrow week columns and short stretches have no room for the times; the box shows it.
-            val showTimes = maxWidth >= 96.dp && endMin - startMin >= 30
+            val labelHeight = with(LocalDensity.current) { MaterialTheme.typography.labelMedium.lineHeight.toDp() } + 6.dp
+            val showTimes = maxWidth >= 96.dp && minutesToDp(endMin - startMin) >= labelHeight
             Box(
                 Modifier
                     .offset(y = minutesToDp(startMin))

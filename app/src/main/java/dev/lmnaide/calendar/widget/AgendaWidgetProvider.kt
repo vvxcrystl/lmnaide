@@ -188,7 +188,7 @@ internal fun rowView(context: Context, row: AgendaRow): RemoteViews {
     })
     val luminance = Color.red(color)*0.299 + Color.green(color)*0.587 + Color.blue(color)*0.114
     val text = if (luminance > 160) Color.BLACK else Color.WHITE
-    views.setTextViewText(R.id.widget_title, (if (occurrence.isTask) "☑  " else "") + occurrence.event.title)
+    views.setTextViewText(R.id.widget_title, (if (occurrence.isTask) "☑  " else "") + occurrence.event.title.ifBlank { "(No title)" })
     views.setTextColor(R.id.widget_title, text)
     views.setTextColor(R.id.widget_time, text)
     val use24h = context.container.settings.settings.value.use24Hour
