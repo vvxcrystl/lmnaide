@@ -202,7 +202,7 @@ fun QuickAddSheet(
             Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
                 KindChip("Event", Icons.Outlined.Event, selected = !isTask) { taskChoice = false }
                 KindChip("Task", Icons.Outlined.TaskAlt, selected = isTask) { taskChoice = true }
             }

@@ -89,6 +89,7 @@ class EventEditorViewModel(
     private val instanceId: Long = handle["instance"] ?: Routes.NO_VALUE
     private val initialDate: Long = handle["date"] ?: Routes.NO_VALUE
     private val initialMinute: Int = handle["minute"] ?: -1
+    private val initialDuration: Int = handle["duration"] ?: -1
     private val initialAllDay: Boolean = handle["allDay"] ?: false
     private val initialTask: Boolean = handle["task"] ?: false
     private val settings = settingsRepository.settings.value
@@ -155,7 +156,7 @@ class EventEditorViewModel(
             date == now.toLocalDate() && now.hour < 23 -> date.atTime(now.hour + 1, 0)
             else -> date.atTime(9, 0)
         }
-        val end = start.plusMinutes(settings.defaultDurationMinutes.toLong())
+        val end = start.plusMinutes((if (initialDuration > 0) initialDuration else settings.defaultDurationMinutes).toLong())
         val calendar = calendars.firstOrNull { it.id == initialCalendar }
             ?: calendars.firstOrNull { it.id == settings.defaultCalendarId }
             ?: calendars.first()

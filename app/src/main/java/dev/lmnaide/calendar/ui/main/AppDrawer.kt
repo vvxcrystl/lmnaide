@@ -9,7 +9,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -39,6 +40,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.unit.dp
 import dev.lmnaide.calendar.data.CalendarEntity
 import dev.lmnaide.calendar.data.CalendarView
@@ -72,6 +76,7 @@ fun AppDrawer(
     onToggleCalendar: (CalendarEntity) -> Unit,
     onToggleTasks: () -> Unit,
     onManageCalendars: () -> Unit,
+    onEditCalendar: (CalendarEntity) -> Unit,
     onSettings: () -> Unit,
 ) {
     val itemColors = NavigationDrawerItemDefaults.colors(
@@ -114,9 +119,9 @@ fun AppDrawer(
             SectionDivider()
             SectionLabel("Calendars")
             calendars.forEach { calendar ->
-                VisibilityRow(calendar.name, Color(calendar.color), calendar.visible) { onToggleCalendar(calendar) }
+                VisibilityRow(calendar.name, Color(calendar.color), calendar.visible, onEdit = { onEditCalendar(calendar) }) { onToggleCalendar(calendar) }
             }
-            VisibilityRow("Tasks", MaterialTheme.colorScheme.primary, showTasks, onToggleTasks)
+            VisibilityRow("Tasks", MaterialTheme.colorScheme.primary, showTasks, onToggle = onToggleTasks)
             NavigationDrawerItem(
                 label = { Text("Manage calendars", style = MaterialTheme.typography.labelLarge) },
                 icon = { Icon(Icons.Outlined.EditCalendar, contentDescription = null) },
@@ -139,15 +144,18 @@ fun AppDrawer(
     }
 }
 
+/** Tapping shows or hides the calendar; long-pressing edits it, when [onEdit] is given. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun VisibilityRow(name: String, color: Color, visible: Boolean, onToggle: () -> Unit) {
+private fun VisibilityRow(name: String, color: Color, visible: Boolean, onEdit: (() -> Unit)? = null, onToggle: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
             .height(48.dp)
             .clip(ItemShape)
-            .toggleable(value = visible, role = Role.Checkbox, onValueChange = { onToggle() })
+            .semantics { toggleableState = ToggleableState(visible) }
+            .combinedClickable(role = Role.Checkbox, onLongClickLabel = onEdit?.let { "Edit $name" }, onLongClick = onEdit, onClick = onToggle)
             .padding(start = 4.dp),
     ) {
         Checkbox(

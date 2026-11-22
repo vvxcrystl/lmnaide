@@ -16,7 +16,7 @@ Settings → Appearance also offers optional named themes (Material You, Lemonad
 2. **Spend boldness in one place.** The month banners are the one decorative element. Don't add gradients, shadows, illustrations or motion anywhere else just for decoration.
 3. **Follow the platform.** Use stock Material 3 components and default behaviors before building custom ones. Dynamic color is on by default.
 4. **Every mark carries information.** Dots, pills, check circles, fading and strikethrough each encode a state (importance, task, completed, past). Don't use them as decoration.
-5. **Act in place.** Common actions happen where you are: tick a task in the list, tap an empty hour to create, snooze from the notification. Full screens are for full editing.
+5. **Act in place.** Common actions happen where you are: tick a task in the list, tap an empty hour to create, hold and drag across hours to create an event that long, snooze from the notification. Full screens are for full editing.
 6. **Plain words.** Sentence case, active verbs, no jargon. See [Writing](#writing).
 
 ## Color
@@ -49,6 +49,7 @@ Google Calendar's eleven event colors (`ui/common/EventColors.kt`): Tomato `#D50
 - **Text on a chip:** dark ink `#1F1F1F` when the background's luminance is above 0.55, otherwise white.
 - **Past and completed items** blend 55% toward the surface color. Their text becomes ink at 75% opacity when the faded background's luminance is above 0.3, otherwise white at 75%.
 - **Open tasks never fade,** even when overdue. Something you still owe shouldn't recede.
+- **Default color:** an event without its own color takes its importance color, then its calendar's color. The editor calls this "Importance color" or "Calendar color".
 
 ### Importance
 
@@ -60,7 +61,7 @@ Importance is the one place where color carries an urgency meaning, so these thr
 | Medium | Google yellow `#FBBC04` | Normal |
 | High | Google red `#EA4335` | Don't miss this |
 
-No importance is a valid state: an item with none shows no mark. Never use these three colors for anything else (for example as an error color or a decoration), and never show importance by color alone. It always comes with a label or a dedicated shape.
+No importance is a valid state: an item with none shows no mark. An event with importance and no color of its own is filled with its importance color. Never use these three colors for anything else (for example as an error color or a decoration), and never show importance by color alone. It always comes with a label or a dedicated shape.
 
 ## Typography
 
@@ -155,7 +156,7 @@ A 56dp FAB with a 16dp radius on surfaceContainerHigh, carrying Google's four-co
 ### Quick add (`ui/event/QuickAddSheet.kt`)
 
 A modal bottom sheet with one large headlineSmall input ("What, and when?" / "What needs doing, and by when?"):
-- **Event / Task chips** at the top. The wording picks one ("by Friday" means a task) until you tap a chip.
+- **Event / Task chips** at the top right. The wording picks one ("by Friday" means a task) until you tap a chip.
 - **A live preview** below the input: the title, when, repeat, and which calendar it will go into and why. With no input, scrollable example chips appear instead. If the input can't be understood, a muted row says what's missing.
 - **Actions:** "More options" (text button) on the left, "Save" (filled) on the right. The keyboard's Done key also saves.
 
@@ -163,7 +164,7 @@ A modal bottom sheet with one large headlineSmall input ("What, and when?" / "Wh
 
 surfaceContainerLow background. A primary calendar glyph with a "Calendar" wordmark, then:
 1. Views, with a pill-shaped secondaryContainer indicator on the selected one.
-2. A divider, then "Calendars": checkboxes tinted with each calendar's color, plus "Tasks".
+2. A divider, then "Calendars": checkboxes tinted with each calendar's color, plus "Tasks". Long-pressing a calendar opens its edit dialog in Manage calendars, and closing the dialog goes back to the main screen.
 3. "Manage calendars".
 4. A divider, then "Settings".
 
@@ -179,7 +180,7 @@ Full screen, with × on the left and a filled pill "Save" on the right. The titl
 
 1. Event / Task chips
 2. All-day toggle, start, end (hidden for tasks), repeat
-3. Importance chips: None, Low, Medium, High. Each has its color dot and fills with its color when selected, with a one-line hint about how it will notify
+3. Importance carousel: None, Low, Medium, High in a row you swipe through, or tap a neighbor. The option in the middle is the one picked and fills with its color. A one-line hint below says how it will notify
 4. Location (events only)
 5. Notifications
 6. Calendar and color
@@ -193,7 +194,7 @@ A colored square, the title in headlineSmall, then when it happens, the repeat r
 
 ### Settings
 
-Grouped surfaces with a 16dp radius on surfaceContainerLow, with primary titleSmall section labels. Theme uses an M3 segmented button.
+Three tabs: General, Appearance and Sync. Sync only exists in the Cloud build. Swipe between them or tap a tab. Each tab holds grouped surfaces with a 16dp radius on surfaceContainerLow, with primary titleSmall section labels.
 
 ### Home screen widget (`widget/`)
 
@@ -201,7 +202,7 @@ A RemoteViews agenda that matches the app without Compose:
 - 24dp-radius panel: `#F1F3F4` in light, `#303030` in dark. It follows the app's theme setting, not the launcher's.
 - A month title and a "+" shortcut in the header.
 - 42dp date badges, filled primary for today.
-- 12dp-radius cards tinted with the calendar color, with contrasting text and an 18dp importance icon. Pending tasks appear on a neutral card.
+- 12dp-radius cards tinted with the event's color, with contrasting text and an 18dp importance icon. Each task gets its own card with its title.
 
 ## Motion
 

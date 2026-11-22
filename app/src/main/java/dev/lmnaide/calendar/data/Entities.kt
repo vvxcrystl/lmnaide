@@ -86,6 +86,9 @@ data class EventEntity(
 ) {
     val isTask: Boolean get() = kind == EventKind.TASK
 
+    /** The color picked for the event, else its importance color, else its calendar's. */
+    fun displayColor(calendarColor: Int): Int = color ?: importance?.argb ?: calendarColor
+
     fun localStart(zone: ZoneId = ZoneId.systemDefault()): LocalDateTime = toLocal(start, allDay, zone)
 
     fun localEnd(zone: ZoneId = ZoneId.systemDefault()): LocalDateTime = toLocal(end, allDay, zone)

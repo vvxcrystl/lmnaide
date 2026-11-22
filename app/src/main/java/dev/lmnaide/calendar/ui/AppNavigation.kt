@@ -39,24 +39,28 @@ object Routes {
     const val MAIN = "main"
     const val SEARCH = "search"
     const val SETTINGS = "settings"
-    const val CALENDARS = "calendars"
+    const val CALENDARS = "calendars?edit={edit}"
     const val EVENT = "event/{eventId}/{instance}"
-    const val EDIT = "edit?eventId={eventId}&instance={instance}&date={date}&minute={minute}&allDay={allDay}&task={task}&text={text}&calendar={calendar}&people={people}&sharedEvent={sharedEvent}"
+    const val EDIT = "edit?eventId={eventId}&instance={instance}&date={date}&minute={minute}&duration={duration}&allDay={allDay}&task={task}&text={text}&calendar={calendar}&people={people}&sharedEvent={sharedEvent}"
 
     const val NO_VALUE = Long.MIN_VALUE
 
     fun event(link: EventLink) = "event/${link.eventId}/${link.instanceId}"
+
+    /** Manage calendars, with [edit]'s dialog already open when given. */
+    fun calendars(edit: Long? = null) = if (edit == null) "calendars" else "calendars?edit=$edit"
 
     fun editEvent(link: EventLink) = "edit?eventId=${link.eventId}&instance=${link.instanceId}"
 
     fun importEvent(query: String) = "edit?sharedEvent=${Uri.encode(query)}"
 
     /**
-     * [minute] is minutes after midnight, or -1 for the next full hour. [text] is a quick add
-     * sentence to fill the editor from, and [calendarId] the calendar it picked.
+     * [minute] is minutes after midnight, or -1 for the next full hour, and [duration] the length in
+     * minutes, or -1 for the default. [text] is a quick add sentence to fill the editor from, and
+     * [calendarId] the calendar it picked.
      */
-    fun newEvent(date: LocalDate, minute: Int = -1, allDay: Boolean = false, task: Boolean = false, text: String = "", calendarId: Long? = null, people: String = "[]") =
-        "edit?date=${date.toEpochDay()}&minute=$minute&allDay=$allDay&task=$task&text=${Uri.encode(text)}&calendar=${calendarId ?: NO_VALUE}&people=${Uri.encode(people)}"
+    fun newEvent(date: LocalDate, minute: Int = -1, duration: Int = -1, allDay: Boolean = false, task: Boolean = false, text: String = "", calendarId: Long? = null, people: String = "[]") =
+        "edit?date=${date.toEpochDay()}&minute=$minute&duration=$duration&allDay=$allDay&task=$task&text=${Uri.encode(text)}&calendar=${calendarId ?: NO_VALUE}&people=${Uri.encode(people)}"
 }
 
 /**
@@ -125,11 +129,12 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
         composable(Routes.MAIN) {
             MainScreen(
                 onOpenEvent = { nav.navigate(Routes.event(it)) },
-                onCreateEvent = { date, minute, allDay, task -> nav.navigate(Routes.newEvent(date, minute, allDay, task)) },
+                onCreateEvent = { date, minute, duration -> nav.navigate(Routes.newEvent(date, minute, duration)) },
                 onMoreOptions = { date, task, text, calendarId, people -> nav.navigate(Routes.newEvent(date, task = task, text = text, calendarId = calendarId, people = people)) },
                 onSearch = { nav.navigate(Routes.SEARCH) },
                 onSettings = { nav.navigate(Routes.SETTINGS) },
-                onManageCalendars = { nav.navigate(Routes.CALENDARS) },
+                onManageCalendars = { nav.navigate(Routes.calendars()) },
+                onEditCalendar = { nav.navigate(Routes.calendars(it)) },
             )
         }
         composable(
@@ -152,6 +157,7 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
                 navArgument("instance") { type = NavType.LongType; defaultValue = Routes.NO_VALUE },
                 navArgument("date") { type = NavType.LongType; defaultValue = Routes.NO_VALUE },
                 navArgument("minute") { type = NavType.IntType; defaultValue = -1 },
+                navArgument("duration") { type = NavType.IntType; defaultValue = -1 },
                 navArgument("allDay") { type = NavType.BoolType; defaultValue = false },
                 navArgument("task") { type = NavType.BoolType; defaultValue = false },
                 navArgument("people") { type = NavType.StringType; defaultValue = "[]" },
@@ -175,10 +181,16 @@ fun CalendarNavHost(pendingLink: StateFlow<EventLink?>, onLinkHandled: () -> Uni
             SearchScreen(onBack = { nav.popFrom(entry) }, onOpenEvent = { nav.navigate(Routes.event(it)) })
         }
         composable(Routes.SETTINGS) { entry ->
-            SettingsScreen(onBack = { nav.popFrom(entry) }, onManageCalendars = { nav.navigate(Routes.CALENDARS) })
+            SettingsScreen(onBack = { nav.popFrom(entry) }, onManageCalendars = { nav.navigate(Routes.calendars()) })
         }
-        composable(Routes.CALENDARS) { entry ->
-            ManageCalendarsScreen(onBack = { nav.popFrom(entry) })
+        composable(
+            Routes.CALENDARS,
+            arguments = listOf(navArgument("edit") { type = NavType.LongType; defaultValue = Routes.NO_VALUE }),
+        ) { entry ->
+            ManageCalendarsScreen(
+                onBack = { nav.popFrom(entry) },
+                editCalendarId = entry.arguments?.getLong("edit")?.takeIf { it != Routes.NO_VALUE },
+            )
         }
     }
 }

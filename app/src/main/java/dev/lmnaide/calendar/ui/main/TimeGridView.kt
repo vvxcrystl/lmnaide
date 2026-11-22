@@ -10,6 +10,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,7 +58,9 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -75,6 +78,7 @@ import dev.lmnaide.calendar.ui.common.rememberLastNonNull
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.LocalTime
 import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -83,6 +87,7 @@ private val GutterWidth = 52.dp
 private val HourHeight = 56.dp
 private val LaneHeight = 22.dp
 private const val COLLAPSED_LANES = 2
+private const val SELECT_STEP = 15
 
 /** Day, 3-day and week views: an hourly grid paged horizontally by [days]. */
 @Composable
@@ -98,12 +103,15 @@ fun TimeGridView(
     onOpenEvent: (Occurrence) -> Unit,
     onOpenDay: (LocalDate) -> Unit,
     onCreateAt: (LocalDateTime) -> Unit,
+    onCreateRange: (start: LocalDateTime, end: LocalDateTime) -> Unit,
 ) {
     val today = now.toLocalDate()
-    val paging = remember(days, weekStart) {
-        val anchor = if (days == 7) selectedDate.with(TemporalAdjusters.previousOrSame(weekStart)) else selectedDate
-        DayPaging(anchor, days)
+    // Saved with the pager's page, so coming back from another screen shows the same days instead
+    // of counting the restored page from a new anchor.
+    val anchorDay = rememberSaveable(days, weekStart) {
+        (if (days == 7) selectedDate.with(TemporalAdjusters.previousOrSame(weekStart)) else selectedDate).toEpochDay()
     }
+    val paging = remember(anchorDay, days) { DayPaging(LocalDate.ofEpochDay(anchorDay), days) }
     val pagerState = rememberPagerState(initialPage = paging.pageOf(selectedDate)) { PAGE_COUNT }
     PagerDateSync(pagerState, selectedDate, today, paging::pageOf, paging::rangeOf, onSelectDate, onVisibleRange)
 
@@ -137,6 +145,8 @@ fun TimeGridView(
             onToggleAllDay = { allDayExpanded = !allDayExpanded },
             onSlotTap = { slot -> draftSlot = slot },
             onCreateAt = { draftSlot = null; onCreateAt(it) },
+            onSelectStart = { draftSlot = null },
+            onCreateRange = onCreateRange,
             onOpenEvent = onOpenEvent,
             onOpenDay = onOpenDay,
         )
@@ -156,6 +166,8 @@ private fun TimeGridPage(
     onToggleAllDay: () -> Unit,
     onSlotTap: (LocalDateTime) -> Unit,
     onCreateAt: (LocalDateTime) -> Unit,
+    onSelectStart: () -> Unit,
+    onCreateRange: (LocalDateTime, LocalDateTime) -> Unit,
     onOpenEvent: (Occurrence) -> Unit,
     onOpenDay: (LocalDate) -> Unit,
 ) {
@@ -203,6 +215,8 @@ private fun TimeGridPage(
                         draftSlot = draftSlot?.takeIf { it.toLocalDate() == date },
                         onSlotTap = onSlotTap,
                         onCreateAt = onCreateAt,
+                        onSelectStart = onSelectStart,
+                        onCreateRange = onCreateRange,
                         onOpenEvent = onOpenEvent,
                         modifier = Modifier
                             .weight(1f)
@@ -347,16 +361,49 @@ private fun DayColumn(
     draftSlot: LocalDateTime?,
     onSlotTap: (LocalDateTime) -> Unit,
     onCreateAt: (LocalDateTime) -> Unit,
+    onSelectStart: () -> Unit,
+    onCreateRange: (LocalDateTime, LocalDateTime) -> Unit,
     onOpenEvent: (Occurrence) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Press and hold, then drag, to pick a stretch of time in 15-minute steps.
+    var selection by remember { mutableStateOf<IntRange?>(null) }
+    val haptics = LocalHapticFeedback.current
     BoxWithConstraints(
-        modifier.pointerInput(date) {
-            detectTapGestures { offset ->
-                val hour = (offset.y / HourHeight.toPx()).toInt().coerceIn(0, 23)
-                onSlotTap(date.atTime(hour, 0))
+        modifier
+            .pointerInput(date) {
+                detectTapGestures { offset ->
+                    val hour = (offset.y / HourHeight.toPx()).toInt().coerceIn(0, 23)
+                    onSlotTap(date.atTime(hour, 0))
+                }
             }
-        },
+            .pointerInput(date) {
+                fun slotAt(y: Float) = (y / HourHeight.toPx() * 60).toInt().coerceIn(0, 24 * 60 - 1) / SELECT_STEP
+                var anchor = 0
+                detectDragGesturesAfterLongPress(
+                    onDragStart = { offset ->
+                        anchor = slotAt(offset.y)
+                        selection = anchor..anchor
+                        onSelectStart()
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        val slot = slotAt(change.position.y)
+                        selection = minOf(anchor, slot)..maxOf(anchor, slot)
+                    },
+                    onDragEnd = {
+                        selection?.let { slots ->
+                            val start = date.atStartOfDay().plusMinutes(slots.first * SELECT_STEP.toLong())
+                            // Holding without dragging starts there, with the usual length.
+                            if (slots.first == slots.last) onCreateAt(start)
+                            else onCreateRange(start, date.atStartOfDay().plusMinutes((slots.last + 1) * SELECT_STEP.toLong()))
+                        }
+                        selection = null
+                    },
+                    onDragCancel = { selection = null },
+                )
+            },
     ) {
         val placed = remember(occurrences, date) { layoutDay(occurrences, date) }
         placed.forEach { p ->
@@ -420,6 +467,31 @@ private fun DayColumn(
                         modifier = Modifier.padding(start = 2.dp, top = 1.dp),
                     )
                 }
+            }
+        }
+
+        selection?.let { slots ->
+            val startMin = slots.first * SELECT_STEP
+            val endMin = (slots.last + 1) * SELECT_STEP
+            Box(
+                Modifier
+                    .offset(y = minutesToDp(startMin))
+                    .fillMaxWidth()
+                    .height(minutesToDp(endMin - startMin))
+                    .padding(horizontal = 2.dp, vertical = 1.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                    .border(1.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+            ) {
+                val midnight = LocalTime.MIDNIGHT
+                Text(
+                    Fmt.timeRange(midnight.plusMinutes(startMin.toLong()), midnight.plusMinutes(endMin.toLong()), use24h),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                )
             }
         }
 

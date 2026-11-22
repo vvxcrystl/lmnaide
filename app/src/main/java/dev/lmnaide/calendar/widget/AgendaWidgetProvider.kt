@@ -92,7 +92,6 @@ private data class WidgetPalette(
     val addForeground: Int,
     val todayBackground: Int,
     val todayForeground: Int,
-    val tasksColor: Int,
 )
 
 private fun widgetPalette(context: Context): WidgetPalette {
@@ -103,7 +102,7 @@ private fun widgetPalette(context: Context): WidgetPalette {
     return WidgetPalette(
         colors.surfaceContainer.toArgb(), colors.onSurface.toArgb(), colors.onSurfaceVariant.toArgb(),
         colors.primaryContainer.toArgb(), colors.onPrimaryContainer.toArgb(),
-        colors.primary.toArgb(), colors.onPrimary.toArgb(), colors.surfaceContainerHigh.toArgb(),
+        colors.primary.toArgb(), colors.onPrimary.toArgb(),
     )
 }
 
@@ -119,15 +118,14 @@ private fun applyBackground(context: Context, views: RemoteViews, id: Int, color
         val index = when (role) {
             "background" -> 0
             "add" -> 1
-            "today" -> 2
-            else -> 3
+            else -> 2
         }
         val resource = widgetThemeResources.getValue(theme to dark)[index]
         views.setInt(id, "setBackgroundResource", resource)
     }
 }
 
-internal data class AgendaRow(val date: LocalDate, val showDate: Boolean, val occurrence: Occurrence? = null, val tasks: Int = 0, val importance: Importance? = occurrence?.event?.importance)
+internal data class AgendaRow(val date: LocalDate, val showDate: Boolean, val occurrence: Occurrence)
 
 internal suspend fun loadRows(context: Context): List<AgendaRow> {
     val today = LocalDate.now()
@@ -135,13 +133,11 @@ internal suspend fun loadRows(context: Context): List<AgendaRow> {
     val settings = context.container.settings.settings.value
     val occurrences = context.container.repository.getAllEvents().flatMap { event ->
         val calendar = calendars[event.calendarId] ?: return@flatMap emptyList()
-        RecurrenceExpander.expand(event, event.color ?: calendar.color, calendar.name, today, today.plusDays(30))
+        RecurrenceExpander.expand(event, event.displayColor(calendar.color), calendar.name, today, today.plusDays(30))
     }.filter { !it.completed && (!it.isTask || settings.showTasks) && (it.allDay || it.end >= LocalDateTime.now() || it.isTask) }.sortedBy { it.start }
     val rows = mutableListOf<AgendaRow>()
     var previous: LocalDate? = null
-    val tasks = occurrences.count { it.isTask && it.startDate <= today }
-    if (tasks > 0) { rows += AgendaRow(today, true, tasks = tasks, importance = occurrences.filter { it.isTask && it.startDate <= today }.mapNotNull { it.event.importance }.maxByOrNull { it.ordinal }); previous = today }
-    occurrences.filterNot { it.isTask && it.startDate <= today }.take(100).forEach {
+    occurrences.take(100).forEach {
         val date = maxOf(today, it.startDate)
         rows += AgendaRow(date, date != previous, it)
         previous = date
@@ -158,8 +154,8 @@ internal fun rowView(context: Context, row: AgendaRow): RemoteViews {
     views.setTextColor(R.id.widget_date, if (today) palette.todayForeground else palette.foreground)
     if (today && row.showDate) applyBackground(context, views, R.id.widget_date, palette.todayBackground, "today")
     val occurrence = row.occurrence
-    val color = occurrence?.color ?: palette.tasksColor
-    val importance = row.importance
+    val color = occurrence.color
+    val importance = occurrence.event.importance
     views.setViewVisibility(R.id.widget_importance, if (importance == null) View.GONE else View.VISIBLE)
     importance?.let {
         val drawable = when (it) {
@@ -171,9 +167,9 @@ internal fun rowView(context: Context, row: AgendaRow): RemoteViews {
         views.setContentDescription(R.id.widget_importance, "${it.label} importance")
     }
     // Tint a rounded drawable instead of tinting the rectangular layout background.
-    views.setInt(R.id.widget_card, "setBackgroundResource", if (occurrence == null) R.drawable.widget_tasks else R.drawable.widget_card)
+    views.setInt(R.id.widget_card, "setBackgroundResource", R.drawable.widget_card)
     if (Build.VERSION.SDK_INT >= 31) views.setColorStateList(R.id.widget_card, "setBackgroundTintList", android.content.res.ColorStateList.valueOf(color))
-    else views.setInt(R.id.widget_card, "setBackgroundResource", if (occurrence == null) R.drawable.widget_tasks else when (color) {
+    else views.setInt(R.id.widget_card, "setBackgroundResource", when (color) {
         0xFFD50000.toInt() -> R.drawable.widget_color_tomato
         0xFFE67C73.toInt() -> R.drawable.widget_color_flamingo
         0xFFF4511E.toInt() -> R.drawable.widget_color_tangerine
@@ -188,16 +184,17 @@ internal fun rowView(context: Context, row: AgendaRow): RemoteViews {
         else -> R.drawable.widget_color_peacock
     })
     val luminance = Color.red(color)*0.299 + Color.green(color)*0.587 + Color.blue(color)*0.114
-    val text = if (occurrence == null) palette.secondary else if (luminance > 160) Color.BLACK else Color.WHITE
-    views.setTextViewText(R.id.widget_title, occurrence?.let { (if (it.isTask) "☑  " else "") + it.event.title } ?: "☑  ${row.tasks} pending ${if (row.tasks == 1) "task" else "tasks"}")
+    val text = if (luminance > 160) Color.BLACK else Color.WHITE
+    views.setTextViewText(R.id.widget_title, (if (occurrence.isTask) "☑  " else "") + occurrence.event.title)
     views.setTextColor(R.id.widget_title, text)
     views.setTextColor(R.id.widget_time, text)
-    if (occurrence == null) applyBackground(context, views, R.id.widget_card, palette.tasksColor, "tasks")
-    views.setViewVisibility(R.id.widget_time, if (occurrence == null) View.GONE else View.VISIBLE)
-    occurrence?.let {
-        views.setTextViewText(R.id.widget_time, if (it.isTask) { if (it.allDay) "All day" else Fmt.time(it.start.toLocalTime(), context.container.settings.settings.value.use24Hour) } else Fmt.occurrenceTime(it, context.container.settings.settings.value.use24Hour))
-    }
-    views.setOnClickFillInIntent(R.id.widget_row, occurrence?.let { MainActivity.eventIntent(context, it.event.id, it.instanceId) } ?: Intent(context, MainActivity::class.java))
+    val use24h = context.container.settings.settings.value.use24Hour
+    views.setTextViewText(R.id.widget_time, when {
+        !occurrence.isTask -> Fmt.occurrenceTime(occurrence, use24h)
+        occurrence.allDay -> "All day"
+        else -> Fmt.time(occurrence.start.toLocalTime(), use24h)
+    })
+    views.setOnClickFillInIntent(R.id.widget_row, MainActivity.eventIntent(context, occurrence.event.id, occurrence.instanceId))
     return views
 }
 

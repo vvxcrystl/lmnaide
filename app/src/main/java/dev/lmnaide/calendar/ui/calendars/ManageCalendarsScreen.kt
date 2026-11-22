@@ -44,9 +44,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -108,12 +110,20 @@ class ManageCalendarsViewModel(private val repository: CalendarRepository, setti
 @Composable
 fun ManageCalendarsScreen(
     onBack: () -> Unit,
+    editCalendarId: Long? = null,
     viewModel: ManageCalendarsViewModel = viewModel(factory = ManageCalendarsViewModel.Factory),
 ) {
     val calendars by viewModel.calendars.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     var editing by remember { mutableStateOf<CalendarEntity?>(null) }
     var deleting by remember { mutableStateOf<CalendarEntity?>(null) }
+    // Long-pressing a calendar in the drawer opens it here for editing, and closing returns there.
+    var editRequest by rememberSaveable { mutableStateOf(editCalendarId) }
+    LaunchedEffect(calendars) {
+        val id = editRequest ?: return@LaunchedEffect
+        calendars.firstOrNull { it.id == id }?.let { editing = it; editRequest = null }
+    }
+    val closeEditor = { editing = null; if (editCalendarId != null) onBack() }
 
     Scaffold(
         topBar = {
@@ -188,8 +198,8 @@ fun ManageCalendarsScreen(
         CalendarDialog(
             initial = calendar,
             settings = settings,
-            onSave = { viewModel.save(it); editing = null },
-            onDismiss = { editing = null },
+            onSave = { viewModel.save(it); closeEditor() },
+            onDismiss = closeEditor,
         )
     }
     deleting?.let { calendar ->
