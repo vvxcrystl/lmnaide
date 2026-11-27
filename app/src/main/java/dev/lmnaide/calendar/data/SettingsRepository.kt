@@ -27,6 +27,8 @@ data class Settings(
     val defaultCalendarId: Long? = null,
     val view: CalendarView = CalendarView.MONTH,
     val showTasks: Boolean = true,
+    /** Puts the create button and quick add's Save on the left, within reach of a left thumb. */
+    val leftHanded: Boolean = false,
 ) {
     val weekStart: DayOfWeek
         get() = weekStartOverride ?: WeekFields.of(Locale.getDefault()).firstDayOfWeek
@@ -61,6 +63,7 @@ class SettingsRepository(context: Context) {
             putLong(KEY_CALENDAR, next.defaultCalendarId ?: NONE.toLong())
             putString(KEY_VIEW, next.view.name)
             putBoolean(KEY_TASKS, next.showTasks)
+            putBoolean(KEY_LEFT_HANDED, next.leftHanded)
         }
     }
 
@@ -74,6 +77,7 @@ class SettingsRepository(context: Context) {
         defaultCalendarId = prefs.getLong(KEY_CALENDAR, NONE.toLong()).takeIf { it != NONE.toLong() },
         view = enumOrNull<CalendarView>(prefs.getString(KEY_VIEW, null)) ?: CalendarView.MONTH,
         showTasks = prefs.getBoolean(KEY_TASKS, true),
+        leftHanded = prefs.getBoolean(KEY_LEFT_HANDED, false),
     )
 
     /** Removed themes and legacy dynamic color preferences use Material You. */
@@ -98,6 +102,7 @@ class SettingsRepository(context: Context) {
         const val KEY_CALENDAR = "default_calendar"
         const val KEY_VIEW = "view"
         const val KEY_TASKS = "show_tasks"
+        const val KEY_LEFT_HANDED = "left_handed"
         const val KEY_HOLIDAYS = "holidays_seeded"
         const val KEY_HOLIDAYS_TEAL = "holidays_recolored"
     }

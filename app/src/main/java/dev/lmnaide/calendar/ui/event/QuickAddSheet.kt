@@ -101,6 +101,7 @@ import dev.lmnaide.calendar.ui.common.Motion
 import dev.lmnaide.calendar.ui.common.rememberLastNonNull
 import dev.lmnaide.calendar.ui.common.rememberNow
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -202,7 +203,13 @@ fun QuickAddSheet(
             Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End), modifier = Modifier.fillMaxWidth()) {
+            // Left-handed puts the chips and Save on the left, within reach of the thumb.
+            // Right to left already puts them there, so only left to right swaps them.
+            val leftHanded = settings.leftHanded && LocalLayoutDirection.current == LayoutDirection.Ltr
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp, if (leftHanded) Alignment.Start else Alignment.End),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 KindChip("Event", Icons.Outlined.Event, selected = !isTask) { taskChoice = false }
                 KindChip("Task", Icons.Outlined.TaskAlt, selected = isTask) { taskChoice = true }
             }
@@ -301,9 +308,13 @@ fun QuickAddSheet(
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { closeThen { onMoreOptions(input.trim(), isTask, calendar?.id, Converters().peopleToString(people)) } }) { Text("More options") }
+                val saveButton = @Composable { Button(onClick = ::save, enabled = canSave) { Text("Save") } }
+                val moreOptions = @Composable {
+                    TextButton(onClick = { closeThen { onMoreOptions(input.trim(), isTask, calendar?.id, Converters().peopleToString(people)) } }) { Text("More options") }
+                }
+                if (leftHanded) saveButton() else moreOptions()
                 Spacer(Modifier.weight(1f))
-                Button(onClick = ::save, enabled = canSave) { Text("Save") }
+                if (leftHanded) moreOptions() else saveButton()
             }
         }
     }
